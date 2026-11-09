@@ -70,7 +70,7 @@ if (!/^\[patch\.crates-io\][\s\S]*^objc2-app-kit\s*=\s*\{\s*path\s*=\s*"\.\.\/\.
 for (const pkg of packages.values()) {
   for (const dependency of pkg.dependencies) {
     if (dependency.path === null) continue;
-    if (['vellum', 'vellum-iced'].includes(dependency.name)) {
+    if (['vellum-tui', 'vellum-gui-macos'].includes(dependency.name)) {
       failures.push(`${pkg.name} has forbidden application dependency on ${dependency.name}`);
     }
   }
