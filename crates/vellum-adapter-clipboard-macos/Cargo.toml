@@ -9,11 +9,7 @@ publish.workspace = true
 description = "Bounded eager plain-text AppKit clipboard I/O, outside the editor engine"
 
 [features]
-private-pasteboard-qualification = []
-
-[[example]]
-name = "private-pasteboard"
-required-features = ["private-pasteboard-qualification"]
+qualification-harness = []
 
 [target.'cfg(target_os = "macos")'.dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }

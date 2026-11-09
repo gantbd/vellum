@@ -40,87 +40,20 @@ impl AppKitClipboard {
 
 pub(crate) struct AppKit {
     _thread: MainThreadMarker,
-    target: Target,
-}
-
-enum Target {
-    General,
-    #[cfg(feature = "private-pasteboard-qualification")]
-    Private(Option<objc2::rc::Retained<NSPasteboard>>),
-}
-
-impl Target {
-    fn board(&self) -> Result<objc2::rc::Retained<NSPasteboard>, Error> {
-        match self {
-            Self::General => Ok(NSPasteboard::generalPasteboard()),
-            #[cfg(feature = "private-pasteboard-qualification")]
-            Self::Private(board) => board.clone().ok_or(Error::Unavailable),
-        }
-    }
-
-    #[cfg(feature = "private-pasteboard-qualification")]
-    fn take_private(&mut self) -> Result<objc2::rc::Retained<NSPasteboard>, Error> {
-        match self {
-            Self::General => Err(Error::Unavailable),
-            Self::Private(board) => board.take().ok_or(Error::Unavailable),
-        }
-    }
 }
 
 impl AppKit {
     pub(crate) fn new() -> Result<Self, Error> {
         Ok(Self {
             _thread: MainThreadMarker::new().ok_or(Error::Unavailable)?,
-            target: Target::General,
         })
-    }
-
-    // Only the explicitly gated qualification runner can select this target.
-    // Public production constructors still stay lazy and select General.
-    #[cfg(feature = "private-pasteboard-qualification")]
-    pub(crate) fn unique_for_qualification() -> Result<Self, Error> {
-        let thread = MainThreadMarker::new().ok_or(Error::Unavailable)?;
-        let board = objc2::exception::catch(NSPasteboard::pasteboardWithUniqueName)
-            .map_err(|_| Error::Unavailable)?;
-        Ok(Self {
-            _thread: thread,
-            target: Target::Private(Some(board)),
-        })
-    }
-
-    #[cfg(feature = "private-pasteboard-qualification")]
-    pub(crate) fn clear_private_for_qualification(&mut self) -> Result<(), Error> {
-        let Target::Private(Some(board)) = &self.target else {
-            return Err(Error::Unavailable);
-        };
-        objc2::exception::catch(AssertUnwindSafe(|| board.clearContents()))
-            .map_err(|_| Error::Unavailable)?;
-        Ok(())
-    }
-
-    #[cfg(feature = "private-pasteboard-qualification")]
-    pub(crate) fn release_private_for_qualification(&mut self) -> Result<(), Error> {
-        // Spend before platform dispatch: exceptions cannot cause an automatic
-        // second release. General is never eligible, and Closed never falls back.
-        let board = self.target.take_private()?;
-        objc2::exception::catch(AssertUnwindSafe(|| board.releaseGlobally()))
-            .map_err(|_| Error::Unavailable)
-    }
-}
-
-#[cfg(feature = "private-pasteboard-qualification")]
-impl Drop for AppKit {
-    fn drop(&mut self) {
-        // Best effort on early errors/unwind. Success uses explicit release and
-        // checks its result. Never retry a release that was already dispatched.
-        let _ = self.release_private_for_qualification();
     }
 }
 
 impl Backend for AppKit {
     fn write(&mut self, text: &str) -> Result<bool, ()> {
         objc2::exception::catch(AssertUnwindSafe(|| {
-            let board = self.target.board().map_err(|_| ())?;
+            let board = NSPasteboard::generalPasteboard();
             // Publish the standard UTF-8 plain-text representation as exact
             // bytes, without a decoder treating leading U+FEFF as metadata.
             let data = NSData::with_bytes(text.as_bytes());
@@ -133,7 +66,7 @@ impl Backend for AppKit {
 
     fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error> {
         objc2::exception::catch(AssertUnwindSafe(|| {
-            let board = self.target.board()?;
+            let board = NSPasteboard::generalPasteboard();
             let before = board.changeCount();
             let kind = NSString::from_str("public.utf8-plain-text");
             let value = board.dataForType(&kind);
@@ -163,21 +96,6 @@ fn bounded_plain_text(data: &NSData, max_bytes: usize) -> Result<String, Error> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(feature = "private-pasteboard-qualification")]
-    #[test]
-    fn released_private_target_refuses_without_falling_back_to_general() {
-        let mut target = Target::Private(None);
-        assert_eq!(target.board(), Err(Error::Unavailable));
-        assert_eq!(target.take_private(), Err(Error::Unavailable));
-    }
-
-    #[cfg(feature = "private-pasteboard-qualification")]
-    #[test]
-    fn general_target_can_never_be_taken_for_global_release() {
-        let mut target = Target::General;
-        assert_eq!(target.take_private(), Err(Error::Unavailable));
-    }
 
     // Foundation values only: neither test obtains any NSPasteboard instance.
     #[test]

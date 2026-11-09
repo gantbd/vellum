@@ -873,6 +873,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-clipboard-macos-qualification"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-clipboard-macos",
+ "vellum-adapter-local-fs",
+ "vellum-model",
+]
+
+[[package]]
 name = "vellum-engine"
 version = "0.1.0"
 dependencies = [

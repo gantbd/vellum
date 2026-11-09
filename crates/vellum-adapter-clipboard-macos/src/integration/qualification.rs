@@ -1,8 +1,30 @@
-//! Explicit manual probe of real AppKit I/O through the original controller.
-//! No general-board fallback, user documents or clipboard payload diagnostics.
+//! Generic qualification workflow. Platform bindings live in unpublished
+//! repository-only runners so production packages need no patched SDK surface.
 use super::*;
 use std::{fs, path::PathBuf};
 use vellum_model::Action;
+
+/// Explicit port for repository-only live qualification backends.
+///
+/// This is feature-gated and not a production provider-selection mechanism.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QualificationWriteError;
+
+pub trait QualificationBackend {
+    fn write(&mut self, text: &str) -> Result<bool, QualificationWriteError>;
+    fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error>;
+    fn clear(&mut self) -> Result<(), Error>;
+    fn release(&mut self) -> Result<(), Error>;
+}
+
+impl<T: QualificationBackend> Backend for T {
+    fn write(&mut self, text: &str) -> Result<bool, ()> {
+        QualificationBackend::write(self, text).map_err(|_| ())
+    }
+    fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error> {
+        QualificationBackend::read(self, max_bytes)
+    }
+}
 
 const RAW: &str = "\u{feff}Grüße\r\n\0e\u{301}👩‍💻";
 
@@ -67,27 +89,25 @@ fn retirement() -> CopyRetirementFactsV1 {
     }
 }
 
-/// Performs live OS I/O. Call only with explicit operator approval, on the main
-/// thread. This feature-gated probe owns only unique private boards and fixtures.
-/// Success includes clearing, private server-resource release and native cleanup;
-/// process termination or failure does not promise cleanup or physical erasure.
-pub fn qualify_private_pasteboard(
+/// Runs the exact production-controller workflow against fresh caller-owned
+/// backends. The caller remains responsible for operator approval and platform
+/// confinement. Each backend is cleared and explicitly released.
+pub fn qualify_backend<B: QualificationBackend>(
+    mut make_backend: impl FnMut() -> Result<B, Error>,
     config: fn() -> vellum_model::ReferenceSessionConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    objc2::rc::autoreleasepool(|_| {
-        for capture_capacity in [0, 1, 256] {
-            qualify_mode(capture_capacity, config)?;
-        }
-        Ok(())
-    })
+    for capture_capacity in [0, 1, 256] {
+        let backend = make_backend().map_err(|_| "qualification backend unavailable")?;
+        qualify_mode(capture_capacity, backend, config)?;
+    }
+    Ok(())
 }
 
-fn qualify_mode(
+fn qualify_mode<B: QualificationBackend>(
     capture_capacity: usize,
+    backend: B,
     config: fn() -> vellum_model::ReferenceSessionConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let backend = crate::appkit::AppKit::unique_for_qualification()
-        .map_err(|_| "private pasteboard unavailable; no general-board fallback")?;
     let mut provider = Provider::new(
         backend,
         Limits {
@@ -98,7 +118,7 @@ fn qualify_mode(
     .map_err(|_| "qualification provider limits refused")?;
     provider
         .backend
-        .clear_private_for_qualification()
+        .clear()
         .map_err(|_| "private clear failed")?;
     require(
         matches!(provider.read(), Ok(None)),
@@ -121,11 +141,11 @@ fn qualify_mode(
     let mut provider = qualify_workflow(capture_capacity, provider, config())?;
     provider
         .backend
-        .clear_private_for_qualification()
+        .clear()
         .map_err(|_| "private final clear failed")?;
     provider
         .backend
-        .release_private_for_qualification()
+        .release()
         .map_err(|_| "private server-resource release failed or uncertain")?;
     require(
         provider.read() == Err(Error::Unavailable),
@@ -307,13 +327,21 @@ mod tests {
 
     #[derive(Default)]
     struct Memory(Option<String>);
-    impl Backend for Memory {
-        fn write(&mut self, value: &str) -> Result<bool, ()> {
+    impl QualificationBackend for Memory {
+        fn write(&mut self, value: &str) -> Result<bool, QualificationWriteError> {
             self.0 = Some(value.to_owned());
             Ok(true)
         }
         fn read(&mut self, _: usize) -> Result<Option<String>, Error> {
             Ok(self.0.clone())
+        }
+        fn clear(&mut self) -> Result<(), Error> {
+            self.0 = None;
+            Ok(())
+        }
+        fn release(&mut self) -> Result<(), Error> {
+            self.0 = None;
+            Ok(())
         }
     }
 

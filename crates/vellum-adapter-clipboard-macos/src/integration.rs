@@ -4,11 +4,11 @@ use crate::{ACKNOWLEDGMENT_PROFILE, Backend, Error, ExportOutcome, Limits, Provi
 use vellum_model::{ClipboardPlan, ClipboardReport, Editor, EditorError};
 use vellum_session::host::copy_transfer::*;
 mod desktop;
-#[cfg(feature = "private-pasteboard-qualification")]
+#[cfg(feature = "qualification-harness")]
 mod qualification;
 pub use desktop::{DesktopAccess, DesktopResult, ReferenceClipboard};
-#[cfg(feature = "private-pasteboard-qualification")]
-pub use qualification::qualify_private_pasteboard;
+#[cfg(feature = "qualification-harness")]
+pub use qualification::{QualificationBackend, QualificationWriteError, qualify_backend};
 
 /// Current trusted-host admission premises. Registration and identity alone
 /// supply none of these permissions; the native facade validates each request.

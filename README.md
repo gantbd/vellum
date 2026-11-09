@@ -3,3 +3,13 @@
 Qualified interpretations of Vellum SDK ports: local filesystem, annotation
 JSON, ICU Unicode boundaries, and macOS clipboard. These crates provide no
 semantic source/history authority and select no application policy.
+
+The patched AppKit surface is confined to the unpublished live-qualification
+runner. With explicit operator approval, run it on macOS with:
+
+```sh
+cargo run -p vellum-clipboard-macos-qualification -- --allow-private-pasteboard
+```
+
+It creates only unique private pasteboards; production adapter packages resolve
+the released `objc2-app-kit` crate and require no consumer patch.

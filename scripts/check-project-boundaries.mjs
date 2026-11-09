@@ -18,10 +18,16 @@ const required = [
   'vellum-adapter-annotation-json',
   'vellum-adapter-unicode-icu',
   'vellum-adapter-clipboard-macos',
+  'vellum-clipboard-macos-qualification',
   'vellum-unicode-reference',
 ];
 for (const name of required) {
   if (!packages.has(name)) failures.push(`missing adapter project crate ${name}`);
+}
+
+const qualification = packages.get('vellum-clipboard-macos-qualification');
+if (qualification && qualification.publish?.length !== 0) {
+  failures.push('live clipboard qualification package must remain unpublished');
 }
 
 for (const pkg of packages.values()) {

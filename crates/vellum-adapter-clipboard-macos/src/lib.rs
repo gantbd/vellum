@@ -13,12 +13,13 @@
 
 use std::time::{Duration, Instant};
 mod integration;
-#[cfg(feature = "private-pasteboard-qualification")]
-pub use integration::qualify_private_pasteboard;
 pub use integration::{
     Admission, ClipboardStage, DesktopAccess, DesktopResult, EditorClipboard, IntegrationError,
     ProviderReceiptSummary, Publication, ReferenceClipboard,
 };
+#[cfg(feature = "qualification-harness")]
+#[doc(hidden)]
+pub use integration::{QualificationBackend, QualificationWriteError, qualify_backend};
 pub use vellum_session::host::copy_transfer::TextTransferKindV1 as Operation;
 
 #[cfg(target_os = "macos")]

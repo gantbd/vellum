@@ -3,8 +3,8 @@
 This repository was extracted from `gantbd/vellum` at source commit
 `920dbfc` (`refactor: separate engine sdk adapters and apps`). The filtered
 history retains changes to the adapter crates, `vellum-unicode-reference`, the
-Unicode formal assets, and the qualified AppKit patch used by the macOS
-clipboard adapter.
+Unicode formal assets, and the qualified AppKit patch used only by the
+repository's unpublished macOS qualification runner.
 
 The root workspace files establish the new project boundary. Exact-version
 path dependencies support sibling-repository development; published packages
