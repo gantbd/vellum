@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "ICU-backed Unicode boundary provider for Vellum SDK contracts"
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
