@@ -1,0 +1,19 @@
+{
+  "scope": "scoped-native-invocation-cancellation-only",
+  "gates": ["ownerControlAllowed", "controlContextCurrent", "controlScopeValid", "protectedControlReady"],
+  "scopeFlags": {
+    "actualNativeStopCompositionChecked": true,
+    "completeInvocationContextChecked": true,
+    "publicationRaceAndReplayChecked": true,
+    "observationAndRetirementSeparationChecked": true,
+    "allAdmittedNativeJobKindsExercised": true,
+    "clipboardProviderObligationSeparationChecked": true,
+    "actualPolicyOrProtectedServiceProved": false,
+    "externalTaskCancellationOrShutdownProved": false,
+    "allNativeJobFamiliesProved": false,
+    "publicControlSchemaSelected": false,
+    "actualConcurrentInstallationProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

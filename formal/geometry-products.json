@@ -1,0 +1,21 @@
+{
+  "contract":"geometry-query/1",
+  "profile":"declared-caret-geometry/1",
+  "family":"F09",
+  "common":["contract","operation"],
+  "variants":{
+    "caret-hit-conversion":["request"],
+    "bounded-layout":["start","count"],
+    "visual-navigation-target":["origin","unit","count","goal","choices"]
+  },
+  "contextFields":["view","document","sourceRevision","annotationSet","layoutGeneration","decorationGeneration","projectionGeneration","configurationGeneration","metricsGeneration","viewportGeneration","viewport","unit","pageDistance","profile"],
+  "units":["left","right","row-start","row-end","row-up","row-down","page-up","page-down"],
+  "pointFields":["position","affinity"],
+  "selectionContract":"visual-selection/1",
+  "selectionFields":["contract","operation","invocation","view","document","sourceRevision","expectedSelection","profile","layout","targets","mode","extend"],
+  "selectionModes":["move-heads","replace-primary","replace-all"],
+  "limits":["maxRootBytes","maxRows","maxStops","maxHitRegions","maxTargets","maxRequestBytes","maxReplyBytes","maxLayoutBytes","maxSteps","maxValidationSteps","maxCoordinate"],
+  "scope":{"geometryProductsChecked":true,"visualSelectionBridgeChecked":true,"actualLayoutProviderTruthProved":false,
+    "shapingBidiNativeConformanceProved":false,"richerVisualCaretIdentityProved":false,"fullGeometryEffectFamiliesProved":false,"viewportPublicationProved":false,
+    "actualIssuerPolicyRetentionProved":false,"hostileDecoderProved":false,"allStateCompanionsProved":false,"physicalAccountingProved":false,"implementationRefinement":false}
+}

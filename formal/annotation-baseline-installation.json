@@ -1,0 +1,4 @@
+{
+ "scope":"native-qualified-annotation-baseline-installation-only",
+ "gates":["authorized","scope","continuous","live","notStopped","bindingCoverageComplete","writerCoverageComplete","baselinePublicationAllowed","companionsReady","replyReady","resourcesReady","historicalArtifactReadable","baselineCoverageComplete","preparationReserved","transferReady","retentionReady"]
+}

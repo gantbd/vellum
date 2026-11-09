@@ -1,0 +1,23 @@
+{
+  "contract": "line-edit/1",
+  "family": "F11",
+  "variant": "ordinary-edit",
+  "profile": "explicit-prefix-line-edit/1",
+  "common": ["contract", "operation", "action", "invocation", "view", "document", "sourceRevision", "expectedSelection", "profile", "settings"],
+  "actions": ["indent-lines", "outdent-lines", "insert-newline"],
+  "indentSettings": ["unit", "tabWidth"],
+  "newlineSettings": ["delimiter", "autoIndent"],
+  "delimiters": {"LF": [10], "CRLF": [13, 10], "CR": [13]},
+  "autoIndent": ["none", "copy-prefix"],
+  "limits": ["maxLines", "maxPrefixBytes", "maxIndentColumns", "maxUnitBytes", "maxDerivedBytes"],
+  "scope": {
+    "simpleLineProductsChecked": true,
+    "grammarIndentationProved": false,
+    "configurationSupplierTruthProved": false,
+    "graphemeWordPageVisualProductsProved": false,
+    "hostileDecoderProved": false,
+    "allStateCompanionsProved": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

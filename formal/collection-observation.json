@@ -1,0 +1,7 @@
+{
+ "scope":"collection-publication-observation-reference-only",
+ "preparationGates":["authorized","scope","continuous","live","notStopped","projectionAllowed","resourcesReady","coverageComplete","preparationReserved","visibilityAttested","visibilityComplete","projectionOrderAttested"],
+ "visibilityFields":["document","id","incarnation","visible","body","target"],
+ "scopeFlags":{"actualCollectionProjectionChecked":true,"visibleOnlyReferenceAllocationChecked":true,"rootBoundVisibilityPreparationChecked":true,"stagedBindingAndFrameCommitChecked":true,"creationRemovalAndIncarnationReferenceChecked":true,
+ "actualHostVisibilityOrOrderTruthProved":false,"actualPreparationReservationOrRetentionTruthProved":false,"fullNativeF13HistoryIntegrationProved":false,"crossSurfaceQuerySelectorIntegrationProved":false,"allLifecycleOrEventProfilesProved":false,"fullInvocationReplayCompositionProved":false,"timingOrResourceNoninterferenceProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

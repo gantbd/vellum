@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
+import * as native from './native-discovery.mjs';
+import * as kernel from './invocation-publication.mjs';
+import {nativeDiscoveryFixture} from './native-discovery-checks.mjs';
+import {selectionEngineDescriptor} from './selection-engine-descriptor.mjs';
+import {selectionGatewayFixture} from './selection-gateway-checks.mjs';
+import {prepareSelectionEdit} from './selection-products.mjs';
+import {prepareBoundaryCommand} from './boundary-commands.mjs';
+import {nativeDiscoveryResultValid} from './discovery-results.mjs';
+const profile='owned-contract-discovery/11',copy=structuredClone,no={status:'unavailable'},inputLimits={maxRequestBytes:32768,maxInputNodes:4096,maxInputDepth:128};
+// Qualified /1–/10 catalog fingerprints, not candidate-generated expectations.
+const goldens=['3107d5c1148abb0743cadddfb89ed1e649275fa1e4209e73efd51c3360a809fb','fd988802398c328878e6da6e0a224781477bcd8f09c38a6df05c9a214a7ca7f0','fede183bbf34068421706596e77b342d20a0b625d276ac2a1e61eb32e0990bce','3ceed9660c483e92747834c85a91370c5d8017b294110bdce2d9503b4fbeeaa5','a40ee43d0b13986d14737cc20ac686a9d864e1956ace2b700003924acefed6d0','ef1e1e7a3d3a6b56a916f297c3d5d13d69c0f8ac4d4d57da4dc0a227092e59aa','b94f6a1b69cc131796f4fd26078cc0a6b64ddfc40c84671856b73837157bbaf4','0b7ad19fc82d8bae95637f07242e1e9c65b9bd58b6ef59b18ff6fe1b4dfeb865','bbed82676adfaeeaa613c177e5c0a61fe5e32e9f6819d4b95914c2d24c6a08bd','1222c4eb32b385d697d77f6301ece4c6d20906300dbeb0aa930b5bbe870de198'];
+const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+// /11 digest reproduced from the unchanged qualified 0.193 / 732-check source.
+export const qualifiedSelectionDiscoveryFingerprintsForChecks=Object.freeze([...goldens,'8b8e886f569dfaff04f8266ff4e82f72f1bb583a086f78929d8851eea2850412']);
+const fingerprint=v=>createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+export function selectionDiscoveryFixture(options={},api=native){
+ const x=nativeDiscoveryFixture(api,undefined,{...options,limits:{maxPageRows:12,maxMetadataDepth:64,maxCaptureBytes:262144,...options.limits}}),c={...x.scope,profile},rows=(scope=c)=>api.nativeBuiltinDiscoveryRows(x.owner,scope,x.g()),packet=(scope=c,visibility)=>{const r=rows(scope);return r&&api.prepareNativeBuiltinDiscoveryCut(x.owner,scope,visibility??x.visibility(r),x.target(),x.advice(r),x.g());},open=(scope=c,visibility)=>{const p=packet(scope,visibility);assert(p);try{return api.acquireNativeDiscovery(x.owner,scope,p,x.g());}finally{api.retireNativeDiscoveryCut(x.owner,p,x.g());}},query=(context,q,g=x.g(),visibility,route=null,scope=c)=>{const p=packet(scope,visibility);assert(p);const request={contract:'contract-discovery/1',profile:scope.profile,context,...q};try{const r=route?api.queryDecodedNativeDiscovery(x.owner,{route,request:{...(route==='typed'?{family:0}:{name:'discover-contracts'}),variant:q.operation,version:1,arguments:request}},inputLimits,scope,p,g):api.queryNativeDiscovery(x.owner,request,scope,p,g);assert(nativeDiscoveryResultValid(r,request,x.l));return r;}finally{api.retireNativeDiscoveryCut(x.owner,p,x.g());}};
+ return {...x,c,rows,packet,open,query};
+}
+function independentSelectionDiscoveryBounds(x){
+ const size=v=>Buffer.byteLength(JSON.stringify(v)),stats=(v,d=0)=>{const children=v&&typeof v==='object'?Object.values(v).map(c=>stats(c,d+1)):[];return {nodes:1+children.reduce((n,c)=>n+c.nodes,0),depth:Math.max(d,...children.map(c=>c.depth))};},rows=x.rows(),metadata=rows.flatMap(r=>[...r.variants,r.presentation]),root=x.z.root(),visibility=x.visibility(rows),target=x.target(),advice=x.advice(rows),a=x.open(),page=x.query(a.context,{operation:'list',limit:12,continuation:null}),reply=x.query(a.context,{operation:'inspect',entry:page.entries[11].reference});
+ const projected=rows.map(r=>({key:JSON.stringify([r.command.authority,r.command.id,r.command.incarnation]),schema:true,presentation:true,advice:true,variants:r.variants.map(v=>v.id),value:{version:r.version,kind:r.kind,variants:copy(r.variants),presentation:copy(r.presentation)}}));
+ return {maxEntries:12,maxRootBytes:size(root),maxRowBytes:Math.max(...rows.map(size)),maxMetadataBytes:Math.max(...metadata.map(size)),maxMetadataNodes:Math.max(...metadata.map(v=>stats(v).nodes)),maxMetadataDepth:Math.max(...metadata.map(v=>stats(v).depth)),maxPacketBytes:size({root,scope:x.c,registry:rows,visibility,target,advice}),maxCaptureBytes:size({rows:projected,target:{reference:a.target,data:target},builtin:true}),maxReplyBytes:Math.max(size(a),size(page),size(reply))};
+}
+export function checkSelectionDiscovery(api=native){
+ const controls=[],check=(n,f)=>{f();controls.push(n);},make=o=>selectionDiscoveryFixture(o,api),list={operation:'list',limit:12,continuation:null};let nativeCases=0,schemaDenials=0,authorityDenials=0,lossCases=0,boundaries=0;
+ check('ten-profile-fingerprints-unchanged-eleven-appends-existing-F12-only',()=>{
+  const x=make(),all=Array.from({length:11},(_,i)=>x.rows({...x.c,profile:'owned-contract-discovery/'+(i+1)}));assert(all.every(Array.isArray));assert.deepEqual(all.map(r=>r.length),[2,3,4,5,7,7,8,9,10,11,12]);assert.deepEqual(all.slice(0,10).map(fingerprint),goldens);assert.deepEqual(all[10].slice(0,11),all[9]);assert.deepEqual(all[10][11].variants,selectionEngineDescriptor().variants);assert.equal(all[10][11].contract,'engine-selection-declaration/1');assert.equal(all[10][11].kind,'localCommand');assert.equal(JSON.parse(all[10][11].command.id)[2],'F12');
+ });
+ check('both-decoded-facades-inspect-and-advise-three-existing-semantic-variants',()=>{
+  for(const route of ['typed','dynamic']){const x=make(),before=x.z.root(),parent=x.z.usage(),a=x.open(),p=x.query(a.context,list,x.g(),undefined,route);assert.equal(p.status,'page');assert.equal(p.entries.length,12);nativeCases++;const entry=p.entries[11].reference,d=x.query(a.context,{operation:'inspect',entry},x.g(),undefined,route);assert.equal(d.status,'descriptor');assert.deepEqual(d.descriptor.variants.map(({reference,...v})=>v),selectionEngineDescriptor().variants.map(({id,...v})=>v));nativeCases++;for(const v of d.descriptor.variants){assert.equal(x.query(a.context,{operation:'advisory-enablement',entry,variant:v.reference,target:a.target},x.g(),undefined,route).enabled,true);nativeCases++;}assert.equal(x.z.root(),before);assert.deepEqual(x.z.usage(),parent);assert.deepEqual(api.nativeDiscoveryDecodeUsage(x.owner),{busy:false,declaredWorkspaceBytes:0,faulted:false});}
+ });
+ check('captured-schema-ceiling-never-widens-and-current-withdrawal-is-absorbing',()=>{
+  const x=make({schema:false}),a=x.open(),v=x.visibility(x.rows());v.forEach(r=>r.schema=true);const p=x.query(a.context,list,x.g(),v);assert.equal(p.status,'page');const d=x.query(a.context,{operation:'inspect',entry:p.entries[11].reference},x.g(),v);assert.equal(d.status,'descriptor');assert(d.descriptor.variants.every(v=>Object.keys(v).length===1));const y=make(),b=y.open(),w=y.visibility(y.rows());w[11].schema=false;assert.deepEqual(y.query(b.context,list,y.g(),w),no);assert.equal(y.usage().stopped,1);assert.deepEqual(y.query(b.context,list),no);lossCases++;
+ });
+ check('fixed-and-equal-generic-origin-cuts-cannot-substitute',()=>{
+  const x=make(),a=x.open(),r=x.rows(),generic=()=>api.prepareNativeDiscoveryCut(x.owner,x.c,r,x.visibility(r),x.target(),x.advice(r),x.g()),p=generic();assert(p);assert.deepEqual(api.queryNativeDiscovery(x.owner,{contract:'contract-discovery/1',profile,context:a.context,...list},x.c,p,x.g()),no);api.retireNativeDiscoveryCut(x.owner,p,x.g());const q=generic(),b=api.acquireNativeDiscovery(x.owner,x.c,q,x.g());assert.equal(b.status,'context');api.retireNativeDiscoveryCut(x.owner,q,x.g());assert.deepEqual(x.query(b.context,list),no);assert.equal(x.query(a.context,list).status,'page');
+ });
+ check('foreign-unknown-twelve-and-cross-profile-scopes-refuse-without-poisoning',()=>{
+  const x=make(),a=x.open(),before=x.usage();for(const c of [{...x.c,authority:'foreign'},{...x.c,engine:'foreign'},{...x.c,profile:'owned-contract-discovery/14'}]){assert.equal(x.rows(c),null);assert.equal(x.packet(c),null);assert.deepEqual(x.usage(),before);}for(let i=1;i<=10;i++)assert.deepEqual(x.query(a.context,list,x.g(),undefined,null,{...x.c,profile:'owned-contract-discovery/'+i}),no);assert.equal(x.usage().stopped,0);assert.equal(x.query(a.context,list).status,'page');
+ });
+ check('exact-new-and-inherited-metadata-recognizers-refuse-data-code-or-authority-widening',()=>{
+  const x=make();let calls=0;
+  for(const index of [11])for(let variant=0;variant<3;variant++)for(const change of [v=>v.input.schema.oneOf=[],v=>v.input.schema.$ref='https://not-loaded.invalid/schema',v=>v.input.schema.execute=()=>{calls++;},v=>v.outcomes.effect='source-write',v=>v.outcomes.notEstablished=[],v=>v.outcomes.release='unconditional']){const r=copy(x.rows());change(r[index].variants[variant]);assert.equal(api.prepareNativeDiscoveryCut(x.owner,x.c,r,x.visibility(r),null,null,x.g()),null);schemaDenials++;}
+  for(const index of [5,6,7,8,9,10])for(const change of [v=>v.input.schema.oneOf=[],v=>v.outcomes.result.runtimeBindings=[]]){const r=copy(x.rows());change(r[index].variants[0]);assert.equal(api.prepareNativeDiscoveryCut(x.owner,x.c,r,x.visibility(r),null,null,x.g()),null);schemaDenials++;}
+  const r=x.rows()[11];for(let i=1;i<=10;i++){const c={...x.c,profile:'owned-contract-discovery/'+i},rows=[...x.rows(c),r];assert.equal(api.prepareNativeDiscoveryCut(x.owner,c,rows,x.visibility(rows),null,null,x.g()),null);schemaDenials++;}assert.equal(calls,0);assert.equal(x.open().status,'context');
+ });
+ check('discovery-context-entry-variants-and-advice-target-are-not-native-selection-capabilities',()=>{
+  const x=make(),a=x.open(),p=x.query(a.context,list),entry=p.entries[11].reference,d=x.query(a.context,{operation:'inspect',entry});for(const ref of [a.context,entry,a.target,...d.descriptor.variants.map(v=>v.reference)])for(const kind of ['match','boundary']){const z=selectionGatewayFixture(kernel,kind),r={...z.request,[kind==='match'?'match':'boundary']:ref},before=z.root(),h=z.h;assert.equal(kind==='match'?prepareSelectionEdit(before,r,h,h.viewLimits):prepareBoundaryCommand(before,r,h,h.viewLimits,h.boundaryWorkLimits),null);assert.equal(z.root(),before);authorityDenials++;}
+ });
+ check('publication-exclusion-malformed-query-and-copied-selectors-preserve-state',()=>{
+  const x=make(),a=x.open(),p=x.query(a.context,list),before=x.usage(),root=x.z.root(),parent=x.z.usage();for(const [q,g]of [[list,x.g({outsidePublicationGuard:false})],[{...list,extra:true},x.g()],[{operation:'inspect',entry:copy(p.entries[11].reference)},x.g()],[{operation:'execute'},x.g()]]){const cut=x.packet();assert(cut);const r=api.queryNativeDiscovery(x.owner,{contract:'contract-discovery/1',profile,context:a.context,...q},x.c,cut,g);api.retireNativeDiscoveryCut(x.owner,cut,x.g());assert.deepEqual(r,no);assert.deepEqual(x.usage(),before);assert.equal(x.z.root(),root);assert.deepEqual(x.z.usage(),parent);authorityDenials++;}
+ });
+ check('known-loss-stops-unknown-withholds-and-protected-cleanup-does-not-refund-issuance',()=>{
+  for(const value of [false,undefined,1]){const x=make(),a=x.open();assert.deepEqual(x.query(a.context,list,x.g({discoveryAllowed:value})),no);assert.equal(x.usage().stopped,value===false?1:0);assert.equal(x.query(a.context,list).status,value===false?'unavailable':'page');lossCases++;}
+  const x=make(),a=x.open();x.query(a.context,list);const issued=x.usage().issued;assert.equal(api.stopNativeDiscovery(x.owner,a.context,x.c,x.g()).status,'stopped');for(const k of ['retentionReleased','deliveryDrained'])assert.deepEqual(api.retireNativeDiscovery(x.owner,a.context,x.g({[k]:false})),no);assert.equal(api.retireNativeDiscovery(x.owner,a.context,x.g()).status,'retired');assert.equal(x.usage().issued,issued);
+ });
+ const dimensions=['maxEntries','maxRootBytes','maxRowBytes','maxMetadataBytes','maxMetadataNodes','maxMetadataDepth','maxPacketBytes','maxCaptureBytes','maxReplyBytes'];
+ check('nine-logical-capacity-dimensions-have-exact-minus-at-plus-boundaries',()=>{
+  const expected=independentSelectionDiscoveryBounds(make());for(const field of dimensions){const high=expected[field],attempt=value=>{const x=make({limits:{[field]:value}}),root=x.z.root(),parent=x.z.usage();let success=false;const rows=x.rows();if(rows){if(['maxEntries','maxRootBytes','maxRowBytes','maxMetadataBytes','maxMetadataNodes','maxMetadataDepth'].includes(field))success=true;else{const p=x.packet();if(p){if(field==='maxPacketBytes')success=true;else{const a=api.acquireNativeDiscovery(x.owner,x.c,p,x.g());if(a.status==='context'){if(field==='maxCaptureBytes')success=true;else{const page=x.query(a.context,list);if(page.status==='page')success=x.query(a.context,{operation:'inspect',entry:page.entries[11].reference}).status==='descriptor';}api.stopNativeDiscovery(x.owner,a.context,x.c,x.g());api.retireNativeDiscovery(x.owner,a.context,x.g());}}api.retireNativeDiscoveryCut(x.owner,p,x.g());}}}assert.equal(x.z.root(),root);assert.deepEqual(x.z.usage(),parent);assert.equal(x.usage().preparations,0);assert.equal(x.usage().contexts,0);return success;};const hi=high;assert(attempt(hi),field);assert.equal(attempt(hi-1),false,field+': minus');assert.equal(attempt(hi),true,field+': exact');assert.equal(attempt(hi+1),true,field+': plus');boundaries+=3;}
+ });
+ check('new-profile-entry-pressure-does-not-disable-older-ten',()=>{
+  const x=make({limits:{maxEntries:11}});assert.equal(x.rows(),null);assert.equal(x.packet(),null);assert.equal(x.rows({...x.c,profile:'owned-contract-discovery/10'}).length,11);assert.equal(x.open({...x.c,profile:'owned-contract-discovery/10'}).status,'context');
+ });
+ check('new-profile-capture-pressure-keeps-older-ten-available-without-automatic-budget-growth',()=>{
+  const limit=independentSelectionDiscoveryBounds(make()).maxCaptureBytes-1,x=make({limits:{maxCaptureBytes:limit}});assert.deepEqual(x.open(),no);assert.equal(x.usage().contexts,0);assert.equal(x.usage().issued,0);assert.equal(x.usage().preparations,0);assert.equal(x.open({...x.c,profile:'owned-contract-discovery/10'}).status,'context');
+ });
+ check('selector-pressure-refuses-whole-inspection-without-partial-issuance',()=>{
+  for(const limits of [{maxSelectors:12},{maxIssued:16}]){const x=make({limits}),a=x.open(),p=x.query(a.context,list);assert.equal(p.status,'page');const before=x.usage();assert.deepEqual(x.query(a.context,{operation:'inspect',entry:p.entries[11].reference}),no);assert.deepEqual(x.usage(),before);}
+ });
+ check('positive-advice-needs-original-target-and-current-facts-and-never-executes',()=>{
+  const x=make(),root=x.z.root(),parent=x.z.usage(),a=x.open(),p=x.query(a.context,list),entry=p.entries[11].reference,d=x.query(a.context,{operation:'inspect',entry});for(const v of d.descriptor.variants){const q={operation:'advisory-enablement',entry,variant:v.reference,target:a.target};assert.equal(x.query(a.context,q).enabled,true);for(const field of ['advisoryAdviceAttested','advisoryTargetCurrent','advisoryTargetEqualityObservable'])assert.deepEqual(x.query(a.context,q,x.g({[field]:false})),no);assert.deepEqual(x.query(a.context,{...q,target:copy(a.target)}),no);}assert.equal(x.z.root(),root);assert.deepEqual(x.z.usage(),parent);
+ });
+ return {scope:'owned-existing-F12-selection-discovery',controls,nativeCases,schemaDenials,authorityDenials,lossCases,boundaries,dimensions,olderTenProfilesUnchanged:true,noNewBehaviorUiPolicyOrPublicReceipt:true,metadataDoesNotGrantNativeSelectionAuthority:true,physicalGlobalHostOrIndependentProof:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(checkSelectionDiscovery()));

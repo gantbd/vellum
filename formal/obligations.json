@@ -1,0 +1,173 @@
+[
+  {
+    "id":"PS-NO","module":"NoOpPublication",
+    "requirements":["3.8","5.3","5.7","12.5.3"],
+    "invariants":["INV-02","INV-03","INV-04","INV-05","INV-12"],
+    "interfaces":["IF-01","IF-03","IF-09"],
+    "instrumentation":["INS-01","INS-02","INS-12"],
+    "assumptions":["ASM-01","ASM-03","ASM-07"],
+    "scope":"D01 bounded reference: validated unchanged success with no edit publication/revision/history, actual finite splice/map operators, meaningful equal-text companion/effect intent, current Boolean gates, fresh equal-text revisions, unrelated commits and diagnostic/cancellation races. One request/document, nine reference kinds and six transitions; not public schemas, default mapping/grouping, complete dependency/identity classifiers, actual host effects or implementation refinement."
+  },
+  {
+    "id":"PS-CH","module":"ContextHandoff",
+    "requirements":["3.3","4.4","11.2","12.5.3"],
+    "invariants":["INV-02","INV-03","INV-04","INV-07","INV-12"],
+    "interfaces":["IF-01","IF-03","IF-07","IF-09"],
+    "instrumentation":["INS-01","INS-02","INS-09","INS-12"],
+    "assumptions":["ASM-01","ASM-04","ASM-07"],
+    "scope":"Bounded reference configuration/command/publication handoff: actual EditorContracts splice/mapping/inverse operators, captured interpretation, compatible or incompatible activation, cosmetic changes, source edits, revocation, cancellation, retained contexts and diagnostic off/full/fault. One text-changing command/document, three-character initial source over two ASCII symbols, two contexts, six-transition horizon; no no-op policy, full imported temporal refinement, concrete schema/compatibility oracle, native extension execution, fairness or physical effects."
+  },
+  {
+    "id": "PS-TX", "module": "Transactions",
+    "requirements": ["3.4", "5.1", "5.2", "5.3", "12.7"],
+    "invariants": ["INV-02", "INV-03", "INV-04", "INV-07", "INV-12"],
+    "interfaces": ["IF-01", "IF-03", "IF-09"],
+    "instrumentation": ["INS-01", "INS-02", "INS-12"],
+    "assumptions": ["ASM-01", "ASM-03", "ASM-07"],
+    "scope": "Partial architectural coverage: exact-revision competing edits, declared object/context tokens, private staging, root publication, diagnostic erasure. Presentation-independent contract only: no actual discovery-scope invalidation/completeness, semantic-to-source mapping, Git promotion or concrete memory implementation."
+  },
+  {
+    "id": "PS-HI", "module": "History",
+    "requirements": ["3.8", "5.8"],
+    "invariants": ["INV-02", "INV-05", "INV-06", "INV-16"],
+    "interfaces": ["IF-03", "IF-12"],
+    "instrumentation": ["INS-02", "INS-06"],
+    "assumptions": ["ASM-01", "ASM-07"],
+    "scope": "Partial architectural coverage: resource-scoped frontiers, linked reversal, authored comment scopes, dependent redo invalidation, fresh versions and unavailable inverse refusal. No real-text inverse/mapping or grouping heuristic proof."
+  },
+  {
+    "id": "PS-DI", "module": "Disclosure",
+    "requirements": ["3.8", "15.5", "15.6"],
+    "invariants": ["INV-05", "INV-08", "INV-09"],
+    "interfaces": ["IF-02", "IF-08", "IF-09"],
+    "instrumentation": ["INS-03", "INS-12"],
+    "assumptions": ["ASM-01", "ASM-06"],
+    "scope": "Partial architectural coverage: paired visible projections, hidden bodies/existence, target detachment, current release authority and old stream gaps. No arbitrary semantic-edge/topology projection, timing, metadata/token encoding or native UI proof."
+  },
+  {
+    "id": "PS-PE", "module": "Persistence",
+    "requirements": ["3.6", "3.7", "3.8", "5.4", "5.9"],
+    "invariants": ["INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "Partial architectural coverage: immutable snapshots, conditional-write race, exact historical receipt attribution, safe rebinding and per-artifact outcomes. Conditional host capability assumed; byte encoding, durability, identity-provider correctness and recovery not proved."
+  },
+  {
+    "id": "PS-BR", "module": "Bridges",
+    "requirements": ["3.4", "3.6", "3.8", "5.3", "5.8", "5.9", "14.5", "15.5", "15.6"],
+    "invariants": ["INV-02", "INV-04", "INV-05", "INV-06", "INV-08", "INV-09", "INV-10", "INV-11"],
+    "interfaces": ["IF-02", "IF-03", "IF-04", "IF-08", "IF-12", "IF-13"],
+    "instrumentation": ["INS-02", "INS-03", "INS-04", "INS-06", "INS-07"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-03", "ASM-06", "ASM-07"],
+    "scope": "Partial shared-state composition using the actual execution Step operator: coherent source/history/mapping publication, later private comment preservation, published immutable save capture, projected read release, charged work and late evidence. Narrow one-shot operation profile, not complete slice-to-slice or implementation refinement."
+  },
+  {
+    "id": "PS-CS", "module": "ConcurrentSaves",
+    "requirements": ["3.6", "3.7", "5.4", "5.9", "5.10", "14.5"],
+    "invariants": ["INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "Concurrent same-resource save evidence, equality-token causality versus host ordering, unknown effect retention and candidate single-flight/overlap policy comparison. Candidate dispatch policies are not v1 approval. Fixed identity, two attempts and symbolic serialization; no current-external-content or durability guarantee."
+  },
+  {
+    "id": "PS-SA", "module": "SaveAdmission",
+    "requirements": ["4.4", "5.10", "7.5", "14.5"],
+    "invariants": ["INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "Candidate busy-versus-bounded-FIFO admission under local per-resource single-flight. Immutable captures, explicit cancellation/deadline outcomes, aggregate symbolic cost and completion-slot reservation ledgers, unknown-effect retention and distinct-resource progress witnesses. Four requests and two fixed canonical resources; not policy approval, real byte/receipt-retention bounds, clock/service guarantees or provider/composition refinement."
+  },
+  {
+    "id": "PS-DG", "module": "DispatchGate",
+    "requirements": ["3.6", "3.7", "4.4", "5.9", "5.10", "7.5", "14.5"],
+    "invariants": ["INV-04", "INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "Final local launch authority/binding/provider-epoch checks and exact historically attributed evidence independent of current caller grants. Distinguishes safe provider dispositions from progress/cancel intent. Two one-shot attempts; issuer authenticity, provider truth and atomic launch observation are assumptions, not cryptography, physical-write revocation, safe-rebind permission or general composition proofs."
+  },
+  {
+    "id": "PS-SC", "module": "SaveComposition",
+    "requirements": ["3.6", "3.7", "5.9", "5.10", "7.5", "14.5", "15.5"],
+    "invariants": ["INV-04", "INV-08", "INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-08", "IF-10", "IF-13"],
+    "instrumentation": ["INS-03", "INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-06", "ASM-07"],
+    "scope": "Restricted composition invoking actual SaveAdmission and DispatchGate transitions with checked per-module next/stutter correspondence. Two requests on one resource, bounded FIFO/upfront reservations, final launch gates, cancellation/expiry/shutdown wait cut, safe refund, success-ack baseline selection and current-gated reference read. No full Persistence/Disclosure/ConcurrentSaves refinement, physical write/crypto/retained-memory proof, fairness or policy approval."
+  },
+  {
+    "id": "PS-SE", "module": "SaveExecution",
+    "requirements": ["4.4", "5.10", "7.4", "7.5", "14.5"],
+    "invariants": ["INV-07", "INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-01", "IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-01", "INS-04", "INS-08", "INS-13"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "One-request wrapper over actual SaveComposition actions and Execution Step sequences. Charged active-control work, non-refillable rank, atomic terminal cleanup and late completed/quiescence evidence. Quiescence is a neutral internal fact, not OK/Failed or a public API choice. General lifecycle/rank refinement, physical preemption and unconditional liveness remain open."
+  },
+  {
+    "id": "PS-SB", "module": "StorageBridge",
+    "requirements": ["3.6", "3.7", "5.4", "5.9", "5.10", "14.5"],
+    "invariants": ["INV-10", "INV-11", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-04", "INS-07", "INS-08"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-07"],
+    "scope": "Actual Persistence and SaveComposition transitions joined through one source attempt. Abstract host compare/write determines successful/failed completed-result grading; exact payload/binding/profile adapter, safe rebind, late stop and contradiction preservation checked. Fixed profile, one source attempt; not actual platform I/O, arbitrary attempts, annotation persistence, codecs, cryptography or durability."
+  },
+  {
+    "id": "PS-RB", "module": "RecipientBridge",
+    "requirements": ["3.8", "5.9", "14.5", "15.5", "15.6"],
+    "invariants": ["INV-05", "INV-08", "INV-09", "INV-10", "INV-11"],
+    "interfaces": ["IF-02", "IF-04", "IF-08", "IF-13"],
+    "instrumentation": ["INS-03", "INS-04", "INS-07"],
+    "assumptions": ["ASM-01", "ASM-02", "ASM-06", "ASM-07"],
+    "scope": "Actual StorageBridge and paired Disclosure Next/stutter correspondence. Restricted source-deletion representation and fixed source/visible-annotation recipient profile; hidden annotation bodies/existence, evidence erasure and current/regrant-gap releases checked. Not universal field policy, all receipt-history hyperproperties, native UI, arbitrary edits or full annotation persistence refinement."
+  },
+  {
+    "id": "PS-EC", "module": "EditorContracts",
+    "requirements": ["3.2", "3.3", "3.4.2", "3.8", "5.1", "5.3", "6.2", "19.1", "19.9"],
+    "invariants": ["INV-01", "INV-02", "INV-03", "INV-04", "INV-05", "INV-08", "INV-09", "INV-16"],
+    "interfaces": ["IF-01", "IF-02", "IF-03", "IF-05", "IF-08", "IF-12"],
+    "instrumentation": ["INS-01", "INS-02", "INS-03", "INS-05", "INS-06"],
+    "assumptions": ["ASM-01", "ASM-03", "ASM-06", "ASM-07"],
+    "scope": "Finite sequence splice/inverse, separated start-coordinate batch composition/inverse, left-affinity point/chunk laws; coherent staged source/attachment/history, write-scope/current admission, immutable old snapshot and current-root release. New event release rechecks current grant and retention after resync. Two-symbol sources up to length three and bounded horizon; no receipt-named historical snapshot lookup, all UTF-8/profile/mixed-parser behavior, real queues/storage complexity or implementation refinement."
+  },
+  {
+    "id": "PS-DR", "module": "DerivedRetention",
+    "requirements": ["3.2", "3.4.2", "5.2.1", "6.1", "6.2", "7.5", "15.5"],
+    "invariants": ["INV-01", "INV-03", "INV-04", "INV-07", "INV-08", "INV-15", "INV-16"],
+    "interfaces": ["IF-01", "IF-02", "IF-03", "IF-05"],
+    "instrumentation": ["INS-01", "INS-02", "INS-03", "INS-05"],
+    "assumptions": ["ASM-01", "ASM-03", "ASM-06", "ASM-07"],
+    "scope": "Two immutable source cells shared by root and one derived worker: exact source-cell allocation ledger, capacity-one/two admission, cancellation versus worker release, current revision/context/grant result acceptance and no provider ownership/publication. Captured values are ghosts; completed result buffers, queues, history, save payloads/receipts and native allocations are not charged here. Six-transition horizon; no actual allocator/worker truth, whole-memory/DAG bound, reclamation complexity, grammar correctness or implementation refinement."
+  },
+  {
+    "id": "PS-AC", "module": "AccountingBridge",
+    "requirements": ["5.10", "7.5", "12.5.3"],
+    "invariants": ["INV-11", "INV-15", "INV-16"],
+    "interfaces": ["IF-04", "IF-10", "IF-13"],
+    "instrumentation": ["INS-01", "INS-04", "INS-08", "INS-13"],
+    "assumptions": ["ASM-01", "ASM-03", "ASM-07"],
+    "scope": "Actual SaveAdmission transitions plus ghost offered/admitted/rejected/discharged and weighted-cost counters. Four one-shot requests, two resources, five-step horizon; independent action bookkeeping checks count/cost conservation and imported Next correspondence. Not actual metric schemas, repeated IDs, arbitrary histories, physical memory, provider truth or service fairness."
+  },
+  {
+    "id": "PS-PV", "module": "PrivacySignals",
+    "requirements": ["12.5.3", "12.6", "12.8", "15.5", "15.6"],
+    "invariants": ["INV-08", "INV-09", "INV-12"],
+    "interfaces": ["IF-02", "IF-08", "IF-09"],
+    "instrumentation": ["INS-03", "INS-12"],
+    "assumptions": ["ASM-01", "ASM-06", "ASM-07"],
+    "scope": "Actual Disclosure Next/stutter correspondence plus one diagnostic prepare/drain. Paired fixed recipient profile masks hidden existence/count and private identity correlation; rechecks grant/disposal/epoch at drain. Immutable delivery-time facts ground causal witnesses and authorized masking; four scripted regression paths and endpoint witnesses reject legacy post-delivery/denied-only false positives. Same public schedule; no wall-clock/timing/cache/resource side-channel, statistical anonymity, legal compliance, general unlinkability or retroactive revocation of disclosed data."
+  },
+  {
+    "id": "PS-UP", "module": "UsefulProgress",
+    "requirements": ["7.5", "7.6", "12.5.3"],
+    "invariants": ["INV-04", "INV-11", "INV-15", "INV-16"],
+    "interfaces": ["IF-05", "IF-13"],
+    "instrumentation": ["INS-05", "INS-13"],
+    "assumptions": ["ASM-03", "ASM-07"],
+    "scope": "Separate abstract closed backlog of two/three cooperative jobs, no arrivals/retries and finite cancellation/invalidation state. Under explicit weak fairness of service, all jobs acquire exactly one applied/superseded/cancelled disposition; cancellation alone does not discharge. Finite-state temporal checking has no transition-horizon cutoff. Not an implementation/refinement of a scheduler, open workloads, per-class service bounds, numeric SLO or arbitrary native-worker preemption."
+  }
+]

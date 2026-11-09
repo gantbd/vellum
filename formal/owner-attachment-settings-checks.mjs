@@ -1,0 +1,62 @@
+// Lazy native pool attachment, not all existing-work admission or shutdown.
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import * as kernel from './invocation-publication.mjs';
+import {engineSettingsFixture} from './engine-settings-checks.mjs';
+import {scopedSettingsFixture} from './scoped-settings-checks.mjs';
+import {scopedLifecycleFixture} from './scoped-lifecycle-checks.mjs';
+import {scopedDefinitionFixture} from './scoped-definition-checks.mjs';
+import {basisLifecycleFixture} from './basis-lifecycle-checks.mjs';
+import {configuredLineFixture} from './configured-line-checks.mjs';
+import {settingsBasisTestGraph} from './settings-write-basis-checks.mjs';
+import {parentFundedPoolAttachmentForKind} from './owner-attachment-test-helpers.mjs';
+const control={ownerControlAllowed:true,resourcesReady:true,preparationReserved:true,controlContextCurrent:true,controlScopeValid:true,protectedControlReady:true,retentionReleased:true,deliveryDrained:true};
+const layer={authority:'a',id:'w1',incarnation:1};
+function make(kind,api=kernel,maxHeldBytes=8388608){
+ const seed=engineSettingsFixture(api),c=seed.controlContext,p=seed.p;
+ const domain=api.openInvocationDomain(seed.root(),c,{maxSlots:8,maxIssued:32,maxIntentBytes:65536,maxResultBytes:4096,maxRootBytes:262144,maxHeldBytes},seed.host());assert(domain);
+ const g=(more={})=>({...seed.host(),semanticSettingsBasis:api.invocationAuthorityRoot(domain),settingsBasisAllowed:true,settingsDefinitionBasisAllowed:true,settingsLifecycleBasisAllowed:true,settingsHostBasisAllowed:true,...more});
+ let issued;if(kind==='plan'){issued=api.issueInvocation(domain,c,g());assert(issued);}
+ const open=h=>{switch(kind){
+  case 'read':return api.acquireInvocationSemanticContext(domain,c,p,h);
+  case 'write':return api.captureInvocationSettingsWriteBasis(domain,layer,c,p,h);
+  case 'definition':return api.captureInvocationSettingsDefinitionBasis(domain,c,p,h);
+  case 'lifecycle':return api.captureInvocationSettingsLifecycleBasis(domain,c,p,h);
+  case 'plan':{const envelope=seed.envelope('typed');envelope.request.arguments={...envelope.request.arguments,invocation:issued.reference};return api.prepareInvocationSemanticSettings(domain,issued.ticket,envelope,p,c,h);}
+  default:throw Error('unknown fixed settings creator');
+ }};
+ const release=r=>{switch(kind){case 'read':return api.releaseInvocationSemanticContext(domain,r,c,g());case 'write':return api.retireInvocationSettingsWriteBasis(domain,r,c,g());case 'definition':return api.retireInvocationSettingsDefinitionBasis(domain,r,c,g());case 'lifecycle':return api.retireInvocationSettingsLifecycleBasis(domain,r,c,g());case 'plan':return api.retireInvocation(domain,issued.ticket,g()).status==='retired';}};
+ return {domain,c,p,g,open,release,usage:()=>api.invocationUsage(domain),held:()=>api.invocationSemanticSettingsUsage(domain),inventory:()=>api.invocationOwnerAttachmentInventory(domain,c,control),edge:()=>parentFundedPoolAttachmentForKind(api,domain,'settings'),seal:()=>api.sealInvocationOrdinaryAdmission(domain,api.invocationAuthorityRoot(domain),c,control)};
+}
+export async function checkSettingsOwnerAttachment(){
+ const controls=[],check=(name,f)=>{try{f();}catch(e){e.message=name+': '+e.message;throw e;}controls.push(name);};
+ const planFactories=[
+  ['ordinary-configured',existing=>{const seed=configuredLineFixture(),c=seed.controlContext,g=seed.flags,domain=kernel.openInvocationDomain(seed.root(),c,{...seed.ls,maxHeldBytes:8388608},g);assert(domain);const issued=kernel.issueInvocation(domain,c,g);assert(issued);const request={...seed.request,invocation:issued.reference},envelope={route:'typed',request:{family:10,variant:'ordinary-edit',version:1,arguments:request}},prepare=()=>kernel.prepareInvocationOrdinaryEdit(domain,issued.ticket,envelope,{maxRequestBytes:65536,maxInputNodes:16384,maxInputDepth:64},c,g,seed.engineProfile);if(!existing)assert(kernel.acquireInvocationSemanticContext(domain,c,seed.engineProfile,g));const plan=existing?prepare():null;return {domain,plan,prepare};}],
+  ['semantic',existing=>{const x=make('plan');assert(kernel.acquireInvocationSemanticContext(x.domain,x.c,x.p,x.g()));const plan=existing?x.open(x.g()):null;return {...x,plan,prepare:()=>x.open(x.g())};}],
+  ['configured-line',existing=>{const x=configuredLineFixture(undefined,{prepare:existing,limits:{maxHeldBytes:8388608}});if(!existing)assert(kernel.acquireInvocationSemanticContext(x.domain,x.controlContext,x.engineProfile,x.flags));return x;}],
+  ['scoped-semantic',existing=>scopedSettingsFixture(kernel,{prepare:existing})],
+  ['scoped-lifecycle',existing=>scopedLifecycleFixture(kernel,{noPrepare:!existing})],
+  ['basis-lifecycle',existing=>basisLifecycleFixture(kernel,{noPrepare:!existing})],
+  ['scoped-definition',existing=>scopedDefinitionFixture(kernel,{noPrepare:!existing})]
+ ];
+ for(const [kind,create]of planFactories){
+  const frame=x=>({parent:kernel.invocationUsage(x.domain),native:kernel.invocationSemanticSettingsUsage(x.domain),root:kernel.invocationAuthorityRoot(x.domain)}),seal=x=>kernel.sealInvocationOrdinaryAdmission(x.domain,kernel.invocationAuthorityRoot(x.domain),kernel.invocationAuthorityContext(x.domain),control);
+  check(kind+'/new-plan-on-existing-pool-refuses-after-fence',()=>{const positive=create(false);assert(positive.prepare());const x=create(false);assert(seal(x));const before=frame(x);assert.equal(x.prepare(),null);assert.deepEqual(frame(x),before);});
+  check(kind+'/exact-existing-plan-retry-survives-fence-without-new-allocation',()=>{const x=create(true);assert(x.plan);assert(seal(x));const before=frame(x);assert.equal(x.prepare(),x.plan);assert.deepEqual(frame(x),before);});
+ }
+ for(const kind of ['read','write','definition','lifecycle','plan']){
+  if(kind!=='plan')check(kind+'/existing-pool-acquisition-excludes-reentrant-sealing-and-unwinds-faults',()=>{const x=make(kind);assert(x.open(x.g()));let calls=0;const g=x.g();Object.defineProperty(g,'outsidePublicationGuard',{get(){calls++;assert.equal(x.seal(),null);return true;}});assert(x.open(g));assert(calls>0);const bad=x.g();Object.defineProperty(bad,'outsidePublicationGuard',{get(){throw Error('existing-settings-acquisition-fault');}});assert.throws(()=>x.open(bad),/existing-settings-acquisition-fault/);assert(x.seal());});
+  if(kind!=='plan')check(kind+'/existing-pool-new-lease-is-fenced-but-held-product-remains-serviceable',()=>{const x=make(kind),held=x.open(x.g());assert(held);assert(x.seal());const before=x.usage(),native=x.held(),inventory=x.inventory();assert.equal(x.open(x.g()),null);assert.deepEqual(x.usage(),before);assert.deepEqual(x.held(),native);assert.deepEqual(x.inventory(),inventory);const service=kind==='read'?kernel.readInvocationSemanticContext(x.domain,held,x.c,x.g()):kind==='write'?kernel.resolveInvocationSettingsWriteBasis(x.domain,held,x.c,x.g()):kind==='definition'?kernel.resolveInvocationSettingsDefinitionBasis(x.domain,held,x.c,x.g()):kernel.resolveInvocationSettingsLifecycleBasis(x.domain,held,x.c,x.g());assert(service);assert(x.release(held));});
+  check(kind+'/first-valid-use-attaches-the-actual-pool-and-native-cost-once',()=>{const x=make(kind),before=x.usage(),inv=x.inventory(),r=x.open(x.g());assert(r);const e=x.edge();assert.deepEqual(e.owner,{kind:'native-engine-settings-pool/1'});assert(Object.isFrozen(e.owner));assert.equal(x.usage().declaredHeldBytes-before.declaredHeldBytes,x.held().declaredHeldBytes+e.declaredFrameBytes);assert.equal(x.inventory().declaredHeldBytes-inv.declaredHeldBytes,e.declaredFrameBytes);});
+  check(kind+'/first-use-after-fence-refuses-without-pool-or-retained-edge',()=>{const x=make(kind),inv=x.inventory();assert(x.seal());const before=x.usage();assert.equal(x.open(x.g()),null);assert.equal(x.held(),null);assert.deepEqual(x.usage(),before);assert.deepEqual(x.inventory(),inv);});
+  check(kind+'/validation-refusal-and-native-exception-refund-pending-metadata',()=>{const x=make(kind),before=x.usage(),inv=x.inventory();assert.equal(x.open(x.g({outsidePublicationGuard:false})),null);const g=x.g();Object.defineProperty(g,'outsidePublicationGuard',{get(){throw Error('fixed-native-settings-creation-fault');}});assert.throws(()=>x.open(g),/fixed-native-settings-creation-fault/);assert.equal(x.held(),null);assert.deepEqual(x.usage(),before);assert.deepEqual(x.inventory(),inv);assert(x.seal());});
+  check(kind+'/native-validation-cannot-reenter-fence-installation',()=>{const x=make(kind),g=x.g();let calls=0;Object.defineProperty(g,'outsidePublicationGuard',{get(){calls++;assert.equal(x.seal(),null);return true;}});assert(x.open(g));assert(calls>0);assert(x.seal());});
+  check(kind+'/retained-product-blocks-whole-pool-release-and-protected-drain-survives-fence',()=>{const x=make(kind),r=x.open(x.g());assert(r);const e=x.edge(),native=x.held().declaredHeldBytes;assert(x.seal());const before=x.usage();assert.equal(kernel.retireInvocationSemanticSettingsPool(x.domain,x.g()),false);assert.deepEqual(x.usage(),before);assert(x.release(r));const drained=x.usage();for(const key of ['ownerControlAllowed','retentionReleased','deliveryDrained'])for(const value of [false,1,undefined]){assert.equal(kernel.retireInvocationSemanticSettingsPool(x.domain,x.g({[key]:value})),false);assert.deepEqual(x.usage(),drained);}assert(kernel.retireInvocationSemanticSettingsPool(x.domain,x.g()));assert.equal(x.usage().declaredHeldBytes,before.declaredHeldBytes-native-e.declaredFrameBytes);assert(!x.inventory().entries.some(row=>row.owner===e.owner));assert.equal(kernel.retireInvocationSemanticSettingsPool(x.domain,x.g()),false);assert.equal(x.open(x.g()),null);});
+ }
+ check('exact-combined-parent-headroom-does-not-change-the-native-pool-ceiling',()=>{const probe=make('read'),initial=probe.usage().declaredHeldBytes;assert(probe.open(probe.g()));const cost=probe.usage().declaredHeldBytes-initial;for(const delta of [-1,0,1]){const x=make('read',kernel,initial+cost+delta),before=x.usage(),inv=x.inventory();assert.equal(Boolean(x.open(x.g())),delta>=0);assert.equal(x.usage().declaredHeldBytes,before.declaredHeldBytes+(delta>=0?cost:0));if(delta<0){assert.equal(x.held(),null);assert.deepEqual(x.inventory(),inv);}}});
+ check('all-five-products-share-one-actual-pool-without-duplicate-funding',()=>{const x=make('plan'),before=x.usage(),read=kernel.acquireInvocationSemanticContext(x.domain,x.c,x.p,x.g());assert(read);const e=x.edge(),held=x.usage(),write=kernel.captureInvocationSettingsWriteBasis(x.domain,layer,x.c,x.p,x.g()),definition=kernel.captureInvocationSettingsDefinitionBasis(x.domain,x.c,x.p,x.g()),lifecycle=kernel.captureInvocationSettingsLifecycleBasis(x.domain,x.c,x.p,x.g()),plan=x.open(x.g());assert(write&&definition&&lifecycle&&plan);assert.equal(x.edge().owner,e.owner);assert.equal(x.inventory().entries.filter(row=>row.kind==='settings').length,1);assert.deepEqual(x.usage(),held);assert.equal(x.held().contexts,4);assert.equal(x.held().plans,1);assert.equal(held.declaredHeldBytes-before.declaredHeldBytes,x.held().declaredHeldBytes+e.declaredFrameBytes);});
+ const marker="const token=Object.freeze({kind:'native-engine-settings-context/1'});",faultApi=await settingsBasisTestGraph(['fixed-late-settings-owner-fault',marker,"throw Error('fixed late settings owner fault');"+marker]);
+ check('native-pool-retained-before-an-exception-stays-attached-funded-and-releasable',()=>{const x=make('read',faultApi),before=x.usage(),root=faultApi.invocationAuthorityRoot(x.domain);assert.throws(()=>x.open(x.g()),/fixed late settings owner fault/);const e=x.edge(),native=x.held().declaredHeldBytes;assert.equal(x.held().contexts,0);assert.equal(x.usage().declaredHeldBytes,before.declaredHeldBytes+native+e.declaredFrameBytes);assert.equal(faultApi.invocationAuthorityRoot(x.domain),root);assert.equal(x.inventory().pending,false);assert(faultApi.retireInvocationSemanticSettingsPool(x.domain,x.g()));assert.deepEqual(x.usage(),before);});
+ return {scope:'actual-lazy-native-settings-pool-attachment-only',controls,firstCreationForms:5,fixedCreatorPorts:11,parentBoundaries:3,strictDischargeCases:45,retainedNativeFaultCases:1,existingNativeCostAndFacadeProductsPreserved:true,allExistingWorkAdmissionOrShutdownProved:false,physicalAllocationOrIndependentCertification:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)try{console.log(JSON.stringify(await checkSettingsOwnerAttachment()));}catch(e){console.error(e.code+': '+String(e.message).slice(0,1500));process.exitCode=1;}

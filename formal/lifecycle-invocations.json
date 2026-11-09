@@ -1,0 +1,8 @@
+{
+ "contract":"lifecycle-invocation/1","operation":"change-document-lifecycle",
+ "profile":"native-document-lifecycle/1","family":"F17",
+ "fields":["contract","operation","invocation","profile","request"],
+ "nativeOperations":["create-scratch","attach-view","detach-view","membership","dispose","release-binding","release-annotations","release-provenance","source-rebind"],
+ "releaseGates":["lifecycleResultReadable","lifecycleResultContextCurrent","historicalDocumentReadable"],
+ "scope":"owned-native-document-lifecycle-invocation-only"
+}

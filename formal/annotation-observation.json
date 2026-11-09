@@ -1,0 +1,5 @@
+{
+ "scope":"native-annotation-outcome-collection-composition-only",
+ "scopeFlags":{"actualNativeFourVariantObservationChecked":true,"actualSameLedgerReversalObservationChecked":true,"writerOutcomeAndReaderEventSeparatedChecked":true,"currentVisibleFacetAndReferenceLifetimeChecked":true,"nativeCommitSurvivesObserverGapChecked":true,
+ "completeNativeF13ResultProductProved":false,"crossSurfaceQuerySelectorIntegrationProved":false,"actualIssuerVisibilityOrRetentionTruthProved":false,"allLifecycleEventProfilesProved":false,"fullInvocationEffectReplayProved":false,"generalTargetRestorationProved":false,"fullHistoryRetirementPlannerProved":false,"pointPersistencePolicySelected":false,"actualConcurrentInstallationProved":false,"timingOrResourceNoninterferenceProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

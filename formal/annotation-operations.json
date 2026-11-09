@@ -1,0 +1,31 @@
+{
+  "contract": "annotation-authoring/1",
+  "family": "F13",
+  "common": {
+    "contract": "RegisteredContractVersion",
+    "operation": "ClosedAnnotationVariant",
+    "invocation": "InvocationIdentity",
+    "document": "LiveDocumentRef",
+    "profile": "ExecutionProfileRef",
+    "dependencies": "BoundedContextDependencyVector"
+  },
+  "variants": {
+    "create": {"body": "ScalarText", "target": "LiveSourceTarget"},
+    "update-body": {"annotation": "LiveAnnotationRef", "expectedContent": "ContentVersion", "body": "ScalarText"},
+    "reattach": {"annotation": "LiveAnnotationRef", "expectedTarget": "TargetGeneration", "target": "LiveSourceTarget"},
+    "delete": {"annotation": "LiveAnnotationRef", "expectedContent": "ContentVersion", "expectedTarget": "TargetGeneration"}
+  },
+  "dependencyFields": ["domain", "identity", "generation"],
+  "results": {
+    "applied": "One coherent publication plus relevant live/retained-absent record and changed version facts; protected bounded receipt release",
+    "unchanged": "Validated complete semantic identity with current version facts and no publication bookkeeping",
+    "not-published": "Confirmed local prepublication refusal/stop and recipient-safe explanation"
+  },
+  "scope": {
+    "terminalFactsOnly": true,
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "rustRepresentationSelected": false,
+    "fullFamilyRefinementProved": false
+  }
+}

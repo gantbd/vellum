@@ -1,0 +1,14 @@
+{
+  "contract":"source-save/1","evidenceContract":"source-save-evidence/1","profile":"pinned-source-save-reference/1",
+  "requestFields":["contract","operation","origin","document","expectedSource","expectedSerialization","expectedBinding","expectedRegistration","protection","acknowledgment","condition"],
+  "registrationFields":["provider","resource","generation","identityDomain","identityKey","identityKnown","locator","procedure","logicalContinuity","syncSupported","conditionalWrite","causalReceipts","nonReuseTokens","exclusiveCreate"],
+  "originFields":["operation","effect","attempt"],
+  "limits":["maxTasks","maxOutstanding","maxPerDestination","maxIssued","maxCaptureBytes","maxEnvelopeBytes","maxHeldBytes","maxRegistryRows","maxRootBytes","maxTagBytes","maxDerivationBytes","maxBaselineBytes","maxComparisonBytes"],
+  "eventCommon":["contract","task","origin","provider","resource","capture","kind"],
+  "events":{"result":["application","observedBytes","synchronization","resourceVersion"],"causal":["beforeVersion","afterVersion"],"disposition":[],"quiescence":[]},
+  "applications":["unknown","not-written","written"],"synchronizations":["unknown","not-requested","succeeded","failed"],
+  "scope":{"pinnedSourceAdmissionChecked":true,"actualSerializationCaptureChecked":true,"destinationFifoChecked":true,"layeredReceiptKnowledgeChecked":true,
+    "causalConditionProgressionProved":false,"savedBaselineElectionProved":false,"annotationWriteIntegrationProved":false,
+    "actualFilesystemOrProviderTruthProved":false,"actualPolicyAndCoverageTruthProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,
+    "fullInvocationEventCompositionProved":false,"allStateCompanionsProved":false,"independentCleanroomCertification":false,"implementationRefinement":false}
+}

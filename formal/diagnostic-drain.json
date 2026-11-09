@@ -1,0 +1,18 @@
+{
+  "contract":"host-diagnostic-drain/1",
+  "profile":"owned-diagnostic-drain/1",
+  "family":"F26",
+  "variant":"authorized-diagnostic-drain",
+  "contextFields":["authority","engine","recipient","purpose","destination","policy","continuity","profile"],
+  "argumentFields":["contract","task","generation","limit"],
+  "limits":["maxTasks","maxIssued","maxContextBytes","maxBindingBytes","maxRequestBytes","maxBatchBytes","maxResultBytes","maxControlReplyBytes","maxHeldBytes"],
+  "openGates":["ownerControlAllowed","outsidePublicationGuard","resourcesReady","preparationReserved","queueInterpretationCurrent","drainInterpretationCurrent","bindingReady"],
+  "authorityGates":["authorized","scope","continuous","live","notStopped"],
+  "admissionGates":["drainAllowed","resourcesReady","bookkeepingReserved","completionReserved","queueInterpretationCurrent","drainInterpretationCurrent"],
+  "serviceGates":["schedulerOwned","resourcesReady","completionReserved","queueInterpretationCurrent","drainInterpretationCurrent"],
+  "resultGates":["resultAllowed","queueReleaseAllowed","retained","transferReady","replyReady","resourcesReady","queueInterpretationCurrent","drainInterpretationCurrent"],
+  "controlGates":["ownerControlAllowed","controlAllowed","controlReady","transferReady"],
+  "phases":["issued","pending","terminal"],
+  "dispositions":["performed","notPerformed","unknown"],
+  "scope":"owned-local-F26-diagnostic-drain-gateway-only"
+}

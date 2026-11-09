@@ -1,0 +1,31 @@
+{
+  "contract": "owned-annotation-plan/1",
+  "families": ["F11", "F13", "F14"],
+  "planFields": ["contract", "invocation", "descriptor", "sources", "annotations"],
+  "sourceFields": ["document", "expectedSource", "expectedAnnotationSet", "edits"],
+  "editFields": ["lo", "hi", "expected", "ins"],
+  "targetBases": {
+    "before": ["basis", "sourceRevision", "target"],
+    "candidate": ["basis", "descriptor", "target"]
+  },
+  "targets": {
+    "document": ["kind"],
+    "point": ["kind", "offset", "affinity", "profile"],
+    "range": ["kind", "start", "end"]
+  },
+  "pointProfiles": ["position", "content"],
+  "annotationFields": {
+    "body": ["kind", "document", "id", "incarnation", "expectedBody", "body"],
+    "reattach": ["kind", "document", "id", "incarnation", "expectedTarget", "target"],
+    "create": ["kind", "document", "id", "incarnation", "body", "target"],
+    "delete": ["kind", "document", "id", "incarnation", "expectedBody", "expectedTarget"]
+  },
+  "history": {
+    "scopes": ["document-source", "annotation-authored"],
+    "automaticMappingIsAuthoredParticipant": false,
+    "undoTarget": "complete-retained-group-at-all-participant-frontiers",
+    "restoredVersions": "fresh-not-original"
+  },
+  "scope": {"ownedSemanticProductsSelected": true, "publicWireSelected": false,
+    "membershipReversalProved": false, "mappingHistoryRestorationProved": false, "implementationRefinement": false}
+}

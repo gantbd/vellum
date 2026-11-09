@@ -1,0 +1,18 @@
+{
+  "contract": "contract-discovery/1",
+  "family": "F01",
+  "common": ["contract", "operation", "context", "profile"],
+  "variants": {
+    "list": ["limit", "continuation"],
+    "inspect": ["entry"],
+    "advisory-enablement": ["entry", "variant", "target"]
+  },
+  "presentation": ["title", "description", "category", "aliases", "bindings"],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "publicIdentifierEncodingSelected": false,
+    "contextIssuanceProved": false,
+    "registryAndSchemaTruthProved": false,
+    "implementationRefinement": false
+  }
+}

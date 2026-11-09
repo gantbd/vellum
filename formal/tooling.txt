@@ -1,0 +1,28 @@
+# Design validation environment, not production editor dependencies.
+# Node v26.7.0; Java 21.0.6; TLA+ release v1.7.4 / TLC 2.19.
+# tla2tools.jar SHA-256:
+# 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+# Python 3.13.11; task-specific temporary virtual environment; installed packages follow.
+# Separate retained Z3 binary version 4.15.4; executable SHA-256 recorded per run.
+# These packages are verification tools, not production editor dependencies.
+# ICU4J 79.1 reference verification tool (not selected for engine/runtime):
+# https://repo.maven.apache.org/maven2/com/ibm/icu/icu4j/79.1/icu4j-79.1.jar
+# SHA-256: 28b292e60d0d00c496bae88a15b2615f89f781be13670aeac9dc90f189570e07
+# Unicode 18.0.0; Java 21.0.6; official corpus/license pins in unicode-boundaries.json.
+# Separate native Tree-sitter verification environment, CPython 3.13.11 / darwin arm64:
+# tree-sitter==0.26.0; tree-sitter-markdown==0.5.4; tree-sitter-javascript==0.25.0.
+# Installed binary/wrapper/query/license and publisher distribution pins:
+# tree-sitter-reference.json. Not production dependencies or a supported host matrix.
+attrs==26.1.0
+html5rdf==1.2.1
+jsonschema==4.25.1
+jsonschema-specifications==2025.9.1
+owlrl==7.6.2
+packaging==26.3
+prettytable==3.18.0
+pyparsing==3.3.3
+pyshacl==0.30.1
+rdflib==7.6.0
+referencing==0.37.0
+rpds-py==2026.9.1
+wcwidth==0.9.4

@@ -1,0 +1,37 @@
+{
+  "description": "Architectural contract dependency and interface overlay, not an implemented crate or runtime content graph. Existing roles realize a presentation-independent kernel, contextual evidence and authorized projections; semantic discovery remains optional/deferred as scoped in requirements. Endpoints describe logical roles; optional/proposed status remains in model.md.",
+  "dependencies": {
+    "CMP-01": ["CMP-02", "CMP-03", "CMP-08"],
+    "CMP-02": [],
+    "CMP-03": ["CMP-04", "CMP-05", "CMP-06", "CMP-07", "CMP-08", "CMP-09", "CMP-16"],
+    "CMP-04": [],
+    "CMP-05": ["CMP-04"],
+    "CMP-06": ["CMP-04", "CMP-05"],
+    "CMP-07": ["CMP-04"],
+    "CMP-08": ["CMP-04", "CMP-05", "CMP-07"],
+    "CMP-09": [],
+    "CMP-10": ["CMP-04", "CMP-05", "CMP-09"],
+    "CMP-11": ["CMP-04", "CMP-09"],
+    "CMP-12": ["CMP-04"],
+    "CMP-13": ["CMP-04", "CMP-05", "CMP-08"],
+    "CMP-14": ["CMP-13"],
+    "CMP-15": ["CMP-01", "CMP-13", "CMP-14"],
+    "CMP-16": [],
+    "CMP-17": ["CMP-08", "CMP-16"]
+  },
+  "interfaces": {
+    "IF-01": {"source": ["ACT-02", "ACT-03", "CMP-15"], "target": ["CMP-01"], "data": ["DAT-01", "DAT-03", "DAT-06", "DAT-08", "DAT-09"], "boundary": ["TB-01"], "instrumentation": ["INS-01"], "requirements": ["3.3", "3.4.1", "4.3", "4.4", "5.1", "5.2.1", "12.5"]},
+    "IF-02": {"source": ["CMP-08"], "target": ["ACT-02", "ACT-03", "CMP-10", "CMP-11", "CMP-12", "CMP-13"], "data": ["DAT-01", "DAT-02", "DAT-03", "DAT-04", "DAT-07"], "boundary": ["TB-02"], "instrumentation": ["INS-03"], "requirements": ["3.4.1", "3.4.2", "5.2.1", "15.5", "15.6"]},
+    "IF-03": {"source": ["CMP-01", "CMP-02", "CMP-12"], "target": ["CMP-03"], "data": ["DAT-01", "DAT-02", "DAT-03", "DAT-04", "DAT-09"], "boundary": ["TB-03"], "instrumentation": ["INS-02"], "requirements": ["3.4.1", "3.8", "5.1", "5.2.1", "5.3", "14.5"]},
+    "IF-04": {"source": ["CMP-09", "CMP-10"], "target": ["CMP-09", "CMP-10"], "data": ["DAT-08"], "boundary": ["TB-03", "TB-04"], "instrumentation": ["INS-04"], "requirements": ["7.4", "7.6", "10", "19.8"]},
+    "IF-05": {"source": ["CMP-10", "CMP-11", "CMP-12"], "target": ["CMP-03"], "data": ["DAT-07"], "boundary": ["TB-03"], "instrumentation": ["INS-05"], "requirements": ["3.4.1", "5.2.1", "5.6", "6.1", "6.2"]},
+    "IF-06": {"source": ["CMP-13", "CMP-14"], "target": ["CMP-13", "CMP-14"], "data": ["DAT-06", "DAT-07"], "boundary": ["TB-02", "TB-05"], "instrumentation": ["INS-10"], "requirements": ["8", "8.1"]},
+    "IF-07": {"source": ["CMP-02"], "target": ["CMP-03"], "data": ["DAT-09"], "boundary": ["TB-01", "TB-03", "TB-05"], "instrumentation": ["INS-09"], "requirements": ["11.2"]},
+    "IF-08": {"source": ["CMP-03", "CMP-08", "CMP-09"], "target": ["ACT-02", "ACT-03", "CMP-15"], "data": ["DAT-07", "DAT-08", "DAT-10"], "boundary": ["TB-02"], "instrumentation": ["INS-03", "INS-12"], "requirements": ["3.4.1", "3.4.2", "5.2.1", "12.4", "15.5", "15.6"]},
+    "IF-09": {"source": ["CMP-16"], "target": ["CMP-17"], "data": ["DAT-10"], "boundary": ["TB-06"], "instrumentation": ["INS-12"], "requirements": ["12.7", "12.8"]},
+    "IF-10": {"source": ["ACT-02", "CMP-07", "CMP-10"], "target": ["CMP-03", "CMP-07", "CMP-10"], "data": ["DAT-05"], "boundary": ["TB-02", "TB-04", "TB-07"], "instrumentation": ["INS-08"], "requirements": ["3.7"]},
+    "IF-11": {"source": ["ACT-04", "CMP-15"], "target": ["ACT-04", "CMP-01", "CMP-13", "CMP-15"], "data": ["DAT-06", "DAT-07"], "boundary": ["TB-01", "TB-02"], "instrumentation": ["INS-11"], "requirements": ["9.4", "9.5"]},
+    "IF-12": {"source": ["CMP-01"], "target": ["CMP-03", "CMP-06"], "data": ["DAT-04"], "boundary": ["TB-02", "TB-03"], "instrumentation": ["INS-06"], "requirements": ["5.8"]},
+    "IF-13": {"source": ["CMP-03", "CMP-10"], "target": ["CMP-09", "CMP-10", "ACT-05"], "data": ["DAT-01", "DAT-03", "DAT-05", "DAT-08"], "boundary": ["TB-02", "TB-04"], "instrumentation": ["INS-07", "INS-04"], "requirements": ["3.8", "5.9"]}
+  }
+}

@@ -1,0 +1,24 @@
+// Fixed result faults before and after selector publication are different frames.
+import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import {captureInputs} from './evidence-harness.mjs';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url))),files=['native-annotation-contexts.mjs','native-version-set-contexts.mjs'],seams=[' if(!annotationQueryResultValid(reply,r)||','  if(!parsed.source&&(!annotationQueryResultValid(reply,r)||'];
+const code=`
+import assert from 'node:assert/strict';import * as api from './formal/invocation-publication.mjs';import {annotationQueryGatewayFixture as setup} from './formal/annotation-query-gateway-checks.mjs';
+let cases=0,faultCases=0,publishedDespiteFacadeFault=0;const probe=process.env.VELLUM_ANNOTATION_RESULT_PROBE;
+for(const kind of ['annotations','combined','version-set'])for(const retained of [false,true])for(const route of ['typed','dynamic'])for(const operation of ['enumerate','inspect','target-location']){
+ globalThis.__annotationResultProbe=false;const z=setup(kind,retained,route,{prime:operation!=='enumerate'}),r=z.request(operation,operation==='enumerate'?{}:{annotation:z.page.records[0].reference}),before=z.usage(),parent=api.invocationUsage(z.domain),root=z.root();globalThis.__annotationResultProbe=true;
+ const shapeFault=['native-extra-field','native-wrong-snapshot'].includes(probe),pageFault=['native-record-alias-copied','native-continuation-copied'].includes(probe)&&operation==='enumerate',contentFault=probe==='native-body-not-string'&&operation!=='target-location',late=probe==='facade-post-publication-extra',refusal=probe==='facade-refusal-extra',fault=shapeFault||pageFault||contentFault||late||refusal,request=refusal?{...r,profile:'foreign'}:r,out=probe.startsWith('native-')?z.native(request):z.query(z.envelope(request));
+ assert.equal(out.status,fault?'unavailable':operation==='enumerate'?'page':operation==='inspect'?'record':'location',probe+' '+kind+' '+operation);assert.equal(z.root(),root);assert.deepEqual(api.invocationUsage(z.domain),{...parent,faulted:fault});assert.deepEqual(z.decodeUsage(),{busy:false,declaredWorkspaceBytes:0});
+ const growth=operation==='enumerate'&&(!fault||late)?3:0;assert.deepEqual(z.usage(),{...before,selectors:before.selectors+growth,issued:before.issued+growth});
+ if(fault){assert.deepEqual(out,{status:'unavailable'});assert.equal(z.query().status,'unavailable');faultCases++;if(late&&growth)publishedDespiteFacadeFault++;}globalThis.__annotationResultProbe=false;cases++;
+}console.log(JSON.stringify({cases,faultCases,publishedDespiteFacadeFault}));
+`;
+const rules=[['baseline',null],['native-extra-field',"reply.extra='private';"],['native-wrong-snapshot','reply.snapshot=structuredClone(r.snapshot);'],['native-record-alias-copied',"if(reply.status==='page')reply.records[0].reference=structuredClone(reply.records[0].reference);"],['native-continuation-copied',"if(reply.status==='page')reply.continuation=structuredClone(reply.continuation);"],['native-body-not-string',"if(reply.status==='page')reply.records[0].content.body=42;else if(reply.status==='record')reply.record.content.body=42;"],['facade-post-publication-extra',null],['facade-refusal-extra',null]],results=[];
+for(const[name,injection]of rules){const graph=captureInputs(root);for(let i=0;i<files.length;i++){const file=path.join(graph.directory,'formal',files[i]),raw=fs.readFileSync(file,'utf8');let from,to;
+ if(injection){from=seams[i];to=' if(globalThis.__annotationResultProbe){'+injection+'}\n'+from;}
+ else if(name==='facade-post-publication-extra'){from=i===0?'m.issued+=pending.length;return Object.freeze(reply);':'m.issued+=pending.length;return reply;';to=i===0?'m.issued+=pending.length;return Object.freeze(globalThis.__annotationResultProbe?{...reply,extra:true}:reply);':'m.issued+=pending.length;return globalThis.__annotationResultProbe?{...reply,extra:true}:reply;';}
+ else if(name==='facade-refusal-extra'){from="no=()=>({status:'unavailable'})";to="no=()=>globalThis.__annotationResultProbe?({status:'unavailable',extra:true}):({status:'unavailable'})";}
+ else continue;
+ assert.equal(raw.split(from).length-1,1,name+' '+files[i]);fs.writeFileSync(file,raw.replace(from,to));}
+ const out=spawnSync(process.execPath,['--input-type=module','-e',code],{cwd:graph.directory,encoding:'utf8',maxBuffer:1048576,env:{...process.env,VELLUM_ANNOTATION_RESULT_PROBE:name}});assert.equal(out.status,0,name+': '+out.stderr);results.push({name,...JSON.parse(out.stdout)});
+}
+console.log(JSON.stringify({scope:'isolated-annotation-query-result-fixed-faults',results,coherentCopiedGraphs:true,prepublicationFaultsInstallNoSelectors:true,facadeFaultDoesNotRollBackNativeIssuance:true,authoredRootsUnchangedAndWorkspaceRefunded:true,postReleaseCrashPhysicalOrIndependentProof:false}));

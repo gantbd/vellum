@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {parentFundedPoolAttachmentBytes} from './owner-attachment-test-helpers.mjs';
+import {pathToFileURL} from 'node:url';
+import * as api from './invocation-publication.mjs';
+import {nativeRetainedLifecycleFixture} from './native-retained-lifecycle-checks.mjs';
+import {nativeAnnotationCaptureProfile as captureProfile,nativeAnnotationCaptureFacts as preparation} from './native-annotation-capture-checks.mjs';
+import {nativeAnnotationInstallationProfile as profile,nativeAnnotationInstallationFacts as facts} from './native-annotation-installation-checks.mjs';
+export function checkInstalledAnnotationLifecycle(){let cases=0,protectedDenials=0;
+ for(const event of ['dispose','fault'])for(const first of ['annotations','source']){
+  const z=nativeRetainedLifecycleFixture(),domain=z.a.x.z.domain,d=z.root().documents[0],scope={document:d.document,recipient:'reader',purpose:'query',destination:'client',policy:'p1',continuity:'c1',profile:'read'},capturePool=api.openInvocationAnnotationCapture(domain,captureProfile,preparation);assert(capturePool);
+  const request={contract:'read-context/1',operation:'snapshot-handoff',document:d.document,selection:{kind:'capture-current'},data:['source','annotations'],profile:scope.profile},rows=d.records.map(r=>({id:r.id,incarnation:r.incarnation,visible:true,body:true,target:true})),cut=api.prepareInvocationAnnotationCapture(domain,capturePool,request,scope,rows,preparation);assert(cut);const pool=api.openInvocationAnnotationContexts(domain,profile,facts);assert(pool);const out=api.installInvocationAnnotationContext(domain,pool,capturePool,cut,scope,facts);assert.equal(out.status,'context');
+  const pageRequest={contract:'annotation-query/1',operation:'enumerate',document:d.document,snapshot:out.context,profile:scope.profile,limit:2,continuation:null},sourceRequest={contract:'source-query/1',operation:'bounded-range',document:d.document,snapshot:out.context,profile:scope.profile,lo:0,hi:d.source.length},page=()=>api.queryInvocationAnnotationContext(domain,pool,pageRequest,scope,facts),source=()=>api.queryInvocationCombinedSource(domain,pool,sourceRequest,scope,facts);
+  const initial=page();assert.equal(initial.status,'page');assert(initial.records.length>0);assert.equal(source().status,'content');const held=api.invocationAnnotationContextUsage(domain),contextAttachment=parentFundedPoolAttachmentBytes(api,domain,pool);
+  assert.equal(api.retireInvocationAnnotationContexts(domain,pool,facts),false);
+  // Installation transferred owned copies: the preparation pool may discharge
+  // while the active context remains independently charged and readable.
+  const beforePreparationRelease=api.invocationUsage(domain).declaredHeldBytes,captureCharge=api.invocationAnnotationCaptureUsage(domain).declaredHeldBytes+parentFundedPoolAttachmentBytes(api,domain,capturePool);
+  assert.equal(api.retireInvocationAnnotationCapture(domain,capturePool,facts),true);assert.equal(api.invocationUsage(domain).declaredHeldBytes,beforePreparationRelease-captureCharge);assert.equal(page().status,'page');assert.equal(source().status,'content');
+  if(event==='dispose'){assert.equal(z.run('dispose').status,'applied');assert.equal(z.root().documents[0].live,false);}
+  else{const context=api.invocationAuthorityContext(domain),issued=api.issueInvocation(domain,context,z.a.g());assert(issued);const job={kind:'compound',plan:{contract:'owned-annotation-plan/1',invocation:issued.reference,descriptor:'fault',sources:[],annotations:[{kind:'body',document:null,id:'note',incarnation:1,expectedBody:1,body:'bad'}]}};assert.equal(api.submitInvocation(domain,issued.ticket,job,'typed',context,{publication:true,control:true,effect:true,reasons:false,details:false,recovery:false,grant:true,epoch:1,recipient:context.recipient},z.a.g()).status,'accepted');assert.equal(api.runInvocation(domain,issued.ticket,context,z.a.g(),z.a.x.z.h).status,'faulted');assert.equal(api.invocationUsage(domain).faulted,true);}
+  const root=z.root(),parentBeforeCleanup=api.invocationUsage(domain).declaredHeldBytes;
+  assert.equal((first==='annotations'?page():source()).status,'unavailable');assert.equal(page().status,'unavailable');assert.equal(source().status,'unavailable');
+  const inspect={contract:'annotation-query/1',operation:'inspect',document:d.document,snapshot:out.context,profile:scope.profile,annotation:initial.records[0].reference};assert.equal(api.queryInvocationAnnotationContext(domain,pool,inspect,scope,facts).status,'unavailable');
+  const stopped=api.invocationAnnotationContextUsage(domain);assert.equal(stopped.stopped,1);assert.equal(stopped.selectors,held.selectors);assert.equal(stopped.issued,held.issued);assert.equal(stopped.declaredHeldBytes,held.declaredHeldBytes);
+  for(const field of ['ownerControlAllowed','retentionReleased','deliveryDrained'])for(const value of [false,undefined,1]){assert.equal(api.retireInvocationAnnotationContext(domain,pool,out.context,{...facts,[field]:value}),false);assert.deepEqual(api.invocationAnnotationContextUsage(domain),stopped);protectedDenials++;}
+  const cleanup={ownerControlAllowed:true,retentionReleased:true,deliveryDrained:true};assert.equal(api.retireInvocationAnnotationContext(domain,pool,out.context,cleanup),true);assert.equal(api.retireInvocationAnnotationContext(domain,pool,out.context,cleanup),false);assert.equal(api.invocationAnnotationContextUsage(domain).selectors,0);assert.equal(api.invocationAnnotationContextUsage(domain).issued,held.issued);assert.equal(api.retireInvocationAnnotationContexts(domain,pool,cleanup),true);assert.equal(api.invocationUsage(domain).declaredHeldBytes,parentBeforeCleanup-held.declaredHeldBytes-contextAttachment);assert.equal(z.root(),root);cases++;
+ }
+ return {scope:'isolated-installed-annotation-native-lifecycle',cases,protectedDenials,actualDisposalAndFaultChecked:true,preparationToContextOwnershipDischargeChecked:true,eagerBulkInvalidationPhysicalConcurrentOrIndependentProof:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(checkInstalledAnnotationLifecycle()));

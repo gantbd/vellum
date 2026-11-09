@@ -1,0 +1,11 @@
+{
+  "profile":"native-analysis-binding-reference/1",
+  "operations":["metadata","execute","drop","close"],
+  "maxMessageBytes":1048576,"maxMessages":256,"maxPending":4,"maxRecords":16,"maxIssued":64,
+  "queryGenerations":{"1":"bundled lexical highlights","2":"bundled host highlights and JavaScript identifier captures"},
+  "parseKeyFields":["document","analysis","grammarGeneration","discoveryQueryGeneration","registryGeneration","configurationGeneration","languageProfile"],
+  "scope":{"nativeBaseBindingChecked":true,"nativeForestQueryReuseChecked":true,"nativeHandleRetirementChecked":true,
+    "productionTransportSelected":false,"concurrentNativeOwnershipProved":false,"physicalReclamationProved":false,
+    "nativeHaltingProved":false,"incrementalChildReuseProved":false,"actualAuthenticationAndPolicyTruthProved":false,
+    "fullInvocationEventCompositionProved":false,"independentCleanroomCertification":false,"implementationRefinement":false}
+}

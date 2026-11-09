@@ -1,0 +1,9 @@
+{
+ "scope":"owned-editing-invocation-composition-only",
+ "kinds":["selection","line","boundary","replacement"],
+ "admissionGates":["authorized","scope","continuous","live","notStopped","interpretationCurrent","resourcesReady","bookkeepingReserved"],
+ "publicationGates":["authorized","bounded","notStopped","interpretationCurrent","companionsReady","versionsAvailable","historyReady"],
+ "releaseGates":["authorized","scope","continuous","live","resourcesReady","retained","transferReady"],
+ "scopeFlags":{"actualOwnedEditingDispatchChecked":true,"opaqueCandidateIdentityChecked":true,"completePrivateIntentBoundChecked":true,"actualUnicodeEvidenceConsumptionChecked":true,"originalQueryAndSettingsChecked":true,"unchangedAndCurrentViewReplayChecked":true,
+ "actualHostPolicyOrRetentionTruthProved":false,"decodedRequestReplayGatewayProved":false,"clipboardTaskAndRootCommitProved":false,"allOperationFamiliesOrEffectsProved":false,"allSelectionProfilesProved":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"timingOrResourceNoninterferenceProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

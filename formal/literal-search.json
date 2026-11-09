@@ -1,0 +1,23 @@
+{
+  "contract": "literal-search/1",
+  "family": "F05",
+  "variants": ["literal-matches", "next-match", "previous-match"],
+  "requestFields": ["contract", "operation", "context", "ref", "query", "profile", "scopes", "generation", "navigation"],
+  "navigationFields": ["start", "current", "wrap"],
+  "replacementFamily": "F11",
+  "replacementFields": ["operation", "index", "replacement", "invocation"],
+  "replacementVariants": ["replace-current", "replace-all"],
+  "profile": "literal-exact/1",
+  "matchFields": ["lo", "hi", "reference"],
+  "occurrenceContract": "owned-search-occurrence/1",
+  "limits": ["maxRootBytes", "maxScopes", "maxInputBytes", "maxQueryBytes", "maxComparisons", "maxMatches", "maxReplyBytes", "maxReplacementBytes", "maxEditBytes", "chunkBytes"],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "caselessProfileSelected": false,
+    "hostileDecoderProved": false,
+    "contextIssuanceProved": false,
+    "asynchronousLifecycleProved": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

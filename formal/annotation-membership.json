@@ -1,0 +1,10 @@
+{
+ "scope":"retained-annotation-membership-compound-reference-only",
+ "phases":["present","retained-absent","retired"],
+ "limits":["maxRootBytes","maxDocuments","maxEntries","maxRetainedBytes","maxRecordBytes","maxPlanBytes"],
+ "gates":["membershipAuthorized","membershipCurrent","retentionReady","membershipReserved"],
+ "retirementGates":["authorized","membershipCurrent","retentionReleased","deliveryDrained","sessionReferencesReleased","authoredDispositionReady","historyReleased","versionsAvailable","resourcesReady","bookkeepingReady"],
+ "slotFields":["id","incarnation","phase","bodyFloor","targetFloor","retained"],
+ "scopeFlags":{"retainedAbsenceAndRetirementDistinguishedChecked":true,"actualCreateDeleteCompoundHistoryChecked":true,"freshRestorationVersionFloorsChecked":true,"wholePlanAllocationBindingChecked":true,"linkedSourceAndCurrentViewReversalChecked":true,"actualNativeReversalAndInvocationChecked":true,
+ "actualIdentityIssuanceOrHostTruthProved":false,"nativeCreateDeleteRequestGatewayProved":false,"generalTargetMappingRestorationProved":false,"pointPersistencePolicySelected":false,"completeHistoryRetirementPlannerProved":false,"allEventProjectionProved":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

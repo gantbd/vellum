@@ -1,0 +1,6 @@
+{
+ "scope":"acknowledged-clipboard-local-invocation-composition-only",
+ "kinds":["cut-export-stage","paste-request"],
+ "scopeFlags":{"actualAcknowledgedLocalContinuationChecked":true,"originalTaskReceiptAndInvocationChecked":true,"stagedTaskRootAndOutcomeChecked":true,"boundedStageAndPinLifetimeChecked":true,"effectAndLocalPublicationSeparationChecked":true,"lateEvidenceAndQuiescenceSeparationChecked":true,
+ "decodedClipboardRequestGatewayProved":false,"copyOrExternalDispatchReplayProved":false,"atomicExternalAndLocalPublicationProved":false,"nativeAcknowledgmentOrRetentionTruthProved":false,"allOperationFamiliesProved":false,"fullExecutionEventGatewayProved":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"crashDurabilityProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

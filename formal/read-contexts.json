@@ -1,0 +1,35 @@
+{
+  "contract": "read-context/1",
+  "acquisition": {
+    "family": "F02",
+    "variant": "snapshot-handoff",
+    "fields": ["contract", "operation", "document", "selection", "data", "profile"],
+    "selections": {
+      "capture-current": [],
+      "retained": ["reference"]
+    },
+    "data": ["source", "annotations"],
+    "result": ["context", "data"]
+  },
+  "close": {
+    "family": "F19",
+    "variant": "stop-observation",
+    "fields": ["contract", "operation", "context"]
+  },
+  "sourceQueries": {"contract": "source-query/1", "variants": ["bounded-range", "line"], "profile": "captured-source-product-profile"},
+  "selectorKinds": ["context", "record", "continuation"],
+  "scopeFields": ["document", "recipient", "purpose", "destination", "policy", "continuity", "profile"],
+  "states": ["prepared", "active", "invalidated", "retired"],
+  "profileDimensions": [
+    "inputWork", "preparedContexts", "retainedContexts", "retainedUnits",
+    "selectors", "internalHolds", "pageRows", "rowBytes", "replyBytes",
+    "issuanceDomain"
+  ],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "rustRepresentationSelected": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

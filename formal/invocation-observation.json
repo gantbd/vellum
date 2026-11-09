@@ -1,0 +1,21 @@
+{
+  "scope": "actual-native-invocation-observation-only",
+  "limits": ["maxWaiters", "maxIssued", "maxWaitSteps", "maxContextBytes", "maxWaitBytes", "maxReferenceBytes", "maxReplyBytes", "maxControlReplyBytes", "maxHeldBytes"],
+  "admissionGates": ["authorized", "scope", "continuous", "live", "resourcesReady", "retained", "transferReady", "preparationReserved", "registryReady", "retentionReady"],
+  "releaseGates": ["authorized", "scope", "continuous", "live", "retained", "transferReady"],
+  "scopeFlags": {
+    "actualLedgerStatusAndOutcomeChecked": true,
+    "actualOwnedContextAndReferenceIssuanceChecked": true,
+    "protectedControlProjectionIndependenceChecked": true,
+    "actualBoundedWaitAndProducerSeparationChecked": true,
+    "localReservationAndDischargedRetirementChecked": true,
+    "actualGlobalRegistryReservationTruthProved": false,
+    "actualPolicyClockOrRetentionTruthProved": false,
+    "delegatedAudienceOrAllEffectGatewayProved": false,
+    "publicAcquisitionOrWireSelected": false,
+    "physicalAccountingProved": false,
+    "actualConcurrentInstallationProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

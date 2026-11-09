@@ -1,0 +1,11 @@
+{
+ "profile":"recipient-publication-observation-reference/2",
+ "contextFields":["authority","recipient","purpose","destination","policy","continuity","profile","documents","outcomePolicy"],
+ "documentFields":["document","source","annotations","views","collection"],
+ "annotationFields":["id","incarnation","reference","body","target"],"viewFields":["view","reference"],
+ "outcomeFields":["publication","control","effect","reasons","details","recovery","grant","epoch","recipient"],
+ "limits":["maxRootBytes","maxDocuments","maxRows","maxViews","maxProjectionBytes","maxReplyBytes","maxQueue","maxOutcomes","maxOutcomeBytes","maxIssued","maxHeldBytes","maxBindings","maxBindingBytes"],
+ "gates":["authorized","scope","continuous","live","notStopped","projectionAllowed","resourcesReady","coverageComplete"],
+ "scope":{"actualSourceAnnotationViewProjectionChecked":true,"visibleOnlyStreamProgressionChecked":true,"gapAndResyncReferenceChecked":true,"actualPublicationOutcomeCompositionChecked":true,"currentContextAndCeilingReleaseChecked":true,
+ "actualHostPolicyOrVisibilityTruthProved":false,"allOperationOutcomeEventProfilesProved":false,"timingOrResourceNoninterferenceProved":false,"fullInvocationReplayCompositionProved":false,"allLifecycleEventProductsProved":false,"actualConcurrentRootInstallationProved":false,"hostileDecoderProved":false,"physicalAccountingProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

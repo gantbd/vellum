@@ -1,0 +1,18 @@
+{
+ "contract":"document-lifecycle/1","profile":"retained-lifecycle-reference/1",
+ "common":["contract","operation"],
+ "variants":{
+  "create-scratch":["source","serialization","insertionLineBreak"],
+  "attach-view":["document","expectedLifecycle","view","expectedAttachment","sourceRevision","selections","primary"],
+  "detach-view":["document","expectedLifecycle","view","expectedAttachment"],
+  "membership":["document","expectedLifecycle","workspace","expectedWorkspace","present"],
+  "dispose":["document","expectedLifecycle","expectedSource","expectedAnnotations","expectedSerialization","expectedBinding","sourceDisposition","annotationDisposition"],
+  "release-binding":["document","expectedLifecycle","expectedBinding"],
+  "release-provenance":["document","expectedLifecycle"]
+ },
+ "gates":["authorized","scope","continuous","notStopped","resourcesReady","companionsReady","versionsAvailable","replyReady","lifecycleAllowed","coverageComplete"],
+ "limits":["maxDocuments","maxRelations","maxRootBytes","maxRequestBytes","maxSourceBytes","maxTagBytes"],
+ "scope":{"scratchCreationChecked":true,"viewWorkspaceRelationsChecked":true,"retainedDisposalChecked":true,"actualSaveBarrierCompositionChecked":true,"sourceReadWriteProvenancePinsChecked":true,"explicitDisposedMutationFencesChecked":true,
+  "rebindOrSaveAsProved":false,"actualObligationCoverageTruthProved":false,"actualPolicyAndIdentityTruthProved":false,"allNativeCompanionsProved":false,
+  "fullInvocationEventCompositionProved":false,"actualConcurrentRootInstallationProved":false,"physicalReclamationProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

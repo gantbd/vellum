@@ -1,0 +1,8 @@
+{
+ "scope":"normalized-linked-history-retirement-candidate-only",
+ "contract":"history-retirement/1",
+ "requestFields":["contract","operation","authority","seeds"],
+ "limits":["maxRootBytes","maxDocuments","maxGroups","maxScopes","maxChanges","maxParticipants","maxFrontierEntries","maxEdges","maxSeeds","maxPins","maxFloors","maxClosureSteps","maxPlanBytes","maxCandidateBytes"],
+ "gates":["authorized","scope","continuous","notStopped","historyRetirementAllowed","historyCurrent","dependencyCoverageComplete","obligationCoverageComplete","participantAuthorizationCurrent","pinsCurrent","floorsCurrent","resourcesReady","preparationReserved","companionsReady","replyReady"],
+ "scopeFlags":{"actualGroupFrontierClosureCandidateChecked":true,"leastClosureAndStackGapSafetyChecked":true,"pinAndFloorWholeCandidateRefusalChecked":true,"actualHistoryMembershipConsumersChecked":true,"boundedSourceSurvivorReversalComparisonChecked":true,"unboundedAllKindSurvivorEquivalenceProved":false,"actualPinFloorDependencyOrReservationTruthProved":false,"nativeRootInstallationOrWeakJournalTransferProved":false,"completeHistoryRetirementLifecycleProved":false,"physicalReclamationOrBudgetDefaultsProved":false,"publicRetirementProtocolSelected":false,"hostileObjectDecoderProved":false,"actualConcurrentInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

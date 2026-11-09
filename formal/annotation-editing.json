@@ -1,0 +1,9 @@
+{
+ "scope":"owned-native-annotation-field-publication-only",
+ "operations":["update-body","reattach"],
+ "limits":["maxRootBytes","maxDocuments","maxRecords","maxContexts","maxDependencies","maxBodyBytes","maxRequestBytes","maxPlanBytes"],
+ "gates":["authorized","bounded","notStopped","interpretationCurrent","companionsReady","versionsAvailable","historyReady","annotationWritable"],
+ "targetFields":["document","sourceRevision","target"],
+ "scopeFlags":{"actualNativeBodyAndTargetPublicationChecked":true,"allDeclaredLiveTargetFormsChecked":true,"independentFieldAndSourceFramesChecked":true,"actualHistoryAndInvocationCompositionChecked":true,"completeOwnedIntentAndDependenciesChecked":true,
+ "createDeleteMembershipRestorationProved":false,"pointPersistencePolicySelected":false,"generalMappingHistoryRestorationProved":false,"decodedRequestGatewayProved":false,"actualHostPolicyOrRetentionTruthProved":false,"fullEventProjectionProved":false,"allOperationFamiliesProved":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

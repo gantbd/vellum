@@ -1,0 +1,24 @@
+{
+  "queryContract": "configuration-query/1",
+  "queryFamily": "F07",
+  "queryCommon": ["contract", "operation", "context", "target", "profile"],
+  "queries": {
+    "effective-configuration": ["key"],
+    "permitted-origin": ["key"],
+    "capabilities": []
+  },
+  "activationContract": "settings-activation/1",
+  "activationFamily": null,
+  "activationFields": ["contract", "operation", "invocation", "profile", "changes", "keymaps", "dependencies"],
+  "changeFields": ["layer", "expectedGeneration", "key", "operation", "value"],
+  "dependencyFields": ["domain", "identity", "generation"],
+  "scopeOrder": ["host", "language", "workspace", "document", "view"],
+  "domains": ["source", "view", "analysis", "host"],
+  "scope": {
+    "frontendReferenceOnly": true,
+    "publicKeyCatalogSelected": false,
+    "keymapRegistryProviderRefinementProved": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

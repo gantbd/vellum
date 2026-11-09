@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {parentFundedPoolAttachmentBytes} from './owner-attachment-test-helpers.mjs';
+import {pathToFileURL} from 'node:url';
+import * as api from './invocation-publication.mjs';
+import {copySettingsData} from './semantic-settings.mjs';
+import {invocationPublicationFixture} from './invocation-publication-checks.mjs';
+import {nativeVersionSetCaptureFixture as fixture,nativeVersionSetCaptureProfile as profile,nativeVersionSetCaptureFacts as facts} from './native-version-set-capture-checks.mjs';
+const size=v=>Buffer.byteLength(JSON.stringify(v)),parent={maxSlots:4,maxIssued:16,maxIntentBytes:65536,maxResultBytes:4096,maxRootBytes:262144,maxHeldBytes:4194304};
+const charge=(p,rootWorkspace=parent.maxRootBytes)=>copySettingsData(p,{maxRequestBytes:p.maxRequestBytes,maxInputNodes:p.maxInputNodes,maxInputDepth:p.maxInputDepth}).bytes+rootWorkspace+2*p.maxRequestBytes+3*p.maxCaptureBytes+2*p.maxContextBytes+p.maxPrepared*(p.maxCaptureBytes+p.maxContextBytes+p.maxSelectorBytes);
+export function checkVersionSetCaptureBoundaries(){let cases=0;const dimensions=[],visit=(name,f)=>{for(const delta of [-1,0,1]){f(delta);cases++;}dimensions.push(name);};
+ let fixed={...profile};for(let n=0;n<4;n++)fixed={...fixed,maxHeldBytes:charge(fixed)};assert.equal(fixed.maxHeldBytes,charge(fixed));
+ visit('local-complete-reservation',delta=>{const z=invocationPublicationFixture(api,undefined,parent),p={...fixed,maxHeldBytes:fixed.maxHeldBytes+delta},before=z.usage().declaredHeldBytes;assert.equal(charge(p),fixed.maxHeldBytes);const handle=api.openInvocationVersionSetCapture(z.domain,p,facts);assert.equal(handle!==null,delta>=0);assert.equal(z.usage().declaredHeldBytes,before+(delta>=0?charge(p)+parentFundedPoolAttachmentBytes(api,z.domain,handle):0));});
+ const probe=invocationPublicationFixture(api,undefined,parent),base=probe.usage().declaredHeldBytes,probeHandle=api.openInvocationVersionSetCapture(probe.domain,profile,facts);assert(probeHandle);const cost=charge(profile)+parentFundedPoolAttachmentBytes(api,probe.domain,probeHandle);
+ visit('actual-parent-headroom',delta=>{const z=invocationPublicationFixture(api,undefined,{...parent,maxHeldBytes:base+cost+delta}),before=z.usage().declaredHeldBytes;assert.equal(before,base);assert.equal(api.openInvocationVersionSetCapture(z.domain,profile,facts)!==null,delta>=0);assert.equal(z.usage().declaredHeldBytes,before+(delta>=0?cost:0));});
+ const seed=fixture(),cut=seed.prepare(),candidate=seed.read(cut);assert(candidate);
+ const minima={maxRootBytes:size(seed.z.root()),maxCaptureBytes:size(candidate),maxContextBytes:size({scope:candidate.scope,invalidated:false}),maxSelectorBytes:size({kind:'native-version-set-prepared/1'}),maxRequestBytes:size({request:seed.request,host:seed.host,facts})};assert(minima.maxRequestBytes>size(profile));
+ for(const [field,min]of Object.entries(minima))visit(field,delta=>{const x=fixture({[field]:min+delta}),before=x.usage(),root=x.z.root(),out=x.prepare();assert.equal(before.declaredHeldBytes,charge({...profile,[field]:min+delta}));assert.equal(out!==null,delta>=0,field);assert.equal(x.usage().prepared,before.prepared+(delta>=0?1:0));assert.equal(x.usage().issued,before.issued+(delta>=0?1:0));assert.equal(x.usage().declaredHeldBytes,before.declaredHeldBytes);assert.equal(x.z.root(),root);});
+ for(const field of ['maxPrepared','maxIssued'])visit(field,delta=>{const x=fixture({[field]:1+delta}),before=x.usage(),out=x.prepare();assert.equal(out!==null,delta>=0);assert.equal(x.usage().prepared,before.prepared+(delta>=0?1:0));assert.equal(x.usage().issued,before.issued+(delta>=0?1:0));});
+ for(const [field,min]of [['participants',2],['inputRoots',2],['sourceBytes',3]])visit('semantic-'+field,delta=>{const x=fixture({limits:{...profile.limits,[field]:min+delta}}),before=x.usage();assert.equal(x.prepare()!==null,delta>=0);assert.equal(x.usage().issued,before.issued+(delta>=0?1:0));});
+ for(const field of ['maxRootBytes','maxInputBytes'])visit('source-'+field,delta=>{const x=fixture({limits:{...profile.limits,source:{...profile.limits.source,[field]:3+delta}}}),before=x.usage();assert.equal(x.prepare()!==null,delta>=0);assert.equal(x.usage().issued,before.issued+(delta>=0?1:0));});
+ visit('annotation-input-rows',delta=>{const x=fixture({limits:{...profile.limits,annotation:{...profile.limits.annotation,maxInputRows:1+delta}}}),before=x.usage();assert.equal(x.prepare()!==null,delta>=0);assert.equal(x.usage().issued,before.issued+(delta>=0?1:0));});
+ return {scope:'isolated-native-version-set-preparation-exact-boundaries',cases,dimensions,actualParentAndRootMeasurementWorkspaceCompared:true,installedRegistryUnitsPhysicalOrAllProfilesProved:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(checkVersionSetCaptureBoundaries()));

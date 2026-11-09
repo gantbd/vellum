@@ -1,0 +1,14 @@
+{
+ "contract":"clipboard-transfer/1","evidenceContract":"clipboard-evidence/1","profile":"owned-literal-clipboard-reference/1",
+ "requestFields":["contract","operation","invocation","origin","document","view","sourceRevision","expectedSelection","selectionProfile","provider","capability","expectedRegistration","format"],
+ "operations":["copy","cut-export-stage","paste-request"],
+ "registrationFields":["provider","capability","generation","destination","readable","writable","acknowledgmentProfile"],
+ "destinations":["system-clipboard","platform-selection","session-clipboard"],
+ "limits":["maxTasks","maxOutstanding","maxIssued","maxRootBytes","maxRegistryRows","maxCaptureBytes","maxPayloadBytes","maxEnvelopeBytes","maxHeldBytes","maxConflicts","maxTagBytes"],
+ "admissionGates":["authorized","scope","continuous","live","notStopped","capabilityAllowed","resourcesReady","captureAllowed","coverageComplete"],
+ "dispatchGates":["authorized","scope","continuous","notStopped","capabilityAllowed","launchAllowed","resourcesReady","providerAvailable"],
+ "publicationGates":["authorized","scope","continuous","live","notStopped","publicationAllowed","companionsReady","versionsAvailable","historyReady"],
+ "releaseGates":["authorized","scope","continuous","releaseAllowed","recipientAllowed","resourcesReady"],
+ "scope":{"ownedClipboardCaptureChecked":true,"capturedTargetPasteChecked":true,"acknowledgedCutRevalidationChecked":true,"actualSourceAnnotationViewCompositionChecked":true,"sessionStructuredProvenanceChecked":true,"layeredEvidenceAndWorkChecked":true,
+ "actualClipboardProviderOrRetentionTruthProved":false,"atomicExternalExportAndLocalCutProved":false,"allNativeCompanionsProved":false,"fullInvocationReplayEventCompositionProved":false,"hostileDecoderProved":false,"actualConcurrentRootInstallationProved":false,"physicalAccountingProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

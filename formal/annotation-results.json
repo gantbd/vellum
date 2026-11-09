@@ -1,0 +1,8 @@
+{
+ "scope":"owned-native-annotation-result-receipts-only",
+ "capabilities":["identity","contentVersion","targetGeneration"],
+ "grantFields":["invocation","annotation","identity","contentVersion","targetGeneration"],
+ "operations":["create","update-body","reattach","delete"],
+ "scopeFlags":{"actualNativeFourVariantReceiptsChecked":true,"actualRootFactReceiptInstallationChecked":true,"capturedAndCurrentScopedReleaseChecked":true,"historicalFactsNeverRecomputedChecked":true,"boundedAdmissionAndEvictionChecked":true,"nativeIdentityVersionProductsChecked":true,
+ "wireEncodingOrAliasBridgeProved":false,"actualIssuerGrantOrRetentionTruthProved":false,"allOperationResultProductsProved":false,"fullHistoryRetirementPlannerProved":false,"generalTargetRestorationProved":false,"pointPersistencePolicySelected":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

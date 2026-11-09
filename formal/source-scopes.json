@@ -1,0 +1,11 @@
+{
+ "contract":"owned-annotation-plan/3",
+ "compatibleContracts":["owned-annotation-plan/4","owned-annotation-plan/5"],
+ "profile":"bounded-source-scope/1",
+ "planFields":["contract","invocation","descriptor","sources","annotations","reads","scopes"],
+ "scopeFields":["profile","document","expectedSource","replacementRanges","insertionSites"],
+ "rangeFields":["lo","hi"],
+ "siteFields":["first","last"],
+ "limitFields":["maxScopes","maxReplacementRanges","maxInsertionIntervals","maxIdentifierBytes"],
+ "scope":"native-exact-source-operation-scope-only"
+}

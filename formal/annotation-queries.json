@@ -1,0 +1,28 @@
+{
+  "contract": "annotation-query/1",
+  "family": "F03",
+  "common": {
+    "contract": "RegisteredContractVersion",
+    "operation": "ClosedAnnotationQueryVariant",
+    "document": "LiveDocumentRef",
+    "snapshot": "ScopedAnnotationReadContext",
+    "profile": "ReadProjectionAndResourceProfileRef"
+  },
+  "variants": {
+    "enumerate": {"limit": "PositiveBoundedRowCount", "continuation": "NoneOrScopedContinuation"},
+    "inspect": {"annotation": "ScopedAnnotationRecordRef"},
+    "target-location": {"annotation": "ScopedAnnotationRecordRef"}
+  },
+  "results": {
+    "page": ["snapshot", "records", "continuation"],
+    "record": ["snapshot", "record"],
+    "location": ["snapshot", "reference", "location"],
+    "unavailable": []
+  },
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "rustRepresentationSelected": false,
+    "fullFamilyRefinementProved": false
+  }
+}

@@ -1,0 +1,7 @@
+{
+ "scope":"observation-current-read-composition-only",
+ "readGates":["granted","live","continuous","transferReady","captureComplete","preparationReserved","registryReady","retentionReady","notStopped"],
+ "releaseGates":["authorized","scope","continuous","live","notStopped","projectionAllowed","resourcesReady","coverageComplete","releaseAllowed","retained","transferReady"],
+ "scopeFlags":{"actualObserverReadRegistryCompositionChecked":true,"freshCurrentCaptureChecked":true,"annotationOnlyAndFacetCeilingChecked":true,"independentSelectorLifecycleChecked":true,"observerStatePreservationChecked":true,
+ "historicalEventLookupProved":false,"eventToRecordSelectorConversionProved":false,"actualHostPolicyOrRootTruthProved":false,"allLifecycleEventProductsProved":false,"fullInvocationReplayCompositionProved":false,"actualConcurrentInstallationProved":false,"timingOrResourceNoninterferenceProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

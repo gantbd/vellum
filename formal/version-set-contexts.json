@@ -1,0 +1,25 @@
+{
+  "contract": "read-version-set/1",
+  "family": "F02",
+  "variant": "snapshot-handoff",
+  "fields": ["contract", "operation", "authority", "participants", "selection", "profile"],
+  "participantFields": ["document", "data"],
+  "selections": {"capture-current": [], "retained": ["reference"]},
+  "resultFields": ["context", "participants"],
+  "memberResultFields": ["document", "snapshot", "data"],
+  "close": {"family": "F19", "variant": "stop-observation", "contract": "read-context/1"},
+  "scopeFields": ["recipient", "purpose", "destination", "policy", "continuity", "profile"],
+  "rules": {
+    "oneAuthority": true,
+    "onePublishedCut": true,
+    "allParticipantsRequired": true,
+    "unknownOrDuplicateParticipant": "unavailable",
+    "requiredMemberInvalidation": "invalidate-whole-context",
+    "memberClose": "close-owning-version-set",
+    "partialReply": false,
+    "currentFallback": false,
+    "independentContextJoin": false
+  },
+  "scope": {"nativeSemanticProductsSelected": true, "wireEncodingSelected": false,
+    "hostCoherenceProved": false, "physicalAccountingProved": false, "implementationRefinement": false}
+}

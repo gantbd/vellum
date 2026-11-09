@@ -1,0 +1,31 @@
+{
+  "contract": "history-reversal/1",
+  "family": "F14",
+  "common": ["contract", "operation", "invocation", "authority", "target", "profile", "dependencies"],
+  "fieldTypes": {
+    "contract": "RegisteredContractVersion",
+    "operation": "ClosedHistoryReversalVariant",
+    "invocation": "InvocationIdentity",
+    "authority": "EngineAuthorityIncarnation",
+    "target": "HistoryReversalTarget",
+    "profile": "ExecutionProfileRef",
+    "dependencies": "BoundedContextDependencyVector"
+  },
+  "variants": ["undo", "redo"],
+  "targets": {
+    "group": ["kind", "group"],
+    "scope-frontier": ["kind", "scope", "expectedGroup"]
+  },
+  "dependencyFields": ["domain", "identity", "generation"],
+  "results": ["applied", "not-published"],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "positionalViewBridgeSelected": true,
+    "allViewProfilesProved": false,
+    "wireEncodingSelected": false,
+    "membershipReversalProved": false,
+    "generalTargetRestorationProved": false,
+    "fullReplayCompositionProved": false,
+    "implementationRefinement": false
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "scope": "owned-native-history-context-composition-only",
+  "contextFields": ["authority", "engine", "recipient", "purpose", "destination", "profile", "policy", "continuity"],
+  "limits": ["maxContexts", "maxIssued", "maxGroups", "maxScopes", "maxParticipants", "maxDetails", "maxCaptureBytes", "maxBasisBytes", "maxReplyBytes", "maxHeldBytes"],
+  "acquisitionGates": ["granted", "retained", "live", "continuous", "transferReady", "historyCurrent", "captureComplete", "preparationReserved", "registryReady", "retentionReady", "notStopped"],
+  "releaseGates": ["granted", "retained", "live", "continuous", "transferReady", "historyCurrent", "replyReady"],
+  "scopeFlags": {
+    "actualNativeHistoryContextIssuanceChecked": true,
+    "actualScopedHistoryBasisRevalidationChecked": true,
+    "actualNativeF04F14CompositionChecked": true,
+    "boundedClosureAndRetirementChecked": true,
+    "actualAliasPolicyCoverageOrRetentionTruthProved": false,
+    "publicHistoryAcquisitionOrWireSelected": false,
+    "allHistoryResultProductsProved": false,
+    "fullHistoryRetirementPlannerProved": false,
+    "generalTargetRestorationProved": false,
+    "pointPersistencePolicySelected": false,
+    "physicalAccountingProved": false,
+    "actualConcurrentInstallationProved": false,
+    "hostileDecoderProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

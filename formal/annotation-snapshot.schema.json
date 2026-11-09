@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:vellum:annotation-snapshot:1",
+  "title": "Vellum reference annotation snapshot version 1",
+  "type": "object",
+  "required": ["format", "version", "document", "source", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "vellum.annotations"},
+    "version": {"const": "1"},
+    "document": {"$ref": "#/$defs/Document"},
+    "source": {"$ref": "#/$defs/Source"},
+    "records": {"type": "array", "items": {"$ref": "#/$defs/Record"}}
+  },
+  "$defs": {
+    "TextId": {"type": "string", "minLength": 1},
+    "Nat": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(?![\\s\\S])"},
+    "Positive": {"type": "string", "pattern": "^[1-9][0-9]*(?![\\s\\S])"},
+    "Document": {
+      "type": "object", "required": ["namespace", "value"], "additionalProperties": false,
+      "properties": {"namespace": {"$ref": "#/$defs/TextId"}, "value": {"$ref": "#/$defs/TextId"}}
+    },
+    "Source": {
+      "type": "object", "required": ["domain", "token", "byteLength"], "additionalProperties": false,
+      "properties": {"domain": {"$ref": "#/$defs/TextId"}, "token": {"$ref": "#/$defs/TextId"}, "byteLength": {"$ref": "#/$defs/Nat"}}
+    },
+    "Identity": {
+      "type": "object", "required": ["namespace", "value", "incarnation"], "additionalProperties": false,
+      "properties": {"namespace": {"$ref": "#/$defs/TextId"}, "value": {"$ref": "#/$defs/TextId"}, "incarnation": {"$ref": "#/$defs/Positive"}}
+    },
+    "DocumentTarget": {
+      "type": "object", "required": ["kind", "source"], "additionalProperties": false,
+      "properties": {"kind": {"const": "document"}, "source": {"$ref": "#/$defs/Source"}}
+    },
+    "PointTarget": {
+      "type": "object", "required": ["kind", "source", "offset", "affinity", "profile"], "additionalProperties": false,
+      "properties": {"kind": {"const": "point"}, "source": {"$ref": "#/$defs/Source"}, "offset": {"$ref": "#/$defs/Nat"}, "affinity": {"enum": ["before", "after"]}, "profile": {"enum": ["position", "content"]}}
+    },
+    "RangeTarget": {
+      "type": "object", "required": ["kind", "source", "start", "end"], "additionalProperties": false,
+      "properties": {"kind": {"const": "range"}, "source": {"$ref": "#/$defs/Source"}, "start": {"$ref": "#/$defs/Nat"}, "end": {"$ref": "#/$defs/Nat"}}
+    },
+    "Target": {"oneOf": [{"$ref": "#/$defs/DocumentTarget"}, {"$ref": "#/$defs/PointTarget"}, {"$ref": "#/$defs/RangeTarget"}]},
+    "Located": {
+      "type": "object", "required": ["state", "target"], "additionalProperties": false,
+      "properties": {"state": {"enum": ["attached", "affected"]}, "target": {"$ref": "#/$defs/Target"}}
+    },
+    "Detached": {
+      "type": "object", "required": ["state"], "additionalProperties": false,
+      "properties": {"state": {"const": "detached"}}
+    },
+    "Placement": {"oneOf": [{"$ref": "#/$defs/Located"}, {"$ref": "#/$defs/Detached"}]},
+    "Record": {
+      "type": "object", "required": ["identity", "contentVersion", "targetGeneration", "body", "authoredTarget", "placement"], "additionalProperties": false,
+      "properties": {
+        "identity": {"$ref": "#/$defs/Identity"},
+        "contentVersion": {"$ref": "#/$defs/Positive"},
+        "targetGeneration": {"$ref": "#/$defs/Positive"},
+        "body": {"type": "string"},
+        "authoredTarget": {"$ref": "#/$defs/Target"},
+        "placement": {"$ref": "#/$defs/Placement"}
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {captureInputs} from './evidence-harness.mjs';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url))),rules=[['coherent-native-result-guard-omitted','native-version-set-contexts.mjs','if(parsed.source&&!sourceReadResultValid(reply,r,','if(false&&!sourceReadResultValid(reply,r,'],['coherent-native-ref-trusted-from-reply','native-version-set-contexts.mjs','revision:member.candidate.root.sourceRevision})){owner.faulted','revision:reply.ref.revision})){owner.faulted'],['source-facade-result-guard-omitted','invocation-publication.mjs','if(!sourceReadResultValid(readResult,readRequest))','if(false)']],run=directory=>spawnSync(process.execPath,[path.join(directory,'formal/source-read-result-fault-checks.mjs')],{encoding:'utf8',env:process.env,maxBuffer:1048576}),positive=captureInputs(root),baseline=run(positive.directory);assert.equal(baseline.status,0,baseline.stderr);const mutations=[];
+for(const [name,relative,from,to]of rules){const graph=captureInputs(root),file=path.join(graph.directory,'formal',relative),original=fs.readFileSync(file,'utf8');assert.equal(original.split(from).length-1,1,name);fs.writeFileSync(file,original.replace(from,to));const out=run(graph.directory);assert.equal(out.status,1,name+': '+out.stderr.slice(0,1500));assert(out.stderr.includes('ERR_ASSERTION'),name);assert(!out.stderr.includes('SyntaxError'),name);mutations.push(name);}
+console.log(JSON.stringify({scope:'isolated-source-read-result-fault-sensitivity',baseline:JSON.parse(baseline.stdout),mutations,coherentCopiedGraphBaseline:true,constructionFailuresCounted:false,physicalConcurrentCrashOrIndependentProof:false}));

@@ -1,0 +1,12 @@
+{
+ "contract":"proposal-validation/1",
+ "profile":"native-compound-current-checks/1",
+ "family":"F10",
+ "operation":"advisory-validation",
+ "requestFields":["contract","operation","plan"],
+ "basisFields":["root","context","request"],
+ "replyFields":["status","profile","checksSatisfied"],
+ "envelopeFields":["route","request","proposal"],
+ "gates":["authorized","scope","continuous","live","notStopped","proposalReadable","validationObservable","outsidePublicationGuard","resourcesReady","replyReady"],
+ "scope":"native-compound-advisory-validation-query-only"
+}

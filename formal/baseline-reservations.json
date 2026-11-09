@@ -1,0 +1,7 @@
+{
+ "scope":"native-invocation-annotation-baseline-reservations-only",
+ "limits":["maxReservations","maxIssued","maxRecordBytes","maxHeldBytes","maxBaselineBytes","maxTagBytes"],
+ "openGates":["ownerControlAllowed","capacityActivationAuthorized","preparationReserved"],
+ "reserveGates":["authorized","scope","continuous","baselineReservationAllowed","preparationReserved"],
+ "releaseGates":["ownerControlAllowed","obligationsDischarged","retentionReleased","deliveryDrained"]
+}

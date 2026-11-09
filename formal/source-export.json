@@ -1,0 +1,9 @@
+{
+ "exportContract":"source-export/1","rebindContract":"source-rebind/1","profile":"source-destination-intent-reference/1",
+ "exportFields":["contract","operation","origin","document","expectedSource","expectedSerialization","expectedBinding","provider","resource","expectedRegistration","purpose","protection","acknowledgment","condition"],
+ "rebindFields":["contract","operation","document","expectedBinding","provider","resource","expectedRegistration"],
+ "gates":["authorized","scope","continuous","live","notStopped","sourceReadable","writeAllowed","bindingCoverageComplete","writerCoverageComplete","providerAvailable","resourcesReady","launchAllowed","destinationAllowed","identityAllowed","companionsReady","versionsAvailable","replyReady"],
+ "activationGates":["authorized","scope","continuous","live","notStopped","bindingCoverageComplete","writerCoverageComplete","bindingActivationAllowed","identityAllowed","companionsReady","versionsAvailable","replyReady","resourcesReady","dispositionReadable"],
+ "scope":{"explicitDestinationCaptureChecked":true,"sharedWriterFifoChecked":true,"destinationReservationChecked":true,"copyAndBindingSeparationChecked":true,"saveAsActivationReferenceChecked":true,"rebindWithoutWriteReferenceChecked":true,
+  "actualProviderIdentityOrFilesystemTruthProved":false,"atomicExternalWriteAndLocalBindingProved":false,"annotationOrCombinedPersistenceProved":false,"fullInvocationEventCompositionProved":false,"allNativeCompanionsProved":false,"actualConcurrentRootInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

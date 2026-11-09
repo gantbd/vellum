@@ -1,0 +1,15 @@
+{
+  "contract":"resource-read/1","evidenceContract":"resource-read-evidence/1","profile":"source-resource-read-reference/1",
+  "requestFields":["contract","operation","origin","provider","resource","expectedRegistration","profile","requiredRead"],
+  "registrationFields":["provider","resource","generation","identityDomain","identityKey","identityKnown","locator","profile","atomicRead","insertionLineBreak"],
+  "originFields":["operation","effect","attempt"],"readGuarantees":["captured-read","atomic-resource-snapshot"],
+  "eventCommon":["contract","task","origin","provider","resource","kind"],
+  "events":{"start":["resourceVersion","coherence"],"chunk":["sequence","offset","bytes"],"end":["resourceVersion","coherence","chunks","byteLength"],"failure":["reason"],"quiescence":[]},
+  "failures":["not-found","denied","unsupported","io-failure","cancelled","exhausted","invalid-source"],
+  "limits":["maxTasks","maxOutstanding","maxIssued","maxCaptureBytes","maxEnvelopeBytes","maxTranscriptBytes","maxHeldBytes","maxDocuments","maxBindings","maxRegistryRows","maxRootBytes","maxActivatedBytes","maxTagBytes"],
+  "scope":{"sourceReadAdmissionChecked":true,"actualCodecCompositionChecked":true,"initialLoadReferenceChecked":true,"currentOwnerUniquenessChecked":true,
+    "actualProviderSnapshotTruthProved":false,"actualIdentityAndPolicyTruthProved":false,"actualConcurrentRootInstallationProved":false,
+    "physicalAccountingProved":false,"hostileDecoderProved":false,"annotationLoadProved":false,"sourceReplacementOrReloadProved":false,
+    "fullResourceWriteAdmissionProved":false,"fullInvocationEventCompositionProved":false,"allStateCompanionsProved":false,
+    "independentCleanroomCertification":false,"implementationRefinement":false}
+}
