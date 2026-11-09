@@ -4,14 +4,13 @@ members = [
   "crates/vellum-adapter-annotation-json",
   "crates/vellum-adapter-unicode-icu",
   "crates/vellum-adapter-clipboard-macos",
-  "qualification/vellum-clipboard-macos-qualification",
   "crates/vellum-unicode-reference",
 ]
 resolver = "3"
-exclude = ["vendor/objc2-app-kit"]
-
-[patch.crates-io]
-objc2-app-kit = { path = "vendor/objc2-app-kit" }
+exclude = [
+  "qualification/vellum-clipboard-macos-qualification",
+  "vendor/objc2-app-kit",
+]
 
 [workspace.package]
 version = "0.1.0"

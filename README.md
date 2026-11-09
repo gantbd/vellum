@@ -8,7 +8,7 @@ The patched AppKit surface is confined to the unpublished live-qualification
 runner. With explicit operator approval, run it on macOS with:
 
 ```sh
-cargo run -p vellum-clipboard-macos-qualification -- --allow-private-pasteboard
+cargo run --locked --manifest-path qualification/vellum-clipboard-macos-qualification/Cargo.toml -- --allow-private-pasteboard
 ```
 
 It creates only unique private pasteboards; production adapter packages resolve
