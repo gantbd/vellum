@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = false
 
 [features]
 reference-conformance = []
@@ -36,6 +36,10 @@ required-features = ["icu4x-conformance"]
 [[example]]
 name = "icu4c_qualification"
 required-features = ["icu4c-conformance"]
+
+[[example]]
+name = "portable_qualification"
+required-features = ["native-conformance"]
 
 [lints]
 workspace = true

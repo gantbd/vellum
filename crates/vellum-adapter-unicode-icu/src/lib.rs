@@ -1,16 +1,14 @@
 //! Bounded, in-process Unicode 18 provider, outside engine publication.
 //!
-//! Exact profile: ICU4C 79.1 root character iteration, normative UAX #29 rev.49
-//! default word rules without dictionary/locale tailoring, and ICU4X 2.4 data.
-//! Native libraries and loader are trusted host prerequisites, not hot-swappable
-//! providers. No source retention, Java, subprocess, UI, credentials or publisher.
+//! Exact profile: ICU4X 2.4's Unicode 18 stable grapheme implementation composed
+//! with UAX #29 revision 49 GB9c, plus direct revision 49 default-word rules.
+//! No source retention, native library, loader, Java, subprocess, UI, credentials
+//! or publisher.
 use icu_properties::{
     CodePointMapData, CodePointSetData,
     props::{Alphabetic, GeneralCategory},
 };
 mod word;
-use rust_icu_sys::UBreakIteratorType;
-use rust_icu_ubrk::UBreakIterator;
 use std::{mem::size_of, time::Instant};
 use vellum_engine::{
     coordinates::BytePosition,
@@ -31,8 +29,8 @@ pub struct Limits {
     /// for each significant word. No partial table is returned on exhaustion.
     pub max_boundaries: usize,
     pub max_words: usize,
-    /// Adapter-owned reserved Rust vectors, including UTF-16 mapping. Excludes
-    /// allocator overhead and binding/ICU internals; not an RSS bound.
+    /// Adapter-owned reserved Rust vectors. Excludes allocator overhead and
+    /// ICU4X internals; not an RSS bound.
     pub max_logical_bytes: usize,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,7 +94,6 @@ fn reserved<T>(count: usize) -> Result<Vec<T>, Error> {
     Ok(values)
 }
 struct Budget {
-    map: usize,
     points: usize,
     words: usize,
 }
@@ -104,10 +101,7 @@ struct Budget {
 impl Provider {
     pub fn new(limits: Limits, timing: Timing, r: &mut Recorder) -> Result<Self, Error> {
         let start = (timing == Timing::ProcessService).then(Instant::now);
-        let result = if limits.max_source_bytes > i32::MAX as usize
-            || limits.max_boundaries < 2
-            || limits.max_logical_bytes == 0
-        {
+        let result = if limits.max_boundaries < 2 || limits.max_logical_bytes == 0 {
             Err(Error::InvalidLimits)
         } else {
             Ok(Self {
@@ -130,23 +124,13 @@ impl Provider {
             return Err(Error::InputLimit);
         }
         let chars = text.chars().count();
-        let map = text
-            .encode_utf16()
-            .count()
-            .checked_add(1)
-            .ok_or(Error::LogicalLimit)?;
         let points = chars
             .checked_add(1)
             .ok_or(Error::LogicalLimit)?
             .min(self.limits.max_boundaries);
         let words = chars.min(self.limits.max_words);
-        let bytes = map
-            .checked_mul(size_of::<usize>())
-            .and_then(|n| {
-                points
-                    .checked_mul(2 * size_of::<BytePosition>())
-                    .and_then(|p| n.checked_add(p))
-            })
+        let bytes = points
+            .checked_mul(2 * size_of::<BytePosition>())
             .and_then(|n| {
                 words
                     .checked_mul(size_of::<ByteRange>())
@@ -156,7 +140,7 @@ impl Provider {
         if bytes > self.limits.max_logical_bytes {
             return Err(Error::LogicalLimit);
         }
-        Ok(Budget { map, points, words })
+        Ok(Budget { points, words })
     }
     /// Caller supplies an already authorized, exact source snapshot. This does
     /// not infer a file BOM: an initial U+FEFF remains literal segmentation data.
@@ -190,26 +174,19 @@ impl Provider {
         result
     }
     fn execute(&self, text: &str, budget: Budget) -> Result<BoundaryTableV1, Error> {
-        // All adapter-owned buffers are reserved before invoking the native
-        // segmenter. Neither partial output nor partially accepted evidence leaks.
-        let mut mapping = reserved::<usize>(budget.map)?;
+        // All adapter-owned output buffers are reserved before segmentation.
+        // Neither partial output nor partially accepted evidence leaks.
         let mut graphemes = reserved::<BytePosition>(budget.points)?;
         let mut words = reserved::<BytePosition>(budget.points)?;
         let mut significant_words = reserved::<ByteRange>(budget.words)?;
-        mapping.resize(budget.map, usize::MAX);
-        let mut units = 0;
-        for (byte, ch) in text.char_indices() {
-            mapping[units] = byte;
-            units += ch.len_utf16();
-        }
-        mapping[units] = text.len();
-        let iterator = UBreakIterator::try_new(UBreakIteratorType::UBRK_CHARACTER, "root", text)
-            .map_err(|_| Error::Native)?;
-        for native in std::iter::once(iterator.first()).chain(iterator) {
-            let at = usize::try_from(native).map_err(|_| Error::InvalidNativeBoundary)?;
-            let byte = *mapping.get(at).ok_or(Error::InvalidNativeBoundary)?;
-            if byte == usize::MAX {
-                return Err(Error::InvalidNativeBoundary);
+        let segmenter = icu_segmenter::GraphemeClusterSegmenter::new();
+        let incb = CodePointMapData::<icu_properties::props::IndicConjunctBreak>::new();
+        for byte in segmenter.segment_str(text) {
+            // ICU4X 2.4 implements the preceding UAX #29 GB9c form. Revision
+            // 49 replaces it with Linker Extend* × Consonant. Composition is a
+            // monotone removal of only those candidate breaks.
+            if revision_49_gb9c(text, byte, &incb) {
+                continue;
             }
             push_point(&mut graphemes, byte, text, budget.points)?;
         }
@@ -273,6 +250,32 @@ impl Provider {
             .accept_boundary_evidence(capture, &table, r)
             .map_err(CaptureError::Engine)
     }
+}
+
+fn revision_49_gb9c(
+    text: &str,
+    byte: usize,
+    incb: &icu_properties::CodePointMapDataBorrowed<'_, icu_properties::props::IndicConjunctBreak>,
+) -> bool {
+    use icu_properties::props::IndicConjunctBreak as I;
+    if byte == 0 || byte == text.len() {
+        return false;
+    }
+    let Some(right) = text[byte..].chars().next() else {
+        return false;
+    };
+    if incb.get(right) != I::Consonant {
+        return false;
+    }
+    text[..byte]
+        .chars()
+        .rev()
+        .find_map(|ch| match incb.get(ch) {
+            I::Extend => None,
+            I::Linker => Some(true),
+            _ => Some(false),
+        })
+        == Some(true)
 }
 
 impl UnicodeProvider for Provider {

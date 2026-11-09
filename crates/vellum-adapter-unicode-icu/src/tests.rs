@@ -76,14 +76,8 @@ fn raw_default_words_are_not_dictionary_or_significant_word_grids() {
 #[test]
 fn invalid_input_and_logical_capacity_refuse_before_native_admission() {
     let mut l = limits();
-    l.max_source_bytes = i32::MAX as usize + 1;
-    assert_eq!(
-        Provider::new(l, Timing::Off, &mut Recorder::disabled()).unwrap_err(),
-        Error::InvalidLimits
-    );
-    let mut l = limits();
     l.max_source_bytes = 0;
-    l.max_logical_bytes = 24;
+    l.max_logical_bytes = 16;
     let mut p = Provider::new(l, Timing::Off, &mut Recorder::disabled()).unwrap();
     p.segment("", &mut Recorder::disabled()).unwrap();
     assert_eq!(
@@ -102,13 +96,41 @@ fn invalid_input_and_logical_capacity_refuse_before_native_admission() {
         }
     );
     let mut l = limits();
-    l.max_logical_bytes = 23;
+    l.max_logical_bytes = 15;
     let mut p = Provider::new(l, Timing::Off, &mut Recorder::disabled()).unwrap();
     assert_eq!(
         p.segment("", &mut Recorder::disabled()).unwrap_err(),
         Error::LogicalLimit
     );
     assert_eq!(p.usage().admitted, 0);
+}
+
+#[test]
+fn unicode18_revision49_gb9c_extends_the_stable_segmenter_without_overjoining() {
+    let mut p = provider();
+    for joined in [
+        "\u{094d}\u{0915}",
+        "\u{094d}\u{0308}\u{0915}",
+        "\u{1cf5}\u{0995}",
+    ] {
+        assert_eq!(
+            points(
+                &p.segment(joined, &mut Recorder::disabled())
+                    .unwrap()
+                    .graphemes
+            ),
+            [0, joined.len()]
+        );
+    }
+    let zwnj = "\u{1cf5}\u{200c}\u{0995}";
+    assert_eq!(
+        points(
+            &p.segment(zwnj, &mut Recorder::disabled())
+                .unwrap()
+                .graphemes
+        ),
+        [0, "\u{1cf5}\u{200c}".len(), zwnj.len()]
+    );
 }
 
 #[test]
@@ -179,7 +201,7 @@ fn full_reference_source_budget_is_supported_and_counters_do_not_wrap() {
 }
 
 #[test]
-fn malformed_native_positions_are_refused_instead_of_widened_or_repaired() {
+fn malformed_generated_positions_are_refused_instead_of_widened_or_repaired() {
     let mut grid = reserved(4).unwrap();
     assert_eq!(
         push_point(&mut grid, 1, "é", 4),

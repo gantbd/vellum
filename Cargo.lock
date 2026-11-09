@@ -866,8 +866,7 @@ name = "vellum-adapter-unicode-icu"
 version = "0.1.0"
 dependencies = [
  "icu_properties",
- "rust_icu_sys",
- "rust_icu_ubrk",
+ "icu_segmenter",
  "vellum-engine",
  "vellum-sdk",
 ]

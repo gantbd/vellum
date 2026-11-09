@@ -29,6 +29,10 @@ const qualification = packages.get('vellum-clipboard-macos-qualification');
 if (qualification && qualification.publish?.length !== 0) {
   failures.push('live clipboard qualification package must remain unpublished');
 }
+const unicodeReference = packages.get('vellum-unicode-reference');
+if (unicodeReference && unicodeReference.publish?.length !== 0) {
+  failures.push('Unicode reference/qualification package must remain unpublished');
+}
 
 for (const pkg of packages.values()) {
   for (const dependency of pkg.dependencies) {

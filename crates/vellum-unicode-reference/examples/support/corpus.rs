@@ -62,7 +62,7 @@ fn corpus(name: &str, pin: &str, count: usize) -> Result<Vec<Case>, Box<dyn Erro
 pub fn check(
     name: &str,
     cases: &[Case],
-    segment: impl Fn(&str) -> Result<Vec<usize>, Box<dyn Error>>,
+    mut segment: impl FnMut(&str) -> Result<Vec<usize>, Box<dyn Error>>,
 ) -> Result<usize, Box<dyn Error>> {
     let mut failed = 0;
     for case in cases {
