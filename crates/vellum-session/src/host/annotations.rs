@@ -16,10 +16,10 @@ impl std::fmt::Debug for AnnotationCommit {
         f.write_str("AnnotationCommit(<redacted>)")
     }
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     pub fn annotation_document_summary(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
     ) -> Result<vellum_engine::coordinator::AnnotationDocumentSummaryV1, SessionError> {
         Ok(self
             .owner
@@ -77,7 +77,7 @@ impl LocalHost {
 
     pub fn annotation_set_version(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
     ) -> Result<u64, SessionError> {
         Ok(self
             .owner
@@ -99,7 +99,7 @@ impl LocalHost {
     /// Separate annotation policy; source read-only does not forbid comments.
     pub fn set_annotations_locked(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         locked: bool,
     ) -> Result<(), SessionError> {
         Ok(self.owner.set_annotations_read_only(

@@ -1,10 +1,12 @@
 //! Annotation serialization and local I/O orchestration, above native ownership.
 use super::*;
 use std::sync::{Arc, Mutex};
-use vellum_annotation_json::{CaptureAssociations, CodecLimits};
 use vellum_engine::coordinator::AnnotationSnapshot;
 use vellum_engine::resource::{
     AnnotationBaselineFact, AnnotationEncoderPort, EncodedAnnotations, SavePurpose,
+};
+use vellum_sdk::annotation::{
+    AnnotationCodec, AnnotationEncodingFailure, CaptureAssociations, CodecLimits,
 };
 mod read;
 pub use read::{AnnotationReadAttempt, AnnotationReadReport};
@@ -12,23 +14,26 @@ pub use read::{AnnotationReadAttempt, AnnotationReadReport};
 /// Existing resolved destination bound to one original source owner. No path-
 /// inferred identity, permission grant, auto sidecar name or hidden document.
 #[derive(Clone)]
-pub struct AnnotationResource {
-    resource: ResourceHandle,
+pub struct AnnotationResource<H> {
+    resource: H,
     document: DocumentId,
     // Integration guard shared by clones of this exact binding. Only an actual
     // written observation advances it; probing newer bytes never adopts them.
     observed: Arc<Mutex<Option<vellum_engine::resource::ResourceRead>>>,
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Explicit existing-file association. The actual adapter compares native
     /// resource identities before native activation; source aliases refuse.
     /// This does not read/restore JSON records or establish a saved baseline.
     pub fn bind_annotations(
         &mut self,
-        document: &LocalDocument,
-        path: &Path,
-    ) -> Result<AnnotationResource, SessionError> {
-        let (resource, read) = self.filesystem.open(path, &mut self.diagnostics)?;
+        document: &LocalDocument<A::Handle>,
+        locator: &A::Locator,
+    ) -> Result<AnnotationResource<A::Handle>, SessionError> {
+        let (resource, read) = self
+            .resource_adapter
+            .open(locator, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let observed = Arc::new(Mutex::new(Some(read.clone())));
         let plan = self.owner.prepare_annotation_binding(
             &document.loaded.document,
@@ -36,8 +41,9 @@ impl LocalHost {
             &mut self.diagnostics,
         )?;
         let pair = self
-            .filesystem
-            .compare_ordinary_pair(plan.pair_check(), &mut self.diagnostics)?;
+            .resource_adapter
+            .compare_ordinary_pair(plan.pair_check(), &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         self.owner
             .activate_annotation_binding(plan, Some(pair), &mut self.diagnostics)?;
         Ok(AnnotationResource {
@@ -57,34 +63,40 @@ impl LocalHost {
 
     /// Host-supplied persistent identity/evidence associations are explicit
     /// premises. No aliases, source hashes or history are invented from a path.
-    pub fn encode_annotation_json(
+    pub fn encode_annotations<C: AnnotationCodec + ?Sized>(
         &mut self,
+        codec: &C,
         snapshot: &AnnotationSnapshot,
         associations: &CaptureAssociations,
         limits: CodecLimits,
         encoder: &AnnotationEncoderPort,
     ) -> Result<EncodedAnnotations, SessionError> {
-        let artifact = vellum_annotation_json::encode_capture(
-            snapshot,
-            associations,
-            limits,
-            &mut self.diagnostics,
-        )
-        .map_err(SessionError::AnnotationCodec)?;
-        Ok(artifact.into_encoded(encoder)?)
+        codec
+            .encode(
+                snapshot,
+                associations,
+                limits,
+                encoder,
+                &mut self.diagnostics,
+            )
+            .map_err(|error| match error {
+                AnnotationEncodingFailure::Codec(error) => SessionError::AnnotationCodec(error),
+                AnnotationEncodingFailure::Engine(error) => SessionError::Resource(error),
+            })
     }
 
     /// Admission only. Retain the returned original attempt before service.
     /// Source and annotation saves are separate writes, never a two-file commit.
     pub fn queue_annotation_save(
         &mut self,
-        destination: &AnnotationResource,
+        destination: &AnnotationResource<A::Handle>,
         encoded: EncodedAnnotations,
         requirements: SaveRequirements,
     ) -> Result<SaveId, SessionError> {
         let (read, probe) = self
-            .filesystem
-            .probe(&destination.resource, &mut self.diagnostics)?;
+            .resource_adapter
+            .probe(&destination.resource, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         drop(probe);
         let observed = destination
             .observed
@@ -106,7 +118,7 @@ impl LocalHost {
 
     pub fn service_annotation_save(
         &mut self,
-        destination: &AnnotationResource,
+        destination: &AnnotationResource<A::Handle>,
         task: &SaveId,
     ) -> Result<SaveReport, SessionError> {
         let outcome = self.owner.save_outcome(task, &mut self.diagnostics)?;
@@ -139,7 +151,7 @@ impl LocalHost {
     /// Success is not a source save, file-pair atomicity or crash-durability claim.
     pub fn publish_annotation_save_baseline(
         &mut self,
-        destination: &AnnotationResource,
+        destination: &AnnotationResource<A::Handle>,
         task: &SaveId,
     ) -> Result<bool, SessionError> {
         let outcome = self.owner.save_outcome(task, &mut self.diagnostics)?;
@@ -156,7 +168,7 @@ impl LocalHost {
 
     pub fn annotation_baseline(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
     ) -> Result<Option<AnnotationBaselineFact>, SessionError> {
         let pair = self.ordinary_pair(&document.loaded.document)?;
         Ok(self.owner.annotation_baseline(

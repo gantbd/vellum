@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::LocalHost;
 use vellum_engine::coordinator::{
     HistoryDirection, SearchBudget, SearchDirection, SearchLimits, SearchNavigation, SearchRequest,
     SearchScope, SearchSelection, SearchStatus,
@@ -15,7 +16,6 @@ use vellum_engine::resource::{
     Acknowledgment, Application, Protection, SaveRequirements, Synchronization,
 };
 use vellum_engine::source::Replacement;
-use vellum_session::host::LocalHost;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
@@ -47,7 +47,7 @@ impl Drop for Fixture {
         fs::remove_dir(&self.0).unwrap();
     }
 }
-fn config(capacity: usize) -> vellum_session::host::SessionConfig {
+fn config(capacity: usize) -> support::SessionConfig {
     let mut config = support::config(capacity, true);
     config.engine.search = Some(SearchLimits {
         max_sessions_issued: 8,

@@ -6,7 +6,8 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
-use vellum_annotation_json::*;
+use support::{LocalHost, SessionConfig};
+use vellum_adapter_annotation_json::*;
 use vellum_engine::attachment::{Affinity, AttachmentTarget, PointProfile};
 use vellum_engine::coordinator::{
     AnnotationLimits, AnnotationMutation, AnnotationSnapshot, DocumentVersion, SourceTarget,
@@ -17,7 +18,6 @@ use vellum_engine::resource::{
     Acknowledgment, Application, Protection, SaveRequirements, Synchronization,
 };
 use vellum_engine::source::Replacement;
-use vellum_session::host::{LocalHost, SessionConfig};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {
@@ -55,7 +55,7 @@ impl Drop for Fixture {
 }
 fn config(capacity: usize) -> SessionConfig {
     let mut c = support::config(capacity, true);
-    c.filesystem.max_resources = 2;
+    c.resource_adapter.limits_mut().max_resources = 2;
     c.engine.annotations = Some(AnnotationLimits {
         max_issued: 16,
         max_records: 16,
@@ -155,7 +155,13 @@ fn separate_json_save_preserves_profiles_and_does_not_turn_source_save_into_pair
         let aliases = associations(&snapshot);
         let encoder = host.register_annotation_encoder().unwrap();
         let encoded = host
-            .encode_annotation_json(&snapshot, &aliases, limits(), &encoder)
+            .encode_annotations(
+                &JsonAnnotationCodec,
+                &snapshot,
+                &aliases,
+                limits(),
+                &encoder,
+            )
             .unwrap();
         let task = host
             .queue_annotation_save(&destination, encoded, requirements())
@@ -269,7 +275,13 @@ fn annotation_binding_clones_share_only_actual_written_checkpoints_not_fresh_pro
     let initial = populate(&mut host, &version);
     let encoder = host.register_annotation_encoder().unwrap();
     let encoded = host
-        .encode_annotation_json(&initial, &associations(&initial), limits(), &encoder)
+        .encode_annotations(
+            &JsonAnnotationCodec,
+            &initial,
+            &associations(&initial),
+            limits(),
+            &encoder,
+        )
         .unwrap();
     let first = host
         .queue_annotation_save(&destination, encoded, requirements())
@@ -282,7 +294,13 @@ fn annotation_binding_clones_share_only_actual_written_checkpoints_not_fresh_pro
     drop(initial);
     let current = host.capture_annotations(&version, 1).unwrap();
     let encoded = host
-        .encode_annotation_json(&current, &associations(&current), limits(), &encoder)
+        .encode_annotations(
+            &JsonAnnotationCodec,
+            &current,
+            &associations(&current),
+            limits(),
+            &encoder,
+        )
         .unwrap();
     let second = host
         .queue_annotation_save(&clone, encoded, requirements())
@@ -295,7 +313,13 @@ fn annotation_binding_clones_share_only_actual_written_checkpoints_not_fresh_pro
     fs::write(f.notes(), b"external update").unwrap();
     let current = host.capture_annotations(&version, 1).unwrap();
     let encoded = host
-        .encode_annotation_json(&current, &associations(&current), limits(), &encoder)
+        .encode_annotations(
+            &JsonAnnotationCodec,
+            &current,
+            &associations(&current),
+            limits(),
+            &encoder,
+        )
         .unwrap();
     assert!(
         host.queue_annotation_save(&destination, encoded, requirements())
@@ -315,7 +339,13 @@ fn changed_destination_preserves_original_attempt_and_never_silently_retries() {
     let snapshot = populate(&mut host, &version);
     let encoder = host.register_annotation_encoder().unwrap();
     let encoded = host
-        .encode_annotation_json(&snapshot, &associations(&snapshot), limits(), &encoder)
+        .encode_annotations(
+            &JsonAnnotationCodec,
+            &snapshot,
+            &associations(&snapshot),
+            limits(),
+            &encoder,
+        )
         .unwrap();
     let task = host
         .queue_annotation_save(&destination, encoded, requirements())
@@ -344,7 +374,13 @@ fn saved_notes(f: &Fixture) -> CaptureAssociations {
     let aliases = associations(&snapshot);
     let encoder = host.register_annotation_encoder().unwrap();
     let encoded = host
-        .encode_annotation_json(&snapshot, &aliases, limits(), &encoder)
+        .encode_annotations(
+            &JsonAnnotationCodec,
+            &snapshot,
+            &aliases,
+            limits(),
+            &encoder,
+        )
         .unwrap();
     let task = host
         .queue_annotation_save(&destination, encoded, requirements())
@@ -400,23 +436,35 @@ fn fresh_owner_restores_original_profiles_with_explicit_approval_and_loaded_base
         let restorer = host.register_annotation_restorer(&encoder).unwrap();
         approved.records[0].incarnation += 1;
         let decoded = host
-            .decode_annotation_json(&attempt, &context, limits())
+            .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
             .unwrap();
         assert!(
-            host.restore_annotation_json(decoded, &approved, &restorer, limits())
-                .is_err()
+            host.restore_annotations(
+                &JsonAnnotationCodec,
+                decoded,
+                &approved,
+                &restorer,
+                limits()
+            )
+            .is_err()
         );
         assert_eq!(host.annotation_usage().present_records, 0);
         assert!(!host.annotation_read_status(&attempt).unwrap().restored);
         approved.records[0].incarnation -= 1;
         let decoded = host
-            .decode_annotation_json(&attempt, &context, limits())
+            .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
             .unwrap();
         let delivery_loan = host
-            .decode_annotation_json(&attempt, &context, limits())
+            .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
             .unwrap();
         let outcome = host
-            .restore_annotation_json(decoded, &approved, &restorer, limits())
+            .restore_annotations(
+                &JsonAnnotationCodec,
+                decoded,
+                &approved,
+                &restorer,
+                limits(),
+            )
             .unwrap();
         assert!(outcome.changed && !outcome.loaded_baseline_adopted);
         assert_eq!(outcome.source, version);
@@ -457,7 +505,13 @@ fn fresh_owner_restores_original_profiles_with_explicit_approval_and_loaded_base
         };
         assert_eq!(fact.origin, *attempt.native_id());
         let encoded = host
-            .encode_annotation_json(&restored, &associations(&restored), limits(), &encoder)
+            .encode_annotations(
+                &JsonAnnotationCodec,
+                &restored,
+                &associations(&restored),
+                limits(),
+                &encoder,
+            )
             .unwrap();
         assert_eq!(
             host.compare_annotations(&doc, &encoded, 65536).unwrap(),
@@ -474,7 +528,13 @@ fn fresh_owner_restores_original_profiles_with_explicit_approval_and_loaded_base
             .capture_annotations(&version, outcome.set_version)
             .unwrap();
         let checkpoint = host
-            .encode_annotation_json(&current, &associations(&current), limits(), &encoder)
+            .encode_annotations(
+                &JsonAnnotationCodec,
+                &current,
+                &associations(&current),
+                limits(),
+                &encoder,
+            )
             .unwrap();
         let save = host
             .queue_annotation_save(&destination, checkpoint, requirements())
@@ -549,7 +609,7 @@ fn source_change_after_decode_refuses_native_activation_without_overwriting_auth
     let encoder = host.register_annotation_encoder().unwrap();
     let restorer = host.register_annotation_restorer(&encoder).unwrap();
     let decoded = host
-        .decode_annotation_json(&attempt, &context, limits())
+        .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
         .unwrap();
     host.edit(
         &version,
@@ -562,12 +622,18 @@ fn source_change_after_decode_refuses_native_activation_without_overwriting_auth
     )
     .unwrap();
     assert!(
-        host.decode_annotation_json(&attempt, &context, limits())
+        host.decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
             .is_err()
     );
     assert!(
-        host.restore_annotation_json(decoded, &approved, &restorer, limits())
-            .is_err()
+        host.restore_annotations(
+            &JsonAnnotationCodec,
+            decoded,
+            &approved,
+            &restorer,
+            limits()
+        )
+        .is_err()
     );
     assert!(host.annotation_restoration_outcome(&attempt).is_err());
     assert_eq!(host.annotation_usage().present_records, 0);
@@ -604,7 +670,7 @@ fn malformed_json_and_foreign_attempts_never_become_restoration_or_saved_evidenc
         text: "ABC\r\n".into(),
     };
     assert!(
-        host.decode_annotation_json(&attempt, &context, limits())
+        host.decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
             .is_err()
     );
     assert!(host.annotation_restoration_outcome(&attempt).is_err());
@@ -652,13 +718,19 @@ fn disposed_restored_documents_release_both_bindings_original_read_and_actual_pa
     let encoder = host.register_annotation_encoder().unwrap();
     let restorer = host.register_annotation_restorer(&encoder).unwrap();
     let decoded = host
-        .decode_annotation_json(&attempt, &context, limits())
+        .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
         .unwrap();
     let delivery_loan = host
-        .decode_annotation_json(&attempt, &context, limits())
+        .decode_annotations(&JsonAnnotationCodec, &attempt, &context, limits())
         .unwrap();
-    host.restore_annotation_json(decoded, &approved, &restorer, limits())
-        .unwrap();
+    host.restore_annotations(
+        &JsonAnnotationCodec,
+        decoded,
+        &approved,
+        &restorer,
+        limits(),
+    )
+    .unwrap();
     host.enable_annotation_read_baselines().unwrap();
     host.adopt_loaded_annotation_baseline(&attempt, 65536)
         .unwrap();

@@ -4,7 +4,6 @@
 //! for untrusted callers without a separately enforced host authority boundary.
 //! Engine versions, history groups and save tasks remain original opaque handles;
 //! there is no string-ID registry, automatic retry or implicit conflict repair.
-use std::path::Path;
 use vellum_engine::coordinator::{
     CommitOutcome, CoordinatorConfig, CoordinatorError, DocumentEdits, DocumentId, DocumentVersion,
     HistoryAvailability, HistoryDirection, HistoryError, HistoryGroupId, LifecycleState,
@@ -17,7 +16,10 @@ use vellum_engine::resource::{
     SavedState,
 };
 use vellum_engine::source::Replacement;
-use vellum_local_fs::{FilesystemError, FilesystemLimits, LocalFilesystem, ResourceHandle};
+use vellum_sdk::resource::{
+    AdapterFailure, ClassifiedAdapterError, ResourceAdapter, ResourceAdapterFactory,
+    WriteCompletion,
+};
 mod annotations;
 pub use annotations::AnnotationCommit;
 mod annotation_storage;
@@ -39,12 +41,13 @@ mod unicode;
 mod views;
 
 /// Caller-selected host limits; no implicit deployment budgets or SLOs.
-pub struct SessionConfig {
+pub struct SessionConfig<F> {
     pub engine: CoordinatorConfig,
     /// Optional explicit native view profile, not a UI or Unicode provider.
     pub logical_views: Option<vellum_engine::coordinator::LogicalViewLimits>,
     pub line_edits: Option<vellum_engine::coordinator::LineEditBudget>,
-    pub filesystem: FilesystemLimits,
+    /// Concrete resource construction selected by the composition root.
+    pub resource_adapter: F,
     pub capture_capacity: usize,
     pub timing: NativeTimingProfileV1,
 }
@@ -60,8 +63,8 @@ pub enum SessionError {
     History(HistoryError),
     Search(SearchError),
     Resource(ResourceError),
-    Filesystem(FilesystemError),
-    AnnotationCodec(vellum_annotation_json::CodecError),
+    Adapter(AdapterFailure),
+    AnnotationCodec(vellum_sdk::annotation::AnnotationCodecFailure),
     Serialization(vellum_engine::coordinator::SourceSerializationErrorV1),
     Selection(vellum_engine::selection::SelectionError),
     LineEdit(vellum_engine::coordinator::LineEditError),
@@ -98,11 +101,6 @@ impl From<ResourceError> for SessionError {
         Self::Resource(value)
     }
 }
-impl From<FilesystemError> for SessionError {
-    fn from(value: FilesystemError) -> Self {
-        Self::Filesystem(value)
-    }
-}
 impl From<vellum_engine::selection::SelectionError> for SessionError {
     fn from(value: vellum_engine::selection::SelectionError) -> Self {
         Self::Selection(value)
@@ -124,13 +122,13 @@ impl From<vellum_engine::coordinator::InvocationError> for SessionError {
 #[derive(Debug)]
 pub struct SaveReport {
     pub outcome: SaveOutcome,
-    pub failure: Option<FilesystemError>,
+    pub failure: Option<AdapterFailure>,
     pub cleanup_failed: bool,
 }
 
-pub struct LocalHost {
+pub struct LocalHost<A: ResourceAdapter> {
     owner: SourceCoordinator,
-    filesystem: LocalFilesystem,
+    resource_adapter: A,
     diagnostics: Recorder,
     invocation_claims: invocation_claims::Claims,
     copy_transfers: Option<copy_transfer::CopyTransfers>,
@@ -138,14 +136,17 @@ pub struct LocalHost {
 /// Original native identities, not independent authority or a string-ID registry.
 /// Clones cannot revive a disposed/reclaimed incarnation.
 #[derive(Clone)]
-pub struct LocalDocument {
-    pub(crate) resource: ResourceHandle,
+pub struct LocalDocument<H> {
+    pub(crate) resource: H,
     pub(crate) loaded: DocumentVersion,
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Configure one host for many files. Provider ownership stays exclusive to
     /// this trusted local embedding; paths never enter the semantic engine.
-    pub fn new(config: SessionConfig) -> Result<Self, SessionError> {
+    pub fn new<F>(config: SessionConfig<F>) -> Result<Self, SessionError>
+    where
+        F: ResourceAdapterFactory<Adapter = A>,
+    {
         if config.engine.resources.is_none() {
             return Err(SessionError::InvalidConfig);
         }
@@ -170,10 +171,13 @@ impl LocalHost {
             None,
             &mut diagnostics,
         )?;
-        let filesystem = LocalFilesystem::new(port, config.filesystem);
+        let resource_adapter = config
+            .resource_adapter
+            .build(port)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         Ok(Self {
             owner,
-            filesystem,
+            resource_adapter,
             diagnostics,
             invocation_claims: invocation_claims::Claims::new(claim_limit),
             copy_transfers: None,
@@ -182,13 +186,19 @@ impl LocalHost {
 
     /// Existing supported files only. Native adapter bindings are bounded by
     /// caller limits; disposal does not reset lifetime engine/adapter budgets.
-    pub fn open(&mut self, path: &Path) -> Result<LocalDocument, SessionError> {
-        let (resource, read) = self.filesystem.open(path, &mut self.diagnostics)?;
+    pub fn open(&mut self, locator: &A::Locator) -> Result<LocalDocument<A::Handle>, SessionError> {
+        let (resource, read) = self
+            .resource_adapter
+            .open(locator, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let loaded = self.owner.load_resource(read, &mut self.diagnostics)?;
         Ok(LocalDocument { resource, loaded })
     }
 
-    pub fn read(&mut self, document: &LocalDocument) -> Result<SourceRead<'_>, SessionError> {
+    pub fn read(
+        &mut self,
+        document: &LocalDocument<A::Handle>,
+    ) -> Result<SourceRead<'_>, SessionError> {
         Ok(self
             .owner
             .read(&document.loaded.document, &mut self.diagnostics)?)
@@ -198,7 +208,7 @@ impl LocalHost {
     /// grant inferred from handle possession. Native publishers enforce it.
     pub fn set_editing_locked(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         locked: bool,
     ) -> Result<(), SessionError> {
         Ok(self
@@ -237,7 +247,7 @@ impl LocalHost {
     /// frontiers are selected explicitly with `reverse_annotation`.
     pub fn reverse(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         direction: HistoryDirection,
     ) -> Result<bool, SessionError> {
         let status = self.owner.history_status(
@@ -268,7 +278,10 @@ impl LocalHost {
 
     /// Original engine search owner. Requires caller-configured search limits;
     /// no fallback scan or independent result registry is created by this SDK.
-    pub fn open_search(&mut self, document: &LocalDocument) -> Result<SearchSession, SessionError> {
+    pub fn open_search(
+        &mut self,
+        document: &LocalDocument<A::Handle>,
+    ) -> Result<SearchSession, SessionError> {
         Ok(self
             .owner
             .open_search(&document.loaded.document, &mut self.diagnostics)?)
@@ -349,7 +362,7 @@ impl LocalHost {
     /// The original task remains queryable/control-capable after any error.
     pub fn service_save(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         task: &SaveId,
     ) -> Result<SaveReport, SessionError> {
         self.service_resource(&document.loaded.document, &document.resource, task)
@@ -362,9 +375,9 @@ impl LocalHost {
         self.owner
             .ordinary_pair_check(document, &mut self.diagnostics)?
             .map(|check| {
-                self.filesystem
+                self.resource_adapter
                     .compare_ordinary_pair(&check, &mut self.diagnostics)
-                    .map_err(Into::into)
+                    .map_err(|error| SessionError::Adapter(error.classification()))
             })
             .transpose()
     }
@@ -372,7 +385,7 @@ impl LocalHost {
     fn service_resource(
         &mut self,
         document: &DocumentId,
-        resource: &ResourceHandle,
+        resource: &A::Handle,
         task: &SaveId,
     ) -> Result<SaveReport, SessionError> {
         Ok(self
@@ -382,7 +395,7 @@ impl LocalHost {
     fn service_resource_observed(
         &mut self,
         document: &DocumentId,
-        resource: &ResourceHandle,
+        resource: &A::Handle,
         task: &SaveId,
         observe_written: bool,
     ) -> Result<(SaveReport, Option<vellum_engine::resource::ResourceRead>), SessionError> {
@@ -390,7 +403,10 @@ impl LocalHost {
         if outcome.captured.document != *document {
             return Err(SessionError::WrongDocument);
         }
-        let (read, probe) = self.filesystem.probe(resource, &mut self.diagnostics)?;
+        let (read, probe) = self
+            .resource_adapter
+            .probe(resource, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let pair = self.ordinary_pair(document)?;
         let dispatch = match pair {
             Some(pair) => {
@@ -402,11 +418,13 @@ impl LocalHost {
                 .dispatch_save(task, read, &mut self.diagnostics)?,
         };
         let mut completion = if observe_written {
-            self.filesystem
-                .write_observed(dispatch, probe, &mut self.diagnostics)?
+            self.resource_adapter
+                .write_observed(dispatch, probe, &mut self.diagnostics)
+                .map_err(|error| SessionError::Adapter(error.classification()))?
         } else {
-            self.filesystem
-                .write(dispatch, probe, &mut self.diagnostics)?
+            self.resource_adapter
+                .write(dispatch, probe, &mut self.diagnostics)
+                .map_err(|error| SessionError::Adapter(error.classification()))?
         };
         let written = completion.written_observation.take();
         Ok((self.finish_write(task, completion)?, written))
@@ -415,9 +433,12 @@ impl LocalHost {
     fn finish_write(
         &mut self,
         task: &SaveId,
-        completion: vellum_local_fs::WriteCompletion,
+        completion: WriteCompletion<A::Error>,
     ) -> Result<SaveReport, SessionError> {
-        let failure = completion.failure;
+        let failure = completion
+            .failure
+            .as_ref()
+            .map(ClassifiedAdapterError::classification);
         let cleanup_failed = completion.cleanup_failed;
         self.owner
             .record_save_evidence(completion.result, &mut self.diagnostics)?;
@@ -450,7 +471,10 @@ impl LocalHost {
     pub fn save_outcome(&mut self, task: &SaveId) -> Result<SaveOutcome, SessionError> {
         Ok(self.owner.save_outcome(task, &mut self.diagnostics)?)
     }
-    pub fn saved_state(&mut self, document: &LocalDocument) -> Result<SavedState, SessionError> {
+    pub fn saved_state(
+        &mut self,
+        document: &LocalDocument<A::Handle>,
+    ) -> Result<SavedState, SessionError> {
         Ok(self
             .owner
             .saved_state(&document.loaded.document, &mut self.diagnostics)?)
@@ -485,7 +509,10 @@ impl LocalHost {
         self.owner.resource_usage()
     }
 
-    pub fn lifecycle(&mut self, document: &LocalDocument) -> Result<LifecycleState, SessionError> {
+    pub fn lifecycle(
+        &mut self,
+        document: &LocalDocument<A::Handle>,
+    ) -> Result<LifecycleState, SessionError> {
         Ok(self
             .owner
             .lifecycle_state(&document.loaded.document, &mut self.diagnostics)?)
@@ -509,7 +536,7 @@ impl LocalHost {
     /// Retained outcomes and actual producer obligations can still block cleanup.
     pub fn release_provenance(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         expected: LifecycleState,
     ) -> Result<LifecycleState, SessionError> {
         self.owner.release_disposed_provenance(
@@ -524,7 +551,7 @@ impl LocalHost {
     /// release history or retained results and is not file deletion.
     pub fn release_source_binding(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         expected: LifecycleState,
     ) -> Result<LifecycleState, SessionError> {
         self.owner.release_disposed_source_binding(
@@ -550,7 +577,7 @@ impl LocalHost {
     /// still checks pins, lifetimes and obligations before final reclamation.
     pub fn reclaim(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         expected: LifecycleState,
         facts: &TrustedDocumentReclamationV1,
     ) -> Result<(), SessionError> {
@@ -569,7 +596,7 @@ impl LocalHost {
     /// unpacking and return this intact host. Discharge them explicitly before
     /// retrying; dropping is not discharge.
     #[allow(clippy::result_large_err)] // Preserve owners without allocating on refusal.
-    pub fn into_parts(self) -> Result<(SourceCoordinator, LocalFilesystem, Recorder), Self> {
+    pub fn into_parts(self) -> Result<(SourceCoordinator, A, Recorder), Self> {
         if self.invocation_claims.retained() != 0
             || self
                 .copy_transfers
@@ -578,6 +605,6 @@ impl LocalHost {
         {
             return Err(self);
         }
-        Ok((self.owner, self.filesystem, self.diagnostics))
+        Ok((self.owner, self.resource_adapter, self.diagnostics))
     }
 }

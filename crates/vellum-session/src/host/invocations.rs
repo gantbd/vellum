@@ -5,7 +5,7 @@ use vellum_engine::coordinator::{
     InvocationId, InvocationOutcome, InvocationState, InvocationUsage, SourceIntent,
 };
 
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Caller must explicitly configure CoordinatorConfig::invocation. This
     /// returns the actual engine-issued identity, never a string correlation ID.
     pub fn issue_invocation(&mut self) -> Result<InvocationId, SessionError> {

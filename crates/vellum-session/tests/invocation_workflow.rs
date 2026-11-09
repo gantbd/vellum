@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::{LocalDocument, LocalHost};
 use vellum_engine::{
     coordinator::{
         DocumentEdits, HistoryDirection, InvocationLimits, InvocationOutcome, InvocationState,
@@ -15,7 +16,6 @@ use vellum_engine::{
     resource::{Acknowledgment, Application, Protection, SaveRequirements, Synchronization},
     source::Replacement,
 };
-use vellum_session::host::{LocalDocument, LocalHost};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {
@@ -45,9 +45,9 @@ impl Drop for Fixture {
         fs::remove_dir(&self.0).unwrap();
     }
 }
-fn config(capacity: usize) -> vellum_session::host::SessionConfig {
+fn config(capacity: usize) -> support::SessionConfig {
     let mut config = support::config(capacity, true);
-    config.filesystem.max_resources = 2;
+    config.resource_adapter.limits_mut().max_resources = 2;
     config.engine.invocation = Some(InvocationLimits {
         max_lifetime_issued: 8,
         max_retained: 4,

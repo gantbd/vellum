@@ -6,12 +6,13 @@ mod support;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use support::LocalHost;
+use support::LocalSession;
 use vellum_engine::coordinator::{CoordinatorError, HistoryDirection};
 use vellum_engine::instrumentation::Boundary;
 use vellum_engine::resource::{Acknowledgment, Application, Protection, SaveRequirements};
 use vellum_engine::source::Replacement;
-use vellum_session::host::LocalHost;
-use vellum_session::local::{LocalSession, SessionError};
+use vellum_session::local::SessionError;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
@@ -232,7 +233,7 @@ fn one_host_publishes_cross_file_edits_and_reverses_linked_history_atomically() 
     let f = Fixture::new(b"A");
     let g = Fixture::new(b"A");
     let mut config = support::config(256, true);
-    config.filesystem.max_resources = 4;
+    config.resource_adapter.limits_mut().max_resources = 4;
     let mut host = LocalHost::new(config).unwrap();
     let first = host.open(&f.path()).unwrap();
     let second = host.open(&g.path()).unwrap();
@@ -317,7 +318,7 @@ fn save_cannot_be_routed_to_another_document_in_the_same_host() {
     let f = Fixture::new(b"A");
     let g = Fixture::new(b"A");
     let mut config = support::config(0, false);
-    config.filesystem.max_resources = 2;
+    config.resource_adapter.limits_mut().max_resources = 2;
     let mut host = LocalHost::new(config).unwrap();
     let first = host.open(&f.path()).unwrap();
     let second = host.open(&g.path()).unwrap();

@@ -95,7 +95,7 @@ impl Claims {
         Ok(())
     }
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     pub(super) fn require_unclaimed_invocation(
         &mut self,
         id: &InvocationId,

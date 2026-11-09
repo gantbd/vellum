@@ -2,7 +2,7 @@
 //! No second root publisher, clipboard undo or shadow "committed" bit.
 use super::*;
 
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Current task evidence + retained native local decision under one exclusive
     /// host borrow. Later contradictions change a later report, not source/undo.
     pub fn cut_report(&mut self, task: &CopyTaskV1) -> Result<CutReportV1, SessionError> {

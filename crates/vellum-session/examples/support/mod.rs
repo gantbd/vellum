@@ -1,9 +1,20 @@
+#![allow(dead_code)]
+
+use vellum_adapter_local_fs::{
+    FilesystemLimits, LocalFilesystem, LocalFilesystemFactory, ResourceHandle,
+};
 use vellum_engine::coordinator::{CoordinatorConfig, CoordinatorLimits, HistoryLimits};
 use vellum_engine::instrumentation::NativeTimingProfileV1;
 use vellum_engine::resource::ResourceLimits;
 use vellum_engine::source::Limits;
-use vellum_local_fs::FilesystemLimits;
-use vellum_session::local::SessionConfig;
+use vellum_session::{
+    host::{LocalDocument as GenericDocument, LocalHost as GenericHost},
+    local::{LocalSession as GenericLocalSession, SessionConfig as GenericSessionConfig},
+};
+pub type SessionConfig = GenericSessionConfig<LocalFilesystemFactory>;
+pub type LocalHost = GenericHost<LocalFilesystem>;
+pub type LocalDocument = GenericDocument<ResourceHandle>;
+pub type LocalSession = GenericLocalSession<LocalFilesystem>;
 
 // Explicit example-host budgets, not engine defaults or a supported product SLO.
 pub fn config(capture_capacity: usize, timed: bool) -> SessionConfig {
@@ -51,12 +62,12 @@ pub fn config(capture_capacity: usize, timed: bool) -> SessionConfig {
             search: None,
             annotations: None,
         },
-        filesystem: FilesystemLimits {
+        resource_adapter: LocalFilesystemFactory::new(FilesystemLimits {
             max_resources: 1,
             max_bytes: 65536,
             max_stage_attempts: 16,
             max_metadata_bytes: 65536,
-        },
+        }),
         capture_capacity,
         timing: if timed {
             NativeTimingProfileV1::ProcessMonotonicV1
