@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Provisional headless editor engine scaffolding"
+description = "Bounded headless semantic editing engine for code and prose"
 
 [dependencies]
 keystone-observe = { version = "=0.0.1", path = "../../../keystone/crates/keystone-observe" }
