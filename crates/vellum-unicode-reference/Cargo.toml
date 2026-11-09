@@ -2,16 +2,19 @@
 name = "vellum-unicode-reference"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [features]
 reference-conformance = []
 icu4x-conformance = ["dep:icu_segmenter"]
 icu4c-conformance = ["dep:rust_icu_ubrk", "dep:rust_icu_sys"]
-native-conformance = ["reference-conformance", "dep:vellum-unicode-icu"]
+native-conformance = ["reference-conformance", "dep:vellum-adapter-unicode-icu"]
 
 [dependencies]
-vellum-engine = { path = "../vellum-engine" }
+vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
@@ -19,7 +22,7 @@ base64 = "=0.22.1"
 icu_segmenter = { version = "=2.4.0", optional = true, default-features = false, features = ["compiled_data"] }
 rust_icu_ubrk = { version = "=5.8.0", optional = true }
 rust_icu_sys = { version = "=5.8.0", optional = true }
-vellum-unicode-icu = { path = "../vellum-unicode-icu", optional = true }
+vellum-adapter-unicode-icu = { version = "=0.1.0", path = "../vellum-adapter-unicode-icu", optional = true }
 
 [[test]]
 name = "reference_conformance"

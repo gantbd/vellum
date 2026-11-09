@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "distributionPackage": "vellum",
+  "defaultBinary": "vellum",
+  "desktopBinary": "vellum-desktop",
+  "commands": [
+    "cargo install vellum --locked",
+    "cargo install vellum --locked --features desktop"
+  ],
+  "initialPlatformProfile": "macos",
+  "layout": "monorepo-migration",
+  "admittedBlockers": [
+    "install-closure-publish-disabled",
+    "keystone-observe-unpublished",
+    "native-icu4c-discovery",
+    "patch-iced-core",
+    "patch-iced-graphics",
+    "patch-iced-widget",
+    "patch-objc2-app-kit",
+    "project-extraction-pending"
+  ]
+}

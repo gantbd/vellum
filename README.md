@@ -212,7 +212,7 @@ production budget. Copies leave original saved-state unchanged.
 ### Terminal editor
 
 ```sh
-cargo run --release --offline -p vellum-tui -- path/to/existing-file another-file
+cargo run --release --offline -p vellum -- path/to/existing-file another-file
 ```
 
 The ratatui example uses one host across tabs: type/paste committed text,
@@ -262,7 +262,7 @@ the native integration; F12 retries retained delivery, not platform I/O. Ctrl-Q
 remains quit. Mouse, live OS clipboard, IME preedit, bidi layout,
 screen-reader support and full engine-feature UI parity are not yet qualified.
 
-Run `cargo run --release --offline -p vellum-editor --example interaction` for
+Run `cargo run --release --offline -p vellum-model --example interaction` for
 the bounded warm-process insert/frame/backspace/frame workload. It checks content,
 diagnostic loss and owner cleanup across off/enabled/saturated capture. This
 measures presentation preparation plus engine service—not terminal drawing,
@@ -383,18 +383,27 @@ protocol, production-provider certification or adopted product latency SLO.
 
 ## Workspace and boundaries
 
+The accepted project split and migration gates are recorded in
+[Project boundaries](docs/project-boundaries.md). `make check-boundaries`
+enforces the closed dependency families and the exact bounded set of legacy
+reverse edges until SDK port inversion removes them.
+[Cargo installation](docs/installability.md) defines the final clean-install
+contract; `make check-installability` rejects unpinned local dependencies and
+any growth or drift in the bounded release blockers.
+
 | Crate | Responsibility |
 | --- | --- |
 | [vellum-engine](crates/vellum-engine/src/lib.rs) | Semantic owners, behavior facade, authorization guards, retained outcomes and bounded instrumentation; no third-party dependencies |
+| [vellum-sdk](crates/vellum-sdk/src/lib.rs) | Adapter-neutral host contracts and closed resource-effect vocabulary; no concrete adapter or application selection |
 | [vellum-session](crates/vellum-session/src/host.rs) | One trusted host for multiple local files; atomic edits, linked history, explicit save/lifecycle operations and bounded diagnostics; no UI or policy evaluator |
-| [vellum-clipboard-macos](crates/vellum-clipboard-macos/src/lib.rs) | Main-thread AppKit plain-text I/O and original-operation Editor adapter; shared reference workflow wired into both UIs, retained receipts, explicit outcomes, lossless bytes and content-free measurements; live OS qualification remains open |
-| [vellum-editor](crates/vellum-editor/src/app.rs) | Shared presentation/interaction state above the host; cursor, viewport, status and explicit application-owner cleanup |
-| [vellum-tui](crates/vellum-tui/src/terminal.rs) | Ratatui projection and terminal-only key bindings; no independent source or history owner |
+| [vellum-adapter-clipboard-macos](crates/vellum-adapter-clipboard-macos/src/lib.rs) | Main-thread AppKit plain-text I/O and original-operation Editor adapter; shared reference workflow wired into both UIs, retained receipts, explicit outcomes, lossless bytes and content-free measurements; live OS qualification remains open |
+| [vellum-model](crates/vellum-model/src/app.rs) | Shared presentation/interaction state above the host; cursor, viewport, status and explicit application-owner cleanup |
+| [vellum](crates/vellum-tui/src/terminal.rs) | Cargo distribution package and Ratatui projection; terminal-only key bindings, no independent source or history owner |
 | [vellum-iced](crates/vellum-iced/src/bridge.rs) | Iced widget projection, original-coordinate edit translation, attachment tokens and GUI-only bindings; no independent source/history authority |
-| [vellum-local-fs](crates/vellum-local-fs/src/lib.rs) | Separate first substrate adapter; conservative native macOS filesystem profile |
-| [vellum-annotation-json](crates/vellum-annotation-json/src/lib.rs) | Separate reference annotation persistence codec |
+| [vellum-adapter-local-fs](crates/vellum-adapter-local-fs/src/lib.rs) | Separate first substrate adapter; conservative native macOS filesystem profile |
+| [vellum-adapter-annotation-json](crates/vellum-adapter-annotation-json/src/lib.rs) | Separate reference annotation persistence codec |
 | [vellum-unicode-reference](crates/vellum-unicode-reference/src/lib.rs) | Pinned reference-provider conformance adapter, not an engine dependency or production-provider selection |
-| [vellum-unicode-icu](crates/vellum-unicode-icu/README.md) | Bounded in-process Unicode 18 adapter: qualified ICU4C graphemes, normative default words and pinned properties; opt-in shared-editor integration enabled by both reference apps; rendering and native distribution remain separate |
+| [vellum-adapter-unicode-icu](crates/vellum-adapter-unicode-icu/README.md) | Bounded in-process Unicode 18 adapter: qualified ICU4C graphemes, normative default words and pinned properties; opt-in shared-editor integration enabled by both reference apps; rendering and native distribution remain separate |
 
 ### First local-filesystem adapter
 

@@ -1,0 +1,22 @@
+[package]
+name = "vellum-adapter-local-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
+vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "=1.1.4", features = ["fs"] }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"

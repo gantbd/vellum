@@ -11,12 +11,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(target_os = "macos")]
 fn run(mut args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::error::Error>> {
     use std::path::Path;
+    use support::LocalHost;
     use vellum_engine::coordinator::{HistoryDirection, TrustedDocumentReclamationV1};
     use vellum_engine::resource::{
         Acknowledgment, Application, Protection, SaveRequirements, Synchronization,
     };
     use vellum_engine::source::Replacement;
-    use vellum_session::host::LocalHost;
 
     if args.len() == 1 && args[0] == "--help" {
         println!(

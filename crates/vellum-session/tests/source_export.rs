@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::{LocalDocument, LocalHost, SessionConfig};
 use vellum_engine::coordinator::{
     TrustedSourceExportControlV1, TrustedSourceExportFactsV1, TrustedSourceSaveAsFactsV1,
 };
@@ -14,7 +15,6 @@ use vellum_engine::resource::{
     SourceExportPurposeV1, Synchronization,
 };
 use vellum_engine::source::Replacement;
-use vellum_session::host::{LocalDocument, LocalHost, SessionConfig};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {
@@ -52,7 +52,7 @@ impl Drop for Fixture {
 }
 fn config(capacity: usize) -> SessionConfig {
     let mut c = support::config(capacity, true);
-    c.filesystem.max_resources = 3;
+    c.resource_adapter.limits_mut().max_resources = 3;
     c
 }
 fn requirements() -> SaveRequirements {

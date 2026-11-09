@@ -383,7 +383,7 @@ impl CopyTransfers {
         Ok(total)
     }
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Configure once explicitly; no product limits or production provider are
     /// selected. Native invocation/view profiles are also needed for admission.
     pub fn configure_copy_transfers(&mut self, limits: CopyLimitsV1) -> Result<(), SessionError> {

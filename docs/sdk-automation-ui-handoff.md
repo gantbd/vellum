@@ -175,9 +175,9 @@ untrusted-script sandbox or frozen compatibility promise.
   file deletion or whole-engine shutdown.
 - [LocalSession](../crates/vellum-session/src/local.rs): single-file convenience
   over that same host; not a second implementation or engine-per-file mandate.
-- [Editor](../crates/vellum-editor/src/app.rs): shared presentation state above
+- [Editor](../crates/vellum-model/src/app.rs): shared presentation state above
   the host. The reference profile attaches original native logical views;
-  provider-neutral [clipboard routes](../crates/vellum-editor/src/app/clipboard.rs)
+  provider-neutral [clipboard routes](../crates/vellum-model/src/app/clipboard.rs)
   require explicit `configure_clipboard` limits and a native invocation profile.
   Register the real named provider, then begin copy/cut/paste against the active
   native context. The returned redacted `ClipboardPlan` identifies the original
@@ -196,7 +196,7 @@ untrusted-script sandbox or frozen compatibility promise.
   completion follows the original plan, never current focus. A new applied active
   result spends old widget input and refreshes source projection; background
   results and retained retries do not reset the current attachment. Replacement
-  projection caches are staged before installation. `vellum-clipboard-macos`
+  projection caches are staged before installation. `vellum-adapter-clipboard-macos`
   now supplies `EditorClipboard` over those routes: explicit host premises,
   one pending original operation, retained provider receipts and independent
   publication/retirement. Delivery retries never repeat platform work;
@@ -301,7 +301,7 @@ the owning integration must discharge external obligations before retirement.
 ## Development and acceptance
 
 Exercise actual public routes and real temporary files. Start with focused tests
-in `vellum-session`, `vellum-editor` and `vellum-tui`; reserve workspace-wide
+in `vellum-session`, `vellum-model` and `vellum-tui`; reserve workspace-wide
 qualification for the integrated release checkpoint. Preserve tests for stale
 or foreign targets, cross-file dependencies, linked history, external changes,
 lossless bytes, explicit failures, capture pressure and protected cleanup.

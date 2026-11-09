@@ -7,7 +7,7 @@ UI policies part of the engine or require a UI to use the engine.
 
 Both reference consumers now exist: [ratatui](../crates/vellum-tui/src/main.rs)
 and [iced](../crates/vellum-iced/src/gui.rs), over the shared
-[Editor](../crates/vellum-editor/src/app.rs) and one `LocalHost` across files.
+[Editor](../crates/vellum-model/src/app.rs) and one `LocalHost` across files.
 They implement native editing/history/save, search/replacement, explicit
 destination confirmation, editing locks, session comments and guarded close.
 Both UIs expose explicit comment-file save/reopen over the shared Editor, with
@@ -59,12 +59,12 @@ cut deletion, and accepted read data is inert insertion data. Engine insertion
 semantics do not depend on whether text originated from a clipboard, file or agent.
 
 The native headless [transfer integration](../crates/vellum-session/src/host/copy_transfer.rs)
-and [Editor facade](../crates/vellum-editor/src/app/clipboard.rs) implement copy,
+and [Editor facade](../crates/vellum-model/src/app/clipboard.rs) implement copy,
 acknowledged cut and literal paste over original native invocations, captures and
 publication/history. They retain unknown/contested work and separate provider
 acceptance from local application. The selected next provider is eager plain-text
 AppKit, with acceptance distinct from durability or cross-app delivery. The
-`vellum-clipboard-macos` I/O layer now implements bounded eager plain text,
+`vellum-adapter-clipboard-macos` I/O layer now implements bounded eager plain text,
 exception-to-unknown handling, change-count-checked reads and content-free
 outcome/timing counters. Foundation encoding tests preserve literal leading
 U+FEFF, CR/LF, NUL and combining text; they do not access a pasteboard. Joining
@@ -87,8 +87,8 @@ independent clipboard paths remain disabled; no clipboard registry was added to
 the semantic engine. Historical F22/F23/F11 design references are not evidence
 that the remaining provider/UI work is complete.
 
-An opt-in `vellum-clipboard-macos` example prepares isolated live qualification:
-`cargo run --offline -p vellum-clipboard-macos --features private-pasteboard-qualification --example private-pasteboard -- --allow-private-pasteboard`.
+An opt-in `vellum-adapter-clipboard-macos` example prepares isolated live qualification:
+`cargo run --offline -p vellum-adapter-clipboard-macos --features private-pasteboard-qualification --example private-pasteboard -- --allow-private-pasteboard`.
 Run it only after explicit operator approval. It creates unique private AppKit
 pasteboards (never General) and temporary source documents, using the same I/O
 implementation and native controller as the apps. It checks exact raw text,
@@ -115,7 +115,7 @@ The initial Unicode candidate probe is now executable via
 `make check-unicode-icu4x` and `make check-unicode-icu4c` (see the
 [testing guide](engine-test-plan.md)). Stable ICU4X 2.4 passes all 1,944 default
 word cases but fails 10/853 grapheme cases. The installed ICU4C 79.1 root
-character iterator passes all 853 grapheme cases. The separate `vellum-unicode-icu` adapter now
+character iterator passes all 853 grapheme cases. The separate `vellum-adapter-unicode-icu` adapter now
 integrates the ICU4C grapheme fallback and normative default-word rules over pinned
 ICU4X properties with original engine captures. ICU4X's word constructor is not
 used: it groups Thai differently from the raw default profile despite passing

@@ -2,11 +2,14 @@
 name = "vellum-engine"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 description = "Provisional headless editor engine scaffolding"
 
 [dependencies]
-keystone-observe = { path = "../../../keystone/crates/keystone-observe" }
+keystone-observe = { version = "=0.0.1", path = "../../../keystone/crates/keystone-observe" }
 
 [lints]
 workspace = true

@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::LocalHost;
 use vellum_engine::{
     coordinator::{
         DocumentEdits, HistoryDirection, InvocationLimits, InvocationOutcome, InvocationState,
@@ -13,9 +14,7 @@ use vellum_engine::{
     },
     source::Replacement,
 };
-use vellum_session::host::{
-    InvocationClaimErrorV1, InvocationClaimKindV1 as Kind, LocalHost, SessionError,
-};
+use vellum_session::host::{InvocationClaimErrorV1, InvocationClaimKindV1 as Kind, SessionError};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);

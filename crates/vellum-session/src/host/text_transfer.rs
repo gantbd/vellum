@@ -69,7 +69,7 @@ fn add(a: usize, b: usize) -> Result<usize, SessionError> {
     a.checked_add(b)
         .ok_or(failure(TextTransferCaptureErrorV1::Limit))
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Capture only. No request/task issuance, provider I/O, source/history
     /// publication or invocation terminalization follows. The actual native ID
     /// must have been issued by this owner before the future transfer request.

@@ -6,13 +6,14 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::{LocalDocument, LocalHost};
 use vellum_engine::{
     attachment::Affinity,
     coordinates::BytePosition,
     coordinator::{InvocationLimits, InvocationState, LogicalViewContext, LogicalViewLimits},
     selection::{Selection, SelectionBudget},
 };
-use vellum_session::host::{InvocationClaimKindV1, LocalHost, TextTransferCaptureLimitsV1};
+use vellum_session::host::{InvocationClaimKindV1, TextTransferCaptureLimitsV1};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {
@@ -78,7 +79,7 @@ fn view(
     host: &mut LocalHost,
     fixture: &Fixture,
     selections: &[Selection],
-) -> (vellum_session::host::LocalDocument, LogicalViewContext) {
+) -> (LocalDocument, LogicalViewContext) {
     let doc = host.open(&fixture.0.join("source")).unwrap();
     let source = host.read(&doc).unwrap().version;
     let view = host.create_logical_view().unwrap();

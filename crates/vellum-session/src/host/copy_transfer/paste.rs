@@ -60,7 +60,7 @@ fn reserved(bytes: usize) -> Result<String, SessionError> {
         .map_err(|_| fail(CopyErrorV1::Capacity))?;
     Ok(text)
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Explicit bounded plain-paste profile. Provider registrations and total
     /// task/held-byte bounds are shared with copy/cut, not a second registry.
     pub fn configure_paste_transfers(&mut self, limits: PasteLimitsV1) -> Result<(), SessionError> {

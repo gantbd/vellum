@@ -1,14 +1,14 @@
 # Filesystem adapter implementation handoff
 
-Extend and qualify the existing `vellum-local-fs` module independently of semantic
+Extend and qualify the existing `vellum-adapter-local-fs` module independently of semantic
 engine completion. Start with its conservative macOS profile; do not build a
 second filesystem adapter or broaden its guarantees implicitly. This handoff
 organizes implementation against existing contracts, not new requirements.
 
 ## Starting points
 
-- [Adapter implementation](../crates/vellum-local-fs/src/macos.rs) and
-  [real filesystem tests](../crates/vellum-local-fs/src/macos/tests.rs).
+- [Adapter implementation](../crates/vellum-adapter-local-fs/src/macos.rs) and
+  [real filesystem tests](../crates/vellum-adapter-local-fs/src/macos/tests.rs).
 - [Resource module design](substrate-module-design.md) and
   [engine API ownership](engine-api-boundaries.md).
 - [Specification](../specification.md), especially §1.2 and §§11/16–17.
@@ -21,7 +21,7 @@ adapter's supported guarantees.
 
 ## Edit scope and coordination
 
-Own changes under `crates/vellum-local-fs/**`, adapter-specific tests and this
+Own changes under `crates/vellum-adapter-local-fs/**`, adapter-specific tests and this
 handoff. Coordinate edits to workspace manifests, dependencies, shared fixtures,
 engine resource/evidence types or normative documents with the engine thread.
 The SDK/UI stream owns its consumer packages and must not duplicate filesystem
@@ -125,8 +125,8 @@ overhead, and do not invent an accepted latency threshold.
 On macOS, start with focused checks:
 
 ```sh
-cargo test --offline -p vellum-local-fs
-cargo clippy --offline -p vellum-local-fs --all-targets --all-features -- -D warnings
+cargo test --offline -p vellum-adapter-local-fs
+cargo clippy --offline -p vellum-adapter-local-fs --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 ```
 

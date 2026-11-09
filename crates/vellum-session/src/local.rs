@@ -1,24 +1,26 @@
-//! Single-file convenience over the same multi-document host. Applications use
-//! `LocalHost` directly rather than allocate an engine for every file.
+//! Single-resource convenience over the same multi-document host. Applications
+//! use `LocalHost` directly rather than allocate an engine for every resource.
 use crate::host::{LocalDocument, LocalHost};
 pub use crate::host::{SaveReport, SessionConfig, SessionError};
-use std::path::Path;
 use vellum_engine::coordinator::{
     CommitOutcome, DocumentVersion, HistoryDirection, SourceCoordinator, SourceRead,
 };
 use vellum_engine::instrumentation::{Observation, Recorder};
 use vellum_engine::resource::{SaveId, SaveOutcome, SaveRequirements};
 use vellum_engine::source::Replacement;
-use vellum_local_fs::{LocalFilesystem, ResourceHandle};
+use vellum_sdk::resource::{ResourceAdapter, ResourceAdapterFactory};
 
-pub struct LocalSession {
-    host: LocalHost,
-    document: LocalDocument,
+pub struct LocalSession<A: ResourceAdapter> {
+    host: LocalHost<A>,
+    document: LocalDocument<A::Handle>,
 }
-impl LocalSession {
-    pub fn open(path: &Path, config: SessionConfig) -> Result<Self, SessionError> {
+impl<A: ResourceAdapter> LocalSession<A> {
+    pub fn open<F>(locator: &A::Locator, config: SessionConfig<F>) -> Result<Self, SessionError>
+    where
+        F: ResourceAdapterFactory<Adapter = A>,
+    {
         let mut host = LocalHost::new(config)?;
-        let document = host.open(path)?;
+        let document = host.open(locator)?;
         Ok(Self { host, document })
     }
     pub fn read(&mut self) -> Result<SourceRead<'_>, SessionError> {
@@ -69,16 +71,7 @@ impl LocalSession {
     #[allow(clippy::result_large_err)]
     pub fn into_parts(
         self,
-    ) -> Result<
-        (
-            SourceCoordinator,
-            LocalFilesystem,
-            ResourceHandle,
-            DocumentVersion,
-            Recorder,
-        ),
-        Self,
-    > {
+    ) -> Result<(SourceCoordinator, A, A::Handle, DocumentVersion, Recorder), Self> {
         let (owner, filesystem, diagnostics) = match self.host.into_parts() {
             Ok(parts) => parts,
             Err(host) => {

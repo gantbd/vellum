@@ -1,11 +1,12 @@
 //! Original provider-attributed reads, inert JSON decoding and native activation.
 use super::*;
-use vellum_annotation_json::{
-    DecodeContext, DecodedAnnotationRead, RestorationAssociations, RestorationBoundaryError,
-};
 use vellum_engine::resource::{
     AnnotationBaselineEvidence, AnnotationReadId, AnnotationReadStatus,
     AnnotationRestorationOutcome, AnnotationRestorerPort, ContentComparison, ReadStrength,
+};
+use vellum_sdk::annotation::{
+    AnnotationCodec, AnnotationRestorationFailure, CodecLimits, DeclaredContext, DecodeContext,
+    DecodedAnnotationRead, RestorationAssociations,
 };
 
 /// The original native read owner plus its source attribution. Retain this
@@ -27,21 +28,24 @@ impl AnnotationReadAttempt {
 #[derive(Debug)]
 pub struct AnnotationReadReport {
     pub status: AnnotationReadStatus,
-    pub failure: Option<FilesystemError>,
+    pub failure: Option<AdapterFailure>,
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Captured-read strength only; this local adapter does not promise an atomic
     /// resource snapshot. Exact source/set versions and native binding are checked.
     pub fn queue_annotation_read(
         &mut self,
-        resource: &AnnotationResource,
+        resource: &AnnotationResource<A::Handle>,
         expected: &DocumentVersion,
         expected_set: u64,
     ) -> Result<AnnotationReadAttempt, SessionError> {
         if expected.document != resource.document {
             return Err(SessionError::WrongDocument);
         }
-        let target = self.filesystem.annotation_read_target(&resource.resource)?;
+        let target = self
+            .resource_adapter
+            .annotation_read_target(&resource.resource)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let pair = self.ordinary_pair(&resource.document)?;
         let id = self.owner.admit_annotation_read(
             expected,
@@ -68,8 +72,9 @@ impl LocalHost {
             self.owner
                 .submit_annotation_read(&attempt.id, pair, &mut self.diagnostics)?;
         let completion = self
-            .filesystem
-            .read_annotation(&dispatch, &mut self.diagnostics)?;
+            .resource_adapter
+            .read_annotation(&dispatch, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         for receipt in completion.receipts {
             self.owner
                 .record_annotation_read(receipt, &mut self.diagnostics)?;
@@ -80,26 +85,32 @@ impl LocalHost {
             status: self
                 .owner
                 .annotation_read_status(&attempt.id, &mut self.diagnostics)?,
-            failure: completion.failure,
+            failure: completion
+                .failure
+                .as_ref()
+                .map(ClassifiedAdapterError::classification),
         })
     }
 
     /// Original capture validated against current owner/binding. The context is
     /// an explicit host assertion, never identities selected as grants by JSON.
-    pub fn inspect_annotation_json(
+    pub fn inspect_annotations<C: AnnotationCodec + ?Sized>(
         &mut self,
+        codec: &C,
         attempt: &AnnotationReadAttempt,
         limits: CodecLimits,
-    ) -> Result<vellum_annotation_json::DeclaredContext, SessionError> {
+    ) -> Result<DeclaredContext, SessionError> {
         let pair = self.ordinary_pair(&attempt.document)?;
         let capture =
             self.owner
                 .annotation_read_capture(&attempt.id, pair, &mut self.diagnostics)?;
-        vellum_annotation_json::inspect_context(capture.bytes(), limits)
+        codec
+            .inspect(capture.bytes(), limits)
             .map_err(SessionError::AnnotationCodec)
     }
-    pub fn decode_annotation_json(
+    pub fn decode_annotations<C: AnnotationCodec + ?Sized>(
         &mut self,
+        codec: &C,
         attempt: &AnnotationReadAttempt,
         context: &DecodeContext,
         limits: CodecLimits,
@@ -108,7 +119,8 @@ impl LocalHost {
         let capture =
             self.owner
                 .annotation_read_capture(&attempt.id, pair, &mut self.diagnostics)?;
-        vellum_annotation_json::decode_read(capture, context, limits, &mut self.diagnostics)
+        codec
+            .decode(capture, context, limits, &mut self.diagnostics)
             .map_err(SessionError::AnnotationCodec)
     }
 
@@ -126,19 +138,26 @@ impl LocalHost {
     /// Consumes decoded inert data and explicit approved source witnesses/record
     /// identities. Native activation validates the original read and allocates
     /// new native identities; old-process handles cannot be revived by JSON.
-    pub fn restore_annotation_json(
+    pub fn restore_annotations<C: AnnotationCodec + ?Sized>(
         &mut self,
+        codec: &C,
         decoded: DecodedAnnotationRead,
         associations: &RestorationAssociations,
         restorer: &AnnotationRestorerPort,
         limits: CodecLimits,
     ) -> Result<AnnotationRestorationOutcome, SessionError> {
-        let document = decoded.capture().source().document.clone();
-        let package = decoded
-            .into_restoration(associations, restorer, limits, &mut self.diagnostics)
+        let document = codec.decoded_document(&decoded).clone();
+        let package = codec
+            .restore(
+                decoded,
+                associations,
+                restorer,
+                limits,
+                &mut self.diagnostics,
+            )
             .map_err(|error| match error {
-                RestorationBoundaryError::Codec(error) => SessionError::AnnotationCodec(error),
-                RestorationBoundaryError::Engine(error) => SessionError::Resource(error),
+                AnnotationRestorationFailure::Codec(error) => SessionError::AnnotationCodec(error),
+                AnnotationRestorationFailure::Engine(error) => SessionError::Resource(error),
             })?;
         let pair = self.ordinary_pair(&document)?;
         Ok(self
@@ -236,7 +255,7 @@ impl LocalHost {
     /// prove current content equals it or authorize disclosure to another caller.
     pub fn annotation_baseline_evidence(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
     ) -> Result<Option<AnnotationBaselineEvidence>, SessionError> {
         let pair = self.ordinary_pair(&document.loaded.document)?;
         Ok(self.owner.annotation_baseline_evidence(
@@ -247,7 +266,7 @@ impl LocalHost {
     }
     pub fn compare_annotations(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         current: &EncodedAnnotations,
         max_combined_bytes: usize,
     ) -> Result<ContentComparison, SessionError> {
@@ -265,7 +284,7 @@ impl LocalHost {
     /// original reads and history. This is not deletion of the annotation file.
     pub fn release_annotation_binding(
         &mut self,
-        document: &LocalDocument,
+        document: &LocalDocument<A::Handle>,
         expected: LifecycleState,
     ) -> Result<LifecycleState, SessionError> {
         self.owner.release_disposed_annotation_binding(

@@ -2879,40 +2879,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
 
 [[package]]
-name = "vellum-annotation-json"
+name = "vellum"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "ratatui",
+ "unicode-segmentation",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-clipboard-macos",
+ "vellum-adapter-local-fs",
+ "vellum-adapter-unicode-icu",
+ "vellum-engine",
+ "vellum-iced",
+ "vellum-model",
+]
+
+[[package]]
+name = "vellum-adapter-annotation-json"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "vellum-adapter-local-fs",
  "vellum-engine",
- "vellum-local-fs",
+ "vellum-sdk",
 ]
 
 [[package]]
-name = "vellum-clipboard-macos"
+name = "vellum-adapter-clipboard-macos"
 version = "0.1.0"
 dependencies = [
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
- "vellum-editor",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-local-fs",
  "vellum-engine",
+ "vellum-model",
  "vellum-session",
 ]
 
 [[package]]
-name = "vellum-editor"
+name = "vellum-adapter-local-fs"
 version = "0.1.0"
 dependencies = [
- "getrandom",
- "sha2",
- "unicode-segmentation",
- "unicode-width",
- "vellum-annotation-json",
+ "rustix 1.1.4",
  "vellum-engine",
- "vellum-local-fs",
- "vellum-session",
- "vellum-unicode-icu",
+ "vellum-sdk",
+]
+
+[[package]]
+name = "vellum-adapter-unicode-icu"
+version = "0.1.0"
+dependencies = [
+ "icu_properties",
+ "rust_icu_sys",
+ "rust_icu_ubrk",
+ "vellum-engine",
+ "vellum-sdk",
 ]
 
 [[package]]
@@ -2928,17 +2952,36 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "unicode-segmentation",
- "vellum-clipboard-macos",
- "vellum-editor",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-clipboard-macos",
+ "vellum-adapter-local-fs",
+ "vellum-adapter-unicode-icu",
  "vellum-engine",
+ "vellum-model",
  "vellum-session",
 ]
 
 [[package]]
-name = "vellum-local-fs"
+name = "vellum-model"
 version = "0.1.0"
 dependencies = [
- "rustix 1.1.4",
+ "getrandom",
+ "sha2",
+ "unicode-segmentation",
+ "unicode-width",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-local-fs",
+ "vellum-adapter-unicode-icu",
+ "vellum-engine",
+ "vellum-sdk",
+ "vellum-session",
+]
+
+[[package]]
+name = "vellum-sdk"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "vellum-engine",
 ]
 
@@ -2946,30 +2989,10 @@ dependencies = [
 name = "vellum-session"
 version = "0.1.0"
 dependencies = [
- "vellum-annotation-json",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-local-fs",
  "vellum-engine",
- "vellum-local-fs",
-]
-
-[[package]]
-name = "vellum-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "ratatui",
- "unicode-segmentation",
- "vellum-clipboard-macos",
- "vellum-editor",
-]
-
-[[package]]
-name = "vellum-unicode-icu"
-version = "0.1.0"
-dependencies = [
- "icu_properties",
- "rust_icu_sys",
- "rust_icu_ubrk",
- "vellum-engine",
+ "vellum-sdk",
 ]
 
 [[package]]
@@ -2983,8 +3006,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "vellum-adapter-unicode-icu",
  "vellum-engine",
- "vellum-unicode-icu",
 ]
 
 [[package]]

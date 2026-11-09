@@ -1,0 +1,16 @@
+[package]
+name = "vellum-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Adapter-neutral host contracts for embedding the Vellum engine"
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+[lints]
+workspace = true

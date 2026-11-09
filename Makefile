@@ -1,6 +1,12 @@
-.PHONY: check check-unicode check-unicode-native check-unicode-icu4x check-unicode-icu4c fmt test lint doc perf-build perf perf-run check-perf app-macos
+.PHONY: check check-boundaries check-installability check-unicode check-unicode-native check-unicode-icu4x check-unicode-icu4c fmt test lint doc perf-build perf perf-run check-perf app-macos
 
-check: fmt lint test doc
+check: check-boundaries check-installability fmt lint test doc
+
+check-boundaries:
+	node scripts/check-project-boundaries.mjs
+
+check-installability:
+	node scripts/check-installability.mjs
 
 fmt:
 	cargo fmt --all -- --check

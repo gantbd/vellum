@@ -2,12 +2,18 @@
 name = "vellum-session"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-vellum-engine = { path = "../vellum-engine" }
-vellum-local-fs = { path = "../vellum-local-fs" }
-vellum-annotation-json = { path = "../vellum-annotation-json" }
+vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
+vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+
+[dev-dependencies]
+vellum-adapter-annotation-json = { version = "=0.1.0", path = "../vellum-adapter-annotation-json" }
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../vellum-adapter-local-fs" }
 
 [lints]
 workspace = true

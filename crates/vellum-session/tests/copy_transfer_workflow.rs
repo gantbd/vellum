@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::{LocalDocument, LocalHost, SessionConfig};
 use vellum_engine::{
     attachment::Affinity,
     coordinates::BytePosition,
@@ -17,9 +18,7 @@ use vellum_engine::{
     selection::{Selection, SelectionBudget},
     source::Replacement,
 };
-use vellum_session::host::{
-    LocalDocument, LocalHost, SessionError, TextTransferCaptureLimitsV1, copy_transfer::*,
-};
+use vellum_session::host::{SessionError, TextTransferCaptureLimitsV1, copy_transfer::*};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {
@@ -60,7 +59,7 @@ fn limits() -> CopyLimitsV1 {
         },
     }
 }
-fn config(capacity: usize, timed: bool) -> vellum_session::host::SessionConfig {
+fn config(capacity: usize, timed: bool) -> SessionConfig {
     let mut config = support::config(capacity, timed);
     config.engine.invocation = Some(InvocationLimits {
         max_lifetime_issued: 16,

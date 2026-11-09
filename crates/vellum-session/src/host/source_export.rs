@@ -16,9 +16,9 @@ pub struct SourceExportPreparation {
 }
 /// Retain before service. The original task and destination are not refreshed
 /// from a newer document binding, caller path or source revision.
-pub struct SourceExportAttempt {
+pub struct SourceExportAttempt<H> {
     task: SaveId,
-    destination: ResourceHandle,
+    destination: H,
     source: DocumentVersion,
     purpose: SourceExportPurposeV1,
 }
@@ -27,21 +27,21 @@ impl std::fmt::Debug for SourceExportPreparation {
         f.write_str("SourceExportPreparation(<opaque>)")
     }
 }
-impl std::fmt::Debug for SourceExportAttempt {
+impl<H> std::fmt::Debug for SourceExportAttempt<H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("SourceExportAttempt(<opaque>)")
     }
 }
-impl SourceExportAttempt {
+impl<H> SourceExportAttempt<H> {
     pub fn native_id(&self) -> &SaveId {
         &self.task
     }
 }
-pub struct SaveAsActivation {
-    pub document: LocalDocument,
+pub struct SaveAsActivation<H> {
+    pub document: LocalDocument<H>,
     pub changed: bool,
 }
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Preserve the exact current native serialization profile. This is source
     /// capture, not a destination grant or an implicit file creation request.
     pub fn prepare_source_export(
@@ -80,9 +80,9 @@ impl LocalHost {
         self.owner
             .source_export_pair_check(document, destination, &mut self.diagnostics)?
             .map(|check| {
-                self.filesystem
+                self.resource_adapter
                     .compare_ordinary_pair(&check, &mut self.diagnostics)
-                    .map_err(Into::into)
+                    .map_err(|error| SessionError::Adapter(error.classification()))
             })
             .transpose()
     }
@@ -94,12 +94,15 @@ impl LocalHost {
     pub fn queue_source_export(
         &mut self,
         prepared: &SourceExportPreparation,
-        path: &Path,
+        locator: &A::Locator,
         purpose: SourceExportPurposeV1,
         requirements: SaveRequirements,
         facts: &TrustedSourceExportFactsV1,
-    ) -> Result<SourceExportAttempt, SessionError> {
-        let (destination, read) = self.filesystem.open(path, &mut self.diagnostics)?;
+    ) -> Result<SourceExportAttempt<A::Handle>, SessionError> {
+        let (destination, read) = self
+            .resource_adapter
+            .open(locator, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let read = read.into_source_export_destination();
         let pair = self.export_pair(&prepared.source.document, &read, purpose)?;
         let task = self.owner.queue_source_export(
@@ -124,14 +127,15 @@ impl LocalHost {
     /// A successful write alone never activates a Save As binding.
     pub fn service_source_export(
         &mut self,
-        attempt: &SourceExportAttempt,
+        attempt: &SourceExportAttempt<A::Handle>,
         facts: &TrustedSourceExportFactsV1,
     ) -> Result<SaveReport, SessionError> {
         self.owner
             .save_outcome(&attempt.task, &mut self.diagnostics)?;
         let (read, probe) = self
-            .filesystem
-            .probe(&attempt.destination, &mut self.diagnostics)?;
+            .resource_adapter
+            .probe(&attempt.destination, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         let read = read.into_source_export_destination();
         let pair = self.export_pair(&attempt.source.document, &read, attempt.purpose)?;
         let dispatch = self.owner.dispatch_source_export(
@@ -142,8 +146,9 @@ impl LocalHost {
             &mut self.diagnostics,
         )?;
         let completion = self
-            .filesystem
-            .write(dispatch, probe, &mut self.diagnostics)?;
+            .resource_adapter
+            .write(dispatch, probe, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         self.finish_write(&attempt.task, completion)
     }
     /// Local activation after acknowledged write and fresh native destination
@@ -151,18 +156,19 @@ impl LocalHost {
     /// silently retargeted. Activation failure does not roll back an external write.
     pub fn activate_source_save_as(
         &mut self,
-        attempt: &SourceExportAttempt,
+        attempt: &SourceExportAttempt<A::Handle>,
         max_binding_history: usize,
         facts: &TrustedSourceSaveAsFactsV1,
-    ) -> Result<SaveAsActivation, SessionError> {
+    ) -> Result<SaveAsActivation<A::Handle>, SessionError> {
         if attempt.purpose != SourceExportPurposeV1::SaveAs {
             return Err(ResourceError::Unsupported.into());
         }
         self.owner
             .save_outcome(&attempt.task, &mut self.diagnostics)?;
         let (read, probe) = self
-            .filesystem
-            .probe(&attempt.destination, &mut self.diagnostics)?;
+            .resource_adapter
+            .probe(&attempt.destination, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         drop(probe);
         let pair = self.export_pair(
             &attempt.source.document,
@@ -170,8 +176,9 @@ impl LocalHost {
             attempt.purpose,
         )?;
         let (fresh, probe) = self
-            .filesystem
-            .probe(&attempt.destination, &mut self.diagnostics)?;
+            .resource_adapter
+            .probe(&attempt.destination, &mut self.diagnostics)
+            .map_err(|error| SessionError::Adapter(error.classification()))?;
         drop(probe);
         let changed = self.owner.activate_source_save_as(
             &attempt.task,
@@ -191,7 +198,7 @@ impl LocalHost {
     }
     pub fn release_source_export(
         &mut self,
-        attempt: &SourceExportAttempt,
+        attempt: &SourceExportAttempt<A::Handle>,
         facts: &TrustedSourceExportControlV1,
     ) -> Result<bool, SessionError> {
         Ok(self.owner.release_source_export_reservation(

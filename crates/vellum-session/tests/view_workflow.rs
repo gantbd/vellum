@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+use support::LocalHost;
 use vellum_engine::{
     attachment::Affinity,
     coordinates::{BytePosition, CoordinateBudget},
@@ -18,7 +19,7 @@ use vellum_engine::{
     resource::{Acknowledgment, Application, Protection, SaveRequirements, Synchronization},
     selection::{Selection, SelectionBudget, SelectionError},
 };
-use vellum_session::host::{LocalHost, SessionError};
+use vellum_session::host::SessionError;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
 impl Fixture {

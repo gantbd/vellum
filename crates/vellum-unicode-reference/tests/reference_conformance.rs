@@ -498,15 +498,15 @@ fn full_pinned_corpora_feed_the_real_rust_capture_commands_replay_and_undo() {
 }
 
 #[cfg(feature = "native-conformance")]
-fn native_provider() -> vellum_unicode_icu::Provider {
-    vellum_unicode_icu::Provider::new(
-        vellum_unicode_icu::Limits {
+fn native_provider() -> vellum_adapter_unicode_icu::Provider {
+    vellum_adapter_unicode_icu::Provider::new(
+        vellum_adapter_unicode_icu::Limits {
             max_source_bytes: 16384,
             max_boundaries: 16384,
             max_words: 2048,
             max_logical_bytes: 1024 * 1024,
         },
-        vellum_unicode_icu::Timing::Off,
+        vellum_adapter_unicode_icu::Timing::Off,
         &mut Recorder::disabled(),
     )
     .unwrap()
@@ -549,7 +549,7 @@ fn native_default_words_match_the_reference_across_ignored_and_complex_script_co
 #[cfg(feature = "native-conformance")]
 #[test]
 fn native_attestation_uses_original_current_capture_and_leaves_refusals_owned() {
-    use vellum_unicode_icu::{CaptureError, Error};
+    use vellum_adapter_unicode_icu::{CaptureError, Error};
     let mut native = native_provider();
     let mut f = frame("é🇺🇸");
     let mut other = frame("é🇺🇸");
@@ -598,14 +598,14 @@ fn native_attestation_uses_original_current_capture_and_leaves_refusals_owned() 
         .unwrap();
 
     let mut f = frame("a");
-    let mut too_small = vellum_unicode_icu::Provider::new(
-        vellum_unicode_icu::Limits {
+    let mut too_small = vellum_adapter_unicode_icu::Provider::new(
+        vellum_adapter_unicode_icu::Limits {
             max_source_bytes: 0,
             max_boundaries: 2,
             max_words: 0,
             max_logical_bytes: 24,
         },
-        vellum_unicode_icu::Timing::Off,
+        vellum_adapter_unicode_icu::Timing::Off,
         &mut f.r,
     )
     .unwrap();

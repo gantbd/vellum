@@ -10,7 +10,7 @@ use vellum_engine::{
     },
     selection::Selection,
 };
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     /// Explicit native profile; reconfiguration obeys the original owner's rules.
     /// This is not a deployment default or permission grant.
     pub fn configure_logical_views(

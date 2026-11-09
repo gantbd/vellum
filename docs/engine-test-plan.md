@@ -93,7 +93,7 @@ ICU4C 79.1 root character iterator passes all grapheme cases through
 native gate requires pkgconf/pkg-config, libclang and the selected ICU headers
 and libraries; inspect actual linked libraries as well as configuration version.
 The isolated probes' dependencies are optional in the reference crate, not runtime
-dependencies of the engine or applications. The new `vellum-unicode-icu` workspace
+dependencies of the engine or applications. The new `vellum-adapter-unicode-icu` workspace
 member implements the in-process fallback, so whole-workspace checks now require
 the selected ICU4C installation too (set `PKG_CONFIG_PATH` as above). Targeted
 engine/UI builds remain independent of it. Its exact default-word evaluator uses

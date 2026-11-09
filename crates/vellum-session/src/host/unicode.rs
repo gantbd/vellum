@@ -1,7 +1,7 @@
 //! Original native Unicode owners/commands; provider execution stays above host.
 use super::*;
 use vellum_engine::coordinator::*;
-impl LocalHost {
+impl<A: ResourceAdapter> LocalHost<A> {
     pub fn configure_boundaries(&mut self, limits: BoundaryLimits) -> Result<bool, SessionError> {
         self.owner
             .configure_boundaries(limits, &mut self.diagnostics)
