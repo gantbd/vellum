@@ -1,0 +1,21 @@
+{
+  "scope": "native-annotation-current-read-composition-only",
+  "scopeFlags": {
+    "actualNativeEditHistoryReadCompositionChecked": true,
+    "allDeclaredNativeTargetFormsChecked": true,
+    "independentReceiptStreamAndReadProductsChecked": true,
+    "currentFacetAndSelectorLifecycleChecked": true,
+    "actualIssuerPolicyVisibilityOrRetentionTruthProved": false,
+    "directReferenceConversionProvided": false,
+    "historicalEventLookupProved": false,
+    "publicWireEncodingSelected": false,
+    "allLifecycleAndMultiDocumentReadProductsProved": false,
+    "fullHistoryRetirementPlannerProved": false,
+    "pointPersistencePolicySelected": false,
+    "actualConcurrentInstallationProved": false,
+    "physicalAccountingProved": false,
+    "hostileDecoderProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "contract": "source-query/1",
+  "family": "F02",
+  "common": ["contract", "operation", "snapshot", "document", "profile"],
+  "variants": {"bounded-range": ["lo", "hi"], "line": ["line"]},
+  "profileFields": ["maxRootBytes", "maxInputBytes", "maxContentBytes", "maxReplyBytes"],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "hostileDecoderProved": false,
+    "contextIssuanceProved": false,
+    "incrementalLineIndexProved": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

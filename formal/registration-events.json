@@ -1,0 +1,11 @@
+{
+ "profile":"scoped-resource-observation/1",
+ "family":"F19",
+ "contextFields":["authority","engine","recipient","purpose","destination","policy","continuity","profile","descriptors"],
+ "limits":["maxStreams","maxPreparations","maxRows","maxBindings","maxIssued","maxRootBytes","maxProfileBytes","maxContextBytes","maxPacketBytes","maxProjectionBytes","maxBindingBytes","maxReplyBytes","maxQueue","maxHeldBytes"],
+ "authorityGates":["authorized","scope","continuous","live","notStopped","projectionAllowed","registryCoverageComplete","registrationSlotIdentityObservable"],
+ "preparationGates":["outsidePublicationGuard","resourcesReady","preparationReserved","capturePolicyAvailable","capturePolicyAttested","visibilityAttested","visibilityComplete","projectionOrderAttested"],
+ "releaseGates":["releaseAllowed","retained","transferReady","replyReady","resourcesReady"],
+ "deliveryGates":["outsidePublicationGuard","resourcesReady","preparationReserved","historicalMetadataReleaseAttested","visibilityComplete"],
+ "scope":"owned-native-resource-registration-observation-only"
+}

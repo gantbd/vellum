@@ -1,0 +1,16 @@
+{
+  "profile": "unicode18-uax29/1",
+  "unicode": "18.0.0",
+  "uax29": 49,
+  "icuVersion": "79.1",
+  "icuJarSha256": "28b292e60d0d00c496bae88a15b2615f89f781be13670aeac9dc90f189570e07",
+  "artifacts": {
+    "unicode18-grapheme-test.txt": {"sha256":"b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31","cases":853,"url":"https://www.unicode.org/Public/18.0.0/ucd/auxiliary/GraphemeBreakTest.txt"},
+    "unicode18-word-test.txt": {"sha256":"3dd70c071781276067c680d87303f60434adce7b067bd063194af374edad86a5","cases":1944,"url":"https://www.unicode.org/Public/18.0.0/ucd/auxiliary/WordBreakTest.txt"},
+    "unicode-LICENSE.txt": {"sha256":"e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96","url":"https://www.unicode.org/license.txt"}
+  },
+  "toolBounds": {"maxBatch":4096,"maxBase64Line":8192,"maxScalars":2048},
+  "limits": ["maxRootBytes", "maxBoundaries", "maxWords", "maxBoundaryBytes", "maxSteps", "maxDerivedBytes"],
+  "scope": {"pinnedReferenceConformanceChecked":true,"universalUnicodeProof":false,"dictionaryWordProfileSelected":false,
+    "productionProviderSelected":false,"incrementalChunkConformanceProved":false,"physicalAccountingProved":false,"implementationRefinement":false}
+}

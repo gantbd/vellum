@@ -1,0 +1,14 @@
+{
+  "contract": "semantic-settings-activation/1",
+  "family": "F16",
+  "operation": "semantic-settings",
+  "envelopeFields": ["route", "request"],
+  "argumentFields": ["contract", "operation", "invocation", "profile", "changes", "dependencies"],
+  "changeFields": ["layer", "expectedGeneration", "key", "operation", "value"],
+  "layerFields": ["authority", "id", "incarnation"],
+  "dependencyFields": ["domain", "identity", "generation"],
+  "contextFields": ["authority", "engine", "recipient", "purpose", "destination", "profile", "continuity"],
+  "limits": ["maxChanges", "maxDependencies", "maxRequestBytes", "maxValueBytes", "maxIdentifierBytes", "maxInputNodes", "maxInputDepth"],
+  "operations": ["set", "remove", "reset"],
+  "scope": "bounded-normalized-engine-argument-product-only"
+}

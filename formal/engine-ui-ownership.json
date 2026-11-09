@@ -1,0 +1,289 @@
+[
+  {
+    "family": "F01",
+    "engine": [
+      "list",
+      "inspect",
+      "advisory-enablement"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F02",
+    "engine": [
+      "bounded-range",
+      "line",
+      "snapshot-handoff"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F03",
+    "engine": [
+      "enumerate",
+      "inspect",
+      "target-location"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F04",
+    "engine": [
+      "frontier",
+      "availability",
+      "permitted-blocking-detail"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F05",
+    "engine": [
+      "literal-matches",
+      "next-match",
+      "previous-match"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F06",
+    "engine": [
+      "status",
+      "bounded-observation-wait",
+      "retained-outcome",
+      "minimal-control-status"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F07",
+    "engine": [
+      "effective-configuration",
+      "permitted-origin",
+      "capabilities"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F08",
+    "engine": [
+      "supported-analysis",
+      "supplied-evidence-inspection"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F09",
+    "engine": [],
+    "presentation": [
+      "caret-hit-conversion",
+      "bounded-layout",
+      "visual-navigation-target"
+    ],
+    "integration": []
+  },
+  {
+    "family": "F10",
+    "engine": [
+      "advisory-validation"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F11",
+    "engine": [
+      "exact-batch",
+      "ordinary-edit",
+      "replace-current",
+      "replace-all",
+      "accepted-composition-commit"
+    ],
+    "presentation": [],
+    "integration": [
+      "accepted-paste",
+      "validated-cut-deletion"
+    ]
+  },
+  {
+    "family": "F12",
+    "engine": [
+      "set-selection",
+      "logical-movement",
+      "select-search-match"
+    ],
+    "presentation": [
+      "supported-visual-movement"
+    ],
+    "integration": []
+  },
+  {
+    "family": "F13",
+    "engine": [
+      "create",
+      "update-body",
+      "delete",
+      "reattach"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F14",
+    "engine": [
+      "undo",
+      "redo"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F15",
+    "engine": [],
+    "presentation": [
+      "scroll",
+      "viewport-intent"
+    ],
+    "integration": []
+  },
+  {
+    "family": "F16",
+    "engine": [
+      "semantic-settings",
+      "supported-registry",
+      "compatible-analysis-or-provider-context"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F17",
+    "engine": [
+      "create-scratch",
+      "activate-loaded-candidate",
+      "attach-detach-view",
+      "membership",
+      "rebind",
+      "dispose",
+      "view-container",
+      "workspace-container"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F18",
+    "engine": [
+      "request-cancellation",
+      "shutdown-disposition"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F19",
+    "engine": [
+      "establish-bounded-stream",
+      "stop-observation",
+      "authorized-resynchronization",
+      "revoke-observation-grant"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F20",
+    "engine": [
+      "source-load-candidate",
+      "annotation-load-candidate"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F21",
+    "engine": [
+      "captured-source-save",
+      "captured-annotation-save"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F22",
+    "engine": [],
+    "presentation": [],
+    "integration": [
+      "plain-or-supported-structured-read"
+    ]
+  },
+  {
+    "family": "F23",
+    "engine": [],
+    "presentation": [],
+    "integration": [
+      "copy",
+      "cut-export-stage"
+    ]
+  },
+  {
+    "family": "F24",
+    "engine": [
+      "enabled-parse-query-work"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F25",
+    "engine": [],
+    "presentation": [
+      "enabled-provider-measurement"
+    ],
+    "integration": []
+  },
+  {
+    "family": "F26",
+    "engine": [
+      "timer",
+      "task-cancellation",
+      "authorized-diagnostic-drain"
+    ],
+    "presentation": [
+      "dialog",
+      "native-input-accessibility",
+      "host-preference"
+    ],
+    "integration": []
+  },
+  {
+    "family": "F27",
+    "engine": [
+      "progress",
+      "acknowledgment",
+      "failure",
+      "quiescence",
+      "unknown",
+      "contradictory-or-duplicate-evidence"
+    ],
+    "presentation": [],
+    "integration": []
+  },
+  {
+    "family": "F28",
+    "engine": [
+      "enabled-analysis-result"
+    ],
+    "presentation": [
+      "enabled-geometry-result"
+    ],
+    "integration": []
+  }
+]

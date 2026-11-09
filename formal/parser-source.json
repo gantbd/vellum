@@ -1,0 +1,17 @@
+{
+  "profile":"tree-sitter-utf8-source/1",
+  "coordinateMaximum":4294967295,
+  "journalLimits":["maxDocuments","maxRootBytes","maxBatches","maxEdits","maxJournalBytes"],
+  "inputLimits":["maxRootBytes","maxReceipts","maxBatches","maxEdits","maxCoordinate","maxPlanBytes"],
+  "editFields":["start_byte","old_end_byte","new_end_byte","start_point","old_end_point","new_end_point"],
+  "modes":["fresh","incremental","unchanged"],
+  "freshReasons":["no-base","incompatible-base","journal-budget","missing-journal"],
+  "scope":{
+    "committedSourceBridgeChecked":true,"exactParserCoordinatesChecked":true,
+    "nativeParserConformanceProved":false,"analysisWorkAdmissionProved":false,
+    "actualParserOwnershipProved":false,"grammarQueryContextTruthProved":false,
+    "physicalAccountingProved":false,"hostileDecoderProved":false,
+    "allPublicationPathsProved":false,"allStateCompanionsProved":false,
+    "implementationRefinement":false
+  }
+}

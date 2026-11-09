@@ -1,0 +1,18 @@
+{
+  "scope": "shared-native-observation-admission-only",
+  "limits": ["maxReservations", "maxBookkeepingBytes"],
+  "scopeFlags": {
+    "actualSharedDualEnvelopeAdmissionChecked": true,
+    "actualProducerChargeAndContextCouplingChecked": true,
+    "actualContextRetirementBeforeReleaseChecked": true,
+    "consumptionAndCompatibleActivationChecked": true,
+    "unknownReservationQuarantineChecked": true,
+    "actualPhysicalGlobalAccountingProved": false,
+    "allEngineOwnersOrOriginHierarchyProved": false,
+    "actualPolicyClockOrDischargeTruthProved": false,
+    "publicReservationOrWireSelected": false,
+    "actualConcurrentInstallationProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

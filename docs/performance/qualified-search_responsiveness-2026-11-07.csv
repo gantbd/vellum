@@ -1,0 +1,67 @@
+# entered-main; excludes launch/pre-main
+# native-retained-search-v1; synthetic Unicode; exact UTF-8; trusted local owner; process monotonic ns
+# samples=512; warmup=32; p99_budget_ns=unset; arch=aarch64; os=macos
+# total=evaluate+release/check+navigation/check+protected-retirement/check; no ingress/queue/UI/I/O
+# cohort includes drain/bookkeeping; allocations/RSS unmeasured; lifetime pressure grows without reset; refused/partial/incomplete work fails
+workload,bytes,matches,mode,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,timed_records,diagnostic_drops,issued_including_warmup
+unicode-prose,3520,64,off,total,512,15208,16875,18625,36333,7966917,0,0,544
+unicode-prose,3520,64,off,evaluate,512,11250,13209,14875,28625,7966917,0,0,544
+unicode-prose,3520,64,off,release-check,512,1166,1250,1375,3042,7966917,0,0,544
+unicode-prose,3520,64,off,navigation-check,512,1333,1417,1500,2250,7966917,0,0,544
+unicode-prose,3520,64,off,retirement-check,512,959,1292,1375,1875,7966917,0,0,544
+unicode-prose,3520,64,capture,total,512,7834,14000,14250,45333,4700208,0,0,544
+unicode-prose,3520,64,capture,evaluate,512,5875,10917,11125,38333,4700208,0,0,544
+unicode-prose,3520,64,capture,release-check,512,584,1000,1042,3416,4700208,0,0,544
+unicode-prose,3520,64,capture,navigation-check,512,709,1166,1209,1750,4700208,0,0,544
+unicode-prose,3520,64,capture,retirement-check,512,500,709,792,1583,4700208,0,0,544
+unicode-prose,3520,64,timed,total,512,15583,16500,18250,45375,7108375,2048,0,544
+unicode-prose,3520,64,timed,evaluate,512,11958,12333,14250,35584,7108375,2048,0,544
+unicode-prose,3520,64,timed,release-check,512,1125,1292,1417,4542,7108375,2048,0,544
+unicode-prose,3520,64,timed,navigation-check,512,1375,1542,1584,2667,7108375,2048,0,544
+unicode-prose,3520,64,timed,retirement-check,512,833,1166,1250,7000,7108375,2048,0,544
+unicode-prose,3520,64,saturated,total,512,13417,14125,14458,32750,6870125,0,4608,544
+unicode-prose,3520,64,saturated,evaluate,512,10334,10625,10791,24833,6870125,0,4608,544
+unicode-prose,3520,64,saturated,release-check,512,1000,1084,1167,3667,6870125,0,4608,544
+unicode-prose,3520,64,saturated,navigation-check,512,1167,1292,1375,2208,6870125,0,4608,544
+unicode-prose,3520,64,saturated,retirement-check,512,791,1000,1042,1583,6870125,0,4608,544
+unicode-code-scopes,70656,1536,off,total,512,111083,117667,121041,126709,57381208,0,0,544
+unicode-code-scopes,70656,1536,off,evaluate,512,106500,113000,116291,121584,57381208,0,0,544
+unicode-code-scopes,70656,1536,off,release-check,512,2959,3584,3875,4000,57381208,0,0,544
+unicode-code-scopes,70656,1536,off,navigation-check,512,791,917,1042,1125,57381208,0,0,544
+unicode-code-scopes,70656,1536,off,retirement-check,512,500,667,750,875,57381208,0,0,544
+unicode-code-scopes,70656,1536,capture,total,512,104416,119042,124208,136667,54922667,0,0,544
+unicode-code-scopes,70656,1536,capture,evaluate,512,100292,114459,119750,131500,54922667,0,0,544
+unicode-code-scopes,70656,1536,capture,release-check,512,2750,3791,3959,7000,54922667,0,0,544
+unicode-code-scopes,70656,1536,capture,navigation-check,512,708,1000,1084,1250,54922667,0,0,544
+unicode-code-scopes,70656,1536,capture,retirement-check,512,459,750,875,1000,54922667,0,0,544
+unicode-code-scopes,70656,1536,timed,total,512,110792,116208,121084,142083,55936250,2048,0,544
+unicode-code-scopes,70656,1536,timed,evaluate,512,106292,111792,116417,134458,55936250,2048,0,544
+unicode-code-scopes,70656,1536,timed,release-check,512,2959,3750,3875,5000,55936250,2048,0,544
+unicode-code-scopes,70656,1536,timed,navigation-check,512,792,1042,1125,1208,55936250,2048,0,544
+unicode-code-scopes,70656,1536,timed,retirement-check,512,541,791,916,1208,55936250,2048,0,544
+unicode-code-scopes,70656,1536,saturated,total,512,110250,118667,125167,129416,55204125,0,4608,544
+unicode-code-scopes,70656,1536,saturated,evaluate,512,105917,114125,120875,123958,55204125,0,4608,544
+unicode-code-scopes,70656,1536,saturated,release-check,512,2792,3625,3875,6542,55204125,0,4608,544
+unicode-code-scopes,70656,1536,saturated,navigation-check,512,709,958,1041,1125,55204125,0,4608,544
+unicode-code-scopes,70656,1536,saturated,retirement-check,512,459,709,792,1000,55204125,0,4608,544
+mixed-large,1114112,16384,off,total,512,1429542,1472333,1559000,1633583,735944750,0,0,544
+mixed-large,1114112,16384,off,evaluate,512,1405916,1443375,1530416,1606958,735944750,0,0,544
+mixed-large,1114112,16384,off,release-check,512,21958,25125,26625,31084,735944750,0,0,544
+mixed-large,1114112,16384,off,navigation-check,512,708,834,959,1208,735944750,0,0,544
+mixed-large,1114112,16384,off,retirement-check,512,458,667,958,1584,735944750,0,0,544
+mixed-large,1114112,16384,capture,total,512,1632667,1663500,1671709,1738583,816734500,0,0,544
+mixed-large,1114112,16384,capture,evaluate,512,1605625,1634958,1642083,1711291,816734500,0,0,544
+mixed-large,1114112,16384,capture,release-check,512,24917,29750,31333,32708,816734500,0,0,544
+mixed-large,1114112,16384,capture,navigation-check,512,792,1000,1083,1250,816734500,0,0,544
+mixed-large,1114112,16384,capture,retirement-check,512,542,791,917,1500,816734500,0,0,544
+mixed-large,1114112,16384,timed,total,512,1642542,1668208,1673541,1707917,837531167,2048,0,544
+mixed-large,1114112,16384,timed,evaluate,512,1615500,1641166,1646083,1674958,837531167,2048,0,544
+mixed-large,1114112,16384,timed,release-check,512,25125,29833,31083,33791,837531167,2048,0,544
+mixed-large,1114112,16384,timed,navigation-check,512,833,1000,1125,1667,837531167,2048,0,544
+mixed-large,1114112,16384,timed,retirement-check,512,583,792,1000,1292,837531167,2048,0,544
+mixed-large,1114112,16384,saturated,total,512,1647416,1670083,1677916,1685959,840738625,0,4608,544
+mixed-large,1114112,16384,saturated,evaluate,512,1620084,1643458,1650000,1658542,840738625,0,4608,544
+mixed-large,1114112,16384,saturated,release-check,512,25041,29875,30833,34792,840738625,0,4608,544
+mixed-large,1114112,16384,saturated,navigation-check,512,792,1000,1166,1375,840738625,0,4608,544
+mixed-large,1114112,16384,saturated,retirement-check,512,541,750,875,1084,840738625,0,4608,544
+# in_process_elapsed_ns=3704345084

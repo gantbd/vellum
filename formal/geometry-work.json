@@ -1,0 +1,20 @@
+{
+  "requestContract":"geometry-work/1",
+  "evidenceContract":"geometry-work-evidence/1",
+  "profile":"captured-geometry-work/1",
+  "requestFields":["contract","operation","profile","origin","provider","context"],
+  "originFields":["operation","effect","attempt"],
+  "evidenceCommon":["contract","task","origin","provider","kind"],
+  "evidenceVariants":{"result":["packet"],"failure":["reason"],"quiescence":[]},
+  "failures":["unsupported","exhausted","cancelled","fault"],
+  "controls":["cancel","supersede"],
+  "limits":["maxTasks","maxOutstanding","maxIssued","maxRequestBytes","maxEnvelopeBytes","maxHeldBytes"],
+  "scope":{
+    "geometryWorkAdmissionChecked":true,"actualGeometryConsumerChecked":true,
+    "analysisWorkAdmissionProved":false,"actualOwnerBindingAndHostEnvelopesProved":false,"actualProviderAuthenticationProved":false,
+    "actualQuiescenceAndDrainProved":false,"actualPolicyRetentionTruthProved":false,
+    "physicalAccountingProved":false,"hostileDecoderProved":false,
+    "nativeMeasurementProved":false,"fullEffectAndInvocationCompositionProved":false,
+    "allStateCompanionsProved":false,"implementationRefinement":false
+  }
+}

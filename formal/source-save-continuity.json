@@ -1,0 +1,10 @@
+{
+  "profile":"source-save-continuity-reference/1",
+  "publicationGates":["authorized","scope","continuous","live","notStopped","bindingCoverageComplete","writerCoverageComplete","baselinePublicationAllowed","companionsReady","versionsAvailable","replyReady","resourcesReady"],
+  "comparisonGates":["authorized","scope","continuous","live","notStopped","retained","replyReady","sourceReadable","bindingCoverageComplete","comparisonAllowed","resourcesReady"],
+  "baselineFields":["kind","bindingGeneration","sourceRevision","serializationGeneration","profile","bom","origin","provider","resourceVersion","procedure","acknowledgment","requiredAcknowledgment","dispatchSerial","bytes"],
+  "scope":{"causalQueuedConditionReferenceChecked":true,"acknowledgedWriteAnchorReferenceChecked":true,"currentBindingBaselineReferenceChecked":true,"exactCurrentOutputComparisonChecked":true,"retainedDependencyPinsChecked":true,
+    "providerCausalityOrNonReuseTruthProved":false,"actualExternalFreshnessProved":false,"actualFilesystemDurabilityProved":false,
+    "annotationOrCombinedWritesProved":false,"rebindOrSaveAsProved":false,"fullInvocationEventCompositionProved":false,
+    "physicalAccountingProved":false,"hostileDecoderProved":false,"actualConcurrentRootInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

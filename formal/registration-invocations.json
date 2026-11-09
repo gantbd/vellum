@@ -1,0 +1,9 @@
+{
+ "contract":"registration-invocation/1",
+ "profile":"native-resource-registration/1",
+ "family":"F16",
+ "operation":"activate-context",
+ "fields":["contract","operation","invocation","profile","request"],
+ "releaseGates":["registrationResultReadable","registrationResultContextCurrent","registrationHostResultAllowed"],
+ "scope":"owned-native-resource-registration-invocation-only"
+}

@@ -1,0 +1,7 @@
+{
+ "scope":"initial-ordinary-annotation-binding-reference-only",
+ "contract":"ordinary-binding-pair/1",
+ "limits":["maxRootBytes","maxDocuments","maxOwnerRows","maxRegistrations","maxTagBytes","maxPlanBytes","maxCandidateBytes"],
+ "gates":["authorized","scope","continuous","live","notStopped","identityAllowed","bindingCoverageComplete","writerCoverageComplete","activationAllowed","companionsReady","resourcesReady","preparationReserved","replyReady","obligationsRetained"],
+ "scopeFlags":{"explicitNativePairInventoryChecked":true,"initialAnnotationBindingAndSharedRegistryChecked":true,"activatedSourceWriterPairGuardsChecked":true,"typedOwnerReservationReleaseChecked":true,"actualHostIdentityCoverageOrObligationTruthProved":false,"actualHostWriterUniquenessProved":false,"actualSharedPreparationAccountingProved":false,"allLegacyRootsOrInitialCreationRoutesProved":false,"annotationRebindUnbindOrBaselineProved":false,"ordinaryAnnotationSaveOrLoadProved":false,"nativeRootInstallationProved":false,"physicalAccountingProved":false,"fullInvocationEventCompositionProved":false,"actualConcurrentInstallationProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

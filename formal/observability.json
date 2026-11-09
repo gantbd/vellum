@@ -1,0 +1,1750 @@
+{
+  "description": "Architectural observation-intent coverage, not installed instrumentation, numeric SLOs, proof of system completeness or proof of supplier truth. Existing model INS placements remain authoritative. engine-measurement/1 separately refines the engine's logical descriptor/value semantics without changing this coverage index or the boundary-marker/1 queue.",
+  "measurementProfile": {
+    "profile":"engine-measurement/1",
+    "descriptors":"engine-measurements.json",
+    "interpretation":"engine-measurements.md",
+    "engineSites":["INS-01","INS-02","INS-03","INS-04","INS-05","INS-06","INS-07","INS-08","INS-09","INS-12","INS-13"],
+    "uiSites":["INS-10","INS-11"],
+    "installedCaptureOrProviderClockTruth":false
+  },
+  "requiredTypes": [
+    "Pathway",
+    "IdentityDimension",
+    "NetworkPath",
+    "DataFlow",
+    "DataAsset",
+    "Interface",
+    "Invariant",
+    "ProgressObligation",
+    "Assumption"
+  ],
+  "controls": {
+    "melt": "M metrics, E events, L logs, T traces. Security is cross-cutting STRIDE, not an invented fifth signal.",
+    "authority": "Enforcement/current accepted state and typed outcomes are authoritative. Observation plans and diagnostics cannot admit, mutate, authorize or reconcile an operation.",
+    "counting": "Offered/admitted/completed/rejected are counted at a stated boundary. Logical requests, attempts, participants, record counts and retries are not interchangeable; no summing propagated failures as independent failures.",
+    "clock": "Use observed local monotonic endpoints and explicit clock domain; retain pending/censored ages. Missing clocks, physical writes and actual display can remain unobservable.",
+    "privacy": "No content, paths, host errors, private annotation/topology data, tokens or credentials by default. No per-object/principal/attempt/profile-version metric labels. Opaque/pseudonymous correlation still requires bounded lifetime and current recipient scope.",
+    "capture": "Allowlist bounded primitives before capture; reauthorize drain/release. No arbitrary formatter/subscriber callbacks or export waits inside publication. Sampling/off/loss cannot erase authoritative outcomes. Section 23.2.2 separately supplies selected owned F26 local diagnostic drain with an actual queue-consumer hold, at-most-once service, current result/protected facts and explicit unknown/fault semantics; local drain is not export/delivery/audit success or actual installed instrumentation.",
+    "health": "Disabled, unavailable, unknown, dropped and actual zero are distinct. Minimal bounded loss/control status does not depend on the optional telemetry sink.",
+    "security": "Apply STRIDE to producer/correlation claims, record integrity, loss/repudiation limits, disclosure, cardinality/floods and diagnostic-triggered privilege. Remediation reenters normal validated commands.",
+    "limits": "Specification §23.3.1 separately fixes engine-measurement/1 descriptor/value semantics at eleven engine sites; UI-only sites remain separate. Histogram boundaries, measured resource defaults/SLOs and actual overhead/native/provider conformance remain evidence work. Specification §28 baseline milestones include complete-group retirement/refusal, search wrap/coverage, retained-context activation, native cancel/commit, cut export/deletion, diagnostic saturation/reset and incomplete semantic-evidence refusal; no new signal is authority. Section 23.2.1 fixes the original content-free marker queue; the richer measurement profile does not widen that queue or prove installed probes, actual scope/clock/provider classification, funded capture, runtime episode tracking or physical costs."
+  },
+  "profiles": {
+    "admission": {
+      "melt": {
+        "M": "Offered/admitted/rejected work by bounded class; replay attempts, first admissions, dedup observations and retained-status occupancy distinct.",
+        "E": "Safe admission/denial/context disposition.",
+        "L": "Optional actionable invalid-contract summary.",
+        "T": "Request to resolution/preparation, with bounded causal links."
+      },
+      "golden": {
+        "latency": "Local ingress to disposition; queue age separate.",
+        "traffic": "Logical offers at this boundary, retries and fan-out separate.",
+        "errors": "Denied/stale/unsupported/capacity, intent mismatch and retired/unavailable status versus invariant fault; internal labels are not public disclosure policy.",
+        "saturation": "All applicable resource coordinates/scopes, queue/input/participant/staging reservations and protected partitions; soft targets never grant hard capacity."
+      }
+    },
+    "publication": {
+      "melt": {
+        "M": "Preparation/validation/publication duration and outcome classes.",
+        "E": "Applied, validated unchanged success or unchanged rejection after actual authoritative disposition.",
+        "L": "Unexpected invariant failure, never a source diff.",
+        "T": "Preparation linked to one atomic publication or validated no-op disposition, never a fabricated commit. Distinguish source mapping from authored field changes, owned before/candidate target validation and private annotation-set dependency validation without exporting hidden participants."
+      },
+      "golden": {
+        "latency": "Preparation versus final critical section; pending age included.",
+        "traffic": "Logical commits, validated unchanged successes and rejections separate; affected participants and attempts distinct, never partial-success counts.",
+        "errors": "Dependency/scope conflict versus integrity fault.",
+        "saturation": "Staging, inverse/history and promised-completion resources."
+      }
+    },
+    "release": {
+      "melt": {
+        "M": "Authorized/unavailable releases, bytes and pending-age classes; context offers/installations/refusals, live selectors and held-retired context pressure in declared units, not public hidden counts.",
+        "E": "Single/version-set context all-required install/refuse, parent/member invalidation/owner-stop/final hold discharge, expiry, gap, resync and safe whole-report release dispositions; no public failing-member index; internal causes are distinct from recipient-projected reasons and recovery hints.",
+        "L": "Optional bounded release-protocol fault.",
+        "T": "Reserved coherent capture to registry installation/current-authorized delivery, owner stop to actual hold discharge, with recipient-scoped bounded links; no raw selector or root generation labels."
+      },
+      "golden": {
+        "latency": "Query preparation, release wait and delivery observation distinct.",
+        "traffic": "Queries, deliveries and resyncs; sampled records are not totals.",
+        "errors": "Revoked/stale/unavailable safely projected; disclosure/refusal/loss distinct from operation/provider failure. No unauthorized existence disclosure except declared operational disclosures; withheld counts are not observed zero.",
+        "saturation": "Prepared/queued projections, retained contexts/snapshots, version-set parent/member metadata, typed selector and internal hold records, aggregate complete reply reservations and subscription capacity; logical invalidation does not refund still-held roots."
+      }
+    },
+    "effect": {
+      "melt": {
+        "M": "Logical effects, attempts, dispatch/ack duration and unknown age.",
+        "E": "Dispatch, trusted receipt, contradiction and reconciliation.",
+        "L": "Safe provider protocol fault, without payload or locator.",
+        "T": "Immutable capture linked to each attempt and late evidence."
+      },
+      "golden": {
+        "latency": "Queue, service and receipt-observation delay separate.",
+        "traffic": "Logical effect versus retries/physical attempts.",
+        "errors": "Failure/unknown/cancel/late applicability and acknowledgment strength distinct.",
+        "saturation": "Outstanding effects, per-destination queue and completion reservations."
+      }
+    },
+    "derived": {
+      "melt": {
+        "M": "Work, acceptance, partial coverage and stale-result classes.",
+        "E": "Invalidation, supersession, fallback and budget disposition.",
+        "L": "Grammar/provider fault without source fragments.",
+        "T": "Source/context to worker completion to acceptance."
+      },
+      "golden": {
+        "latency": "Queue, service and result age in a declared clock domain.",
+        "traffic": "Submitted/accepted/superseded work; completeness scoped explicitly.",
+        "errors": "Malformed source data versus unavailable provider/stale context/fault.",
+        "saturation": "Regions, fan-out, traversal, retained cells and worker pressure."
+      }
+    },
+    "history": {
+      "melt": {
+        "M": "Reversal outcomes, group size and retained inverse cost buckets.",
+        "E": "Applied, blocked, empty or unavailable history.",
+        "L": "Unexpected history-integrity fault.",
+        "T": "All-participant frontier validation to atomic field-journal reversal; distinguish actual source inverse mapping, fresh authored versions and complete linked redo invalidation."
+      },
+      "golden": {
+        "latency": "Validation and publication, not presumed replay time.",
+        "traffic": "Logical reversal attempts versus participants.",
+        "errors": "Rights/frontier/retention rejection versus invariant fault.",
+        "saturation": "Linked history/inverse retention and consistent floors."
+      }
+    },
+    "fidelity": {
+      "melt": {
+        "M": "Encoding/mapping preparation, byte and per-artifact outcome classes.",
+        "E": "Conversion rejection, target detachment and independent artifact outcome.",
+        "L": "Safe codec/mapping fault, no snippets.",
+        "T": "Identified snapshot through payload preparation."
+      },
+      "golden": {
+        "latency": "Preparation separate from physical write/ack.",
+        "traffic": "Source and annotation artifacts separately counted.",
+        "errors": "Invalid boundary/conversion versus external failure/unknown.",
+        "saturation": "Source/annotation candidate bytes, mappings and inverse retention."
+      }
+    },
+    "lifecycle": {
+      "melt": {
+        "M": "Open/reuse/rebind/disposal dispositions and retained obligations.",
+        "E": "Alias, incarnation, binding and disposal transitions.",
+        "L": "Safe identity/continuity contract fault.",
+        "T": "Resolve to authorized activation or refusal."
+      },
+      "golden": {
+        "latency": "Host resolution, admission and disposal wait separate.",
+        "traffic": "Alias reuse is not new ownership; close is not full reclamation.",
+        "errors": "Known conflict, unknown identity and retained-obligation refusal distinct.",
+        "saturation": "Live objects, retained snapshots/history and pending writes."
+      }
+    },
+    "activation": {
+      "melt": {
+        "M": "Candidates, activation/rejection and retained generation classes.",
+        "E": "Atomic activation, supersession and declared degradation.",
+        "L": "Bounded schema/profile incompatibility.",
+        "T": "External preparation to atomic accepted activation."
+      },
+      "golden": {
+        "latency": "Staging separate from activation; no hidden network in publication.",
+        "traffic": "Candidates/activations versus invalidated downstream work.",
+        "errors": "Unsupported schema/collision/denied/stale context versus fault.",
+        "saturation": "Old provider assets, staged profiles and in-flight generations."
+      }
+    },
+    "geometry": {
+      "melt": {
+        "M": "Layout/reuse/accept/submission and budget classes.",
+        "E": "Geometry invalidation and capability fallback.",
+        "L": "Safe unsupported or inconsistent geometry summary.",
+        "T": "Logical context to accepted geometry and presentation submission."
+      },
+      "golden": {
+        "latency": "Measured layout/submission only; actual display time may be unobservable.",
+        "traffic": "Accepted work versus invalidated/coalesced layouts.",
+        "errors": "Wrong generation/unsupported domain versus provider fault.",
+        "saturation": "Rows, decorations, retained layout and presentation work."
+      }
+    },
+    "native": {
+      "melt": {
+        "M": "Accepted/committed/cancelled input and accessibility classes.",
+        "E": "Input-session/focus/capability dispositions without content.",
+        "L": "Safe wrong-context/native capability failure.",
+        "T": "Native event to semantic admission and submission."
+      },
+      "golden": {
+        "latency": "Input observation to commit/submission, not user-perception time.",
+        "traffic": "Input classes and semantic commits; no text/keystroke dump.",
+        "errors": "Late composition/wrong focus/unsupported mapping versus fault.",
+        "saturation": "Preedit, pending announcements and bounded native payloads."
+      }
+    },
+    "diagnostics": {
+      "melt": {
+        "M": "Capture/drop/coalescing/queue/drain/health classes.",
+        "E": "Capture policy, loss and consumer-state changes.",
+        "L": "Outside recursive capture failure; sanitized actionable summaries only.",
+        "T": "Optional bounded capture/drain/export links."
+      },
+      "golden": {
+        "latency": "Capture cost, queue age and drain/export delay separate.",
+        "traffic": "Observation records versus semantic operations; never infer one from the other.",
+        "errors": "Collection denied/off/lost/unknown/export fault distinct.",
+        "saturation": "Record bytes, series growth, queue and consumer capacity."
+      }
+    },
+    "shutdown": {
+      "melt": {
+        "M": "Admission stop, outstanding/unknown work and wait age.",
+        "E": "Disposition, stop/drain, wait cut and escalation.",
+        "L": "Bounded actionable owner/service integrity fault.",
+        "T": "Shutdown request to bounded-wait disposition and later evidence."
+      },
+      "golden": {
+        "latency": "Wait limit is not worker lifetime or guaranteed effect completion.",
+        "traffic": "Stop/control events versus remaining effects and workers.",
+        "errors": "Needs-decision/cancel/unknown versus fault; no silent discard.",
+        "saturation": "Protected control capacity, retained authored state and unresolved obligations."
+      }
+    },
+    "assumption": {
+      "melt": {
+        "M": "Declared capability, supported/unsupported and unknown validation classes.",
+        "E": "Accepted profile or contradictory/unavailable evidence.",
+        "L": "Sanitized supplier-contract mismatch only.",
+        "T": "Local checks linked to declared provider/profile provenance."
+      },
+      "golden": {
+        "latency": "Check time/evidence age only where clock/validity is known.",
+        "traffic": "Boundary checks, not proof of unseen physical activity.",
+        "errors": "Missing/contradictory/unknown evidence distinct; trust is not measured truth.",
+        "saturation": "Declared versus observed capacity; native/unobservable quantities remain unknown."
+      }
+    }
+  },
+  "coverage": {
+    "IF-01": {
+      "profile": "admission",
+      "points": [
+        "INS-01"
+      ],
+      "authority": [
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04"
+      ],
+      "focus": "Explicit targets, version/capability discovery and authoritative admission; immutable invocation intent, serialized deduplication and eligibility retirement separate from status/effect retention. Complete finite profiles and fail-fast new atomic refusal preserve explicit bounded queue contracts. Semantic query/local-command/effect-request/evidence categories use validated catalog ownership; routing is not actual publication, launch, completion or recipient release. Separate F01 coherent registry capture, bounded visible list/inspect release and exact-target enablement advice; stale/withheld advice is not disabled state, descriptive aliases are not registration, and positive advice never grants execution.",
+      "limit": "Discovery is advisory; telemetry neither grants admission nor proves complete ingress observation."
+    },
+    "IF-02": {
+      "profile": "release",
+      "points": [
+        "INS-03"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02"
+      ],
+      "focus": "Snapshot/projection acquisition, scoped non-grant selectors, current per-batch release without leases, expiry and safe unavailable; whole outcome/category/reason/count/correlation/recovery projection and capture ceilings. Distinguish reserved coherent capture, typed context/record/continuation installation and serialized actual recipient ownership transfer. F02 explicitly selects source/annotation scopes; annotation-only access is not a source-byte grant and source-only access is not annotation authority. Multi-document version sets select one published cut with all-required installation, aggregate parent/member/reply capacity and no partial roster or public failing-member index. Every member release validates its owning set and all required members; required loss invalidates the whole set rather than silently returning a subset. F03 pages derive continuation from the visible domain and exact member; repeated pages reuse equivalent live selectors. Protected parent/member stop closes the owning set after actual owner validation, even after content revocation; selectors retire while actual member holds and parent ownership metadata remain charged. F02 bounded source reads report exact context/range coverage, not implicit latest, semantic discovery completeness or edit authority; raw readable snapshot ownership is disclosure of its entire readable extent.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "IF-03": {
+      "profile": "publication",
+      "points": [
+        "INS-02"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01"
+      ],
+      "focus": "Final dependency/scope validation and all-or-none publication. F11 exact-batch checks all write and read-only contexts after prior reads; count actual publication separately from validated unchanged success, response delivery and resulting snapshot handoff.",
+      "limit": "An event is not the commit record; no callbacks or I/O inside publication."
+    },
+    "IF-04": {
+      "profile": "effect",
+      "points": [
+        "INS-04"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-03"
+      ],
+      "focus": "Captured dispatch and receipt attribution, late evidence and contradictions.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "IF-05": {
+      "profile": "derived",
+      "points": [
+        "INS-05"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04"
+      ],
+      "focus": "Source/context/scope acceptance; partial is not complete. Distinguish grammar syntax, schema conformance and domain-semantic evidence; bind each required claim to owner-resolved source/candidate, retained descriptor, target, scope/query and captured interpretation. Separate required-report intake, equivalent duplicate, identity fault, contradiction and retention exhaustion; loss cannot leave old positive evidence established. Observe bounded preloaded definition closure unavailable/exhausted distinctly from validator conformance. Broader partial analysis does not negate an independently complete narrower claim. Retain declared profile/provider/region context and report handled optional-provider failure without relabeling ordinary source editing as unavailable. Evidence acceptance is not publication or recipient release.",
+      "limit": "Context gates do not prove parser/schema semantics, complete discovery, actual provider fault containment or native preemption. Raw content, schema locators and provider errors remain disclosure-controlled rather than metric labels."
+    },
+    "IF-06": {
+      "profile": "geometry",
+      "points": [
+        "INS-10"
+      ],
+      "authority": [
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-05"
+      ],
+      "focus": "Coherent accepted geometry across all supported consumers.",
+      "limit": "No assumed paint acknowledgment, universal coordinate inverse or unsupported platform parity."
+    },
+    "IF-07": {
+      "profile": "activation",
+      "points": [
+        "INS-09"
+      ],
+      "authority": [
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-06"
+      ],
+      "focus": "Prepared versus atomically activated profile and current grant ceilings. Distinguish typed resolution, peer conflict/type/restriction rejection, caller layer generations and mandatory/extra reads, owned affected-target activation, validated no-op, retained old context and actual semantic-domain changes. Observe stale/superseded preparation without rolling back unrelated scopes; F07 current value/origin/capability release is separate from F16 publication, and origins cover permitted projection only. No raw keys, values, private workspace/origin identities or profile-version labels enter default metrics.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "IF-08": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Event release reauthorization, gap/resync and recipient-safe sequence scope.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "IF-09": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Callback-free capture, authorized drain, loss and non-authority.",
+      "limit": "Sampling/loss/off are not zero activity; diagnosis cannot authorize mutations or replace outcomes."
+    },
+    "IF-10": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-07"
+      ],
+      "focus": "Separate incarnation/binding/continuity; unknown versus comparable identity evidence, alias joins versus created owners, refused disposal, logical invalidation and retained obligations; cache reclamation cannot imply authored-state discard or physical discharge.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "IF-11": {
+      "profile": "native",
+      "points": [
+        "INS-11"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-05"
+      ],
+      "focus": "Input/accessibility target context and scoped surrounding text. Distinguish bounded chord prefix/terminal/block/unbound/stale/cutoff dispositions, owned chord identity and exact captured target without key-content logging. A resolved binding is ordinary command intent, not authority; stale events/old timers cannot affect a newer chord. Relevant map activation cancels current affected prefixes without replay and preserves unrelated input contexts; native/IME event ownership remains separately evidenced.",
+      "limit": "Native facilities and actual display are capability-dependent; source and preedit remain distinct."
+    },
+    "IF-12": {
+      "profile": "history",
+      "points": [
+        "INS-06"
+      ],
+      "authority": [
+        "INV-06",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-10"
+      ],
+      "focus": "Linked frontier validation and complete reversal or unchanged block. Observe retained field journals, exact inverse transforms and target-restoration evidence; equal current content does not bypass newer frontiers. Source-driven placement mapping is not authored annotation history. Separately observe F04 capture, current release, empty versus unavailable history and bounded permitted blockers; inspection eligibility is neither a reservation nor reversal authority. F14 target resolution and owned preparation precede final current dependency, invocation and journal validation; distinguish stale required mapping state from unrelated document edits and never retarget queued intent.",
+      "limit": "History inspection needs separate release rights; no unauthorized participant disclosure except declared operational disclosures."
+    },
+    "IF-13": {
+      "profile": "fidelity",
+      "points": [
+        "INS-07",
+        "INS-04"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03"
+      ],
+      "focus": "Exact payload/profile preparation, source/annotation outcomes and actual acknowledgment.",
+      "limit": "Scalar UTF-8 laws do not establish all file/BOM/mapping/grapheme profiles."
+    },
+    "PATH-01": {
+      "profile": "publication",
+      "points": [
+        "INS-01",
+        "INS-02"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01"
+      ],
+      "focus": "Ingress, resolution, private preparation, final publication and post-commit observations; retries observe one invocation, never manufacture commits or erase unresolved obligations.",
+      "limit": "An event is not the commit record; no callbacks or I/O inside publication."
+    },
+    "PATH-02": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02"
+      ],
+      "focus": "Read/history inspection, snapshot lookup and new subscription deliveries. Distinguish F06 pending/terminal bookkeeping, projected retained outcome, protected minimal status and bounded wait. Observe exact invocation/generation, current release and consumed waiter closure without identity-valued labels; cutoff, lost outcome or stopped observer never implies producer cancellation, nonapplication or discharged effects. Keep observer retention/age/censoring separate from producer obligations and actual completion.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "PATH-03": {
+      "profile": "fidelity",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-05",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-10"
+      ],
+      "focus": "Authored annotation changes versus derived target mapping and private projections; mapped/affected/detached/unavailable dispositions, boundary-profile and collapsed-point conformance, exact proposal preconditions and body preservation.",
+      "limit": "Scalar UTF-8 laws do not establish all file/BOM/mapping/grapheme profiles."
+    },
+    "PATH-04": {
+      "profile": "history",
+      "points": [
+        "INS-02",
+        "INS-06"
+      ],
+      "authority": [
+        "INV-06",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-10"
+      ],
+      "focus": "Atomic linked undo/redo without cascading hidden prerequisites.",
+      "limit": "History inspection needs separate release rights; no unauthorized participant disclosure except declared operational disclosures."
+    },
+    "PATH-05": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-11",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03"
+      ],
+      "focus": "Immutable queued capture, dispatch, actual write/sync evidence and projected saved state.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "PATH-06": {
+      "profile": "effect",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-03",
+        "INS-04"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-08",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-03"
+      ],
+      "focus": "Clipboard disclosure, external completion and separately validated cut/paste.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "PATH-07": {
+      "profile": "derived",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-05"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04"
+      ],
+      "focus": "Optional analysis/query lifecycle, context invalidation and proposal revalidation.",
+      "limit": "Context gates do not prove parser semantics, complete discovery or native preemption."
+    },
+    "PATH-08": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-04",
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-06"
+      ],
+      "focus": "Scope/precedence preparation, coherent activation and old in-flight context.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "PATH-09": {
+      "profile": "geometry",
+      "points": [
+        "INS-03",
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-05"
+      ],
+      "focus": "Authorized logical content through geometry to input/presentation submission.",
+      "limit": "No assumed paint acknowledgment, universal coordinate inverse or unsupported platform parity."
+    },
+    "PATH-10": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-03",
+        "INS-04",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-07"
+      ],
+      "focus": "Open/rebind/disposal while snapshots, authored content and effects remain owned.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "PATH-11": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Record capture to current-authorized drain/export; independent loss status.",
+      "limit": "Sampling/loss/off are not zero activity; diagnosis cannot authorize mutations or replace outcomes."
+    },
+    "PATH-12": {
+      "profile": "shutdown",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-12",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-11",
+        "INV-15",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-09"
+      ],
+      "focus": "Saturation, protected completion/control service, disposition and bounded wait.",
+      "limit": "Bounded waiting is not preemption, reclamation, crash recovery or a forced process kill."
+    },
+    "ID-01": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-03"
+      ],
+      "authority": [
+        "INV-07",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-06"
+      ],
+      "focus": "Host-established principal/grant versus untrusted claimed author or producer.",
+      "limit": "Discovery is advisory; telemetry neither grants admission nor proves complete ingress observation."
+    },
+    "ID-02": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-04"
+      ],
+      "authority": [
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-06"
+      ],
+      "focus": "Initiator, submitting client and executor attribution remain distinct.",
+      "limit": "Discovery is advisory; telemetry neither grants admission nor proves complete ingress observation."
+    },
+    "ID-03": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-07"
+      ],
+      "focus": "Local resource authority and write ownership, not process/network proximity.",
+      "limit": "Discovery is advisory; telemetry neither grants admission nor proves complete ingress observation."
+    },
+    "ID-04": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-05",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-04",
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-06"
+      ],
+      "focus": "Workspace/discovery membership invalidation without treating membership as tenancy.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "ID-05": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-02",
+        "INS-05",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-03"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-07"
+      ],
+      "focus": "Document incarnation mismatch, reuse prevention and late applicability.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "ID-06": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-10"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-07"
+      ],
+      "focus": "Locator/resource-key evidence, binding changes and historical receipt identity.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "ID-07": {
+      "profile": "publication",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-05"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-02"
+      ],
+      "focus": "Revision/publication generation domains and stale evidence without global sequence leakage.",
+      "limit": "An event is not the commit record; no callbacks or I/O inside publication."
+    },
+    "ID-08": {
+      "profile": "fidelity",
+      "points": [
+        "INS-03",
+        "INS-06",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-05",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-10"
+      ],
+      "focus": "Authored annotation version versus attachment generation and identity lifecycle.",
+      "limit": "Scalar UTF-8 laws do not establish all file/BOM/mapping/grapheme profiles."
+    },
+    "ID-09": {
+      "profile": "geometry",
+      "points": [
+        "INS-02",
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-05"
+      ],
+      "focus": "View/focus/preedit/layout context mismatch and late input rejection.",
+      "limit": "No assumed paint acknowledgment, universal coordinate inverse or unsupported platform parity."
+    },
+    "ID-10": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-03",
+        "INS-05",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-04",
+        "INV-07",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-06"
+      ],
+      "focus": "Current policy/profile/grammar/query generations, not text revision alone.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "ID-11": {
+      "profile": "history",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-06"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-06"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-10"
+      ],
+      "focus": "Logical operation, child work and fresh reversal identity versus linked group.",
+      "limit": "History inspection needs separate release rights; no unauthorized participant disclosure except declared operational disclosures."
+    },
+    "ID-12": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-12",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-09"
+      ],
+      "focus": "Logical effect versus attempt, receipt matching, unknown age and cancellation intent.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "ID-13": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Recipient/purpose/token validity; scoped cursors reveal no hidden sequence.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "ID-14": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-07",
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-06",
+        "SCN-08"
+      ],
+      "focus": "Locally bounded causal correlation versus imported trace claims; neither is a capability.",
+      "limit": "Sampling/loss/off are not zero activity; diagnosis cannot authorize mutations or replace outcomes."
+    },
+    "NET-01": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-03"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-07",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-02"
+      ],
+      "focus": "In-process facade calls/events, not a socket or protocol hop.",
+      "limit": "Connection/TLS/packet metrics are not applicable to in-process calls; no transport is introduced."
+    },
+    "NET-02": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-11",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-07"
+      ],
+      "focus": "Host file/annotation/OS boundary, actual provider capability and local observed delay.",
+      "limit": "Reference services are local; only a host-declared integration can report remote/provider details, and unknown stays unknown."
+    },
+    "NET-03": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Optional host diagnostic sink enablement, release, loss and bounded drain/export.",
+      "limit": "Off means disabled, not successful zero traffic; no core exporter, network handshake or guaranteed flush."
+    },
+    "DF-01": {
+      "profile": "native",
+      "points": [
+        "INS-01",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-05",
+        "SCN-06"
+      ],
+      "focus": "Native event/preedit to explicit semantic request without logging content.",
+      "limit": "Native facilities and actual display are capability-dependent; source and preedit remain distinct."
+    },
+    "DF-02": {
+      "profile": "publication",
+      "points": [
+        "INS-01",
+        "INS-02"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04"
+      ],
+      "focus": "Proposal target/read/discovery context to bounded staged candidate.",
+      "limit": "An event is not the commit record; no callbacks or I/O inside publication."
+    },
+    "DF-03": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-07"
+      ],
+      "focus": "Authorized snapshot/projection release and separate physical retention.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "DF-04": {
+      "profile": "derived",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-05"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-04",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-02",
+        "SCN-04"
+      ],
+      "focus": "Worker evidence to context acceptance, ordinary mutation and current release gates.",
+      "limit": "Context gates do not prove parser semantics, complete discovery or native preemption."
+    },
+    "DF-05": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-10",
+        "INV-11",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03"
+      ],
+      "focus": "Source capture/profile/baseline to encoded payload, write and attributed receipt.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "DF-06": {
+      "profile": "effect",
+      "points": [
+        "INS-03",
+        "INS-04",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-10",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-03"
+      ],
+      "focus": "Separate annotation payload, authorized export and independent persistence evidence.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "DF-07": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Current recipient projection through query/subscription release and resync.",
+      "limit": "Current release checks are required; previously disclosed bytes cannot be recalled."
+    },
+    "DF-08": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Classified primitive records through bounded capture and safe authorized sink.",
+      "limit": "Sampling/loss/off are not zero activity; diagnosis cannot authorize mutations or replace outcomes."
+    },
+    "DF-09": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-04",
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-06"
+      ],
+      "focus": "Host settings/assets/grants through staged coherent activation.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "DF-10": {
+      "profile": "geometry",
+      "points": [
+        "INS-03",
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-05"
+      ],
+      "focus": "Source/annotation/preedit projection through geometry and native presentation.",
+      "limit": "No assumed paint acknowledgment, universal coordinate inverse or unsupported platform parity."
+    },
+    "DF-11": {
+      "profile": "effect",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-03",
+        "INS-04"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-08",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-03"
+      ],
+      "focus": "Clipboard payload release and separately staged source mutation.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "DAT-01": {
+      "profile": "publication",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-02",
+        "INV-08",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-02",
+        "SCN-03"
+      ],
+      "focus": "Source revision/change/fidelity observations without default source capture.",
+      "limit": "An event is not the commit record; no callbacks or I/O inside publication."
+    },
+    "DAT-02": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-05",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-08",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04",
+        "SCN-07"
+      ],
+      "focus": "Live source-cell, worker, candidate and snapshot obligations; logical versus physical retention.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "DAT-03": {
+      "profile": "fidelity",
+      "points": [
+        "INS-02",
+        "INS-03",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-05",
+        "INV-08",
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-10"
+      ],
+      "focus": "Authored/private bodies versus mapped attachments; metadata is sensitive too.",
+      "limit": "Scalar UTF-8 laws do not establish all file/BOM/mapping/grapheme profiles."
+    },
+    "DAT-04": {
+      "profile": "history",
+      "points": [
+        "INS-03",
+        "INS-06",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-06",
+        "INV-08",
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-07",
+        "SCN-10"
+      ],
+      "focus": "Inverse/history lifecycle, required retention and separately authorized inspection.",
+      "limit": "History inspection needs separate release rights; no unauthorized participant disclosure except declared operational disclosures."
+    },
+    "DAT-05": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01",
+        "INV-10",
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-07"
+      ],
+      "focus": "Binding/baseline/serialization state; token equality is not freshness/durability.",
+      "limit": "Host alias/identity truth is an assumption; snapshots and effects may outlive object/view closure."
+    },
+    "DAT-06": {
+      "profile": "native",
+      "points": [
+        "INS-03",
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-08",
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-05"
+      ],
+      "focus": "Preedit/selection/view lifecycle, not persisted source or public text.",
+      "limit": "Native facilities and actual display are capability-dependent; source and preedit remain distinct."
+    },
+    "DAT-07": {
+      "profile": "derived",
+      "points": [
+        "INS-03",
+        "INS-05",
+        "INS-10"
+      ],
+      "authority": [
+        "INV-03",
+        "INV-04",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-02",
+        "SCN-04"
+      ],
+      "focus": "Derived content/topology coverage, current context and recipient-safe cache reuse.",
+      "limit": "Context gates do not prove parser semantics, complete discovery or native preemption."
+    },
+    "DAT-08": {
+      "profile": "effect",
+      "points": [
+        "INS-03",
+        "INS-04",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-10",
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-03",
+        "SCN-09"
+      ],
+      "focus": "Outcome/receipt retention, truthful milestones and projected evidence.",
+      "limit": "Provider truth and physical write/durability need actual conformance; receipt arrival is not write order."
+    },
+    "DAT-09": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-03",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-07",
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-06"
+      ],
+      "focus": "Grant/profile/registry lifecycle; no values/code assets in diagnostic defaults.",
+      "limit": "Configuration labels are not grants; native provider compatibility remains a supplier obligation."
+    },
+    "DAT-10": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08",
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Allowed records, counters, provenance and independent capture-loss state.",
+      "limit": "Sampling/loss/off are not zero activity; diagnosis cannot authorize mutations or replace outcomes."
+    },
+    "INV-01": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-08"
+      ],
+      "authority": [
+        "INV-01"
+      ],
+      "scenarios": [
+        "SCN-07"
+      ],
+      "focus": "Unique admitted owner/incarnation/binding, observed at lifecycle enforcement.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-02": {
+      "profile": "publication",
+      "points": [
+        "INS-02"
+      ],
+      "authority": [
+        "INV-02"
+      ],
+      "scenarios": [
+        "SCN-01"
+      ],
+      "focus": "One coherent publication or unchanged authored-state rejection.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-03": {
+      "profile": "derived",
+      "points": [
+        "INS-02",
+        "INS-05",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-03"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-07"
+      ],
+      "focus": "Source/incarnation freshness and stale result rejection.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-04": {
+      "profile": "publication",
+      "points": [
+        "INS-01",
+        "INS-02",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-04"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-06"
+      ],
+      "focus": "Actual final dependency and current-authority validation.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-05": {
+      "profile": "fidelity",
+      "points": [
+        "INS-02",
+        "INS-05",
+        "INS-07"
+      ],
+      "authority": [
+        "INV-05"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-10"
+      ],
+      "focus": "Authored annotation body/version preservation versus mapped target evidence; complete target removal detaches without semantic resurrection or silent body deletion.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-06": {
+      "profile": "history",
+      "points": [
+        "INS-02",
+        "INS-06"
+      ],
+      "authority": [
+        "INV-06"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-10"
+      ],
+      "focus": "All linked eligible frontiers/content or unchanged blocked reversal.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-07": {
+      "profile": "activation",
+      "points": [
+        "INS-01",
+        "INS-09"
+      ],
+      "authority": [
+        "INV-07"
+      ],
+      "scenarios": [
+        "SCN-06"
+      ],
+      "focus": "Host capability ceiling; no elevation through labels, settings or registration.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-08": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-08"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Current recipient/data/destination authorization at each new release.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-09": {
+      "profile": "release",
+      "points": [
+        "INS-03",
+        "INS-07",
+        "INS-12"
+      ],
+      "authority": [
+        "INV-09"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Paired hidden-state projection constraints, not raw coordinator sequence exposure.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-10": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "INV-10"
+      ],
+      "scenarios": [
+        "SCN-03"
+      ],
+      "focus": "Exact source/profile/binding/attempt acknowledgment attribution.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-11": {
+      "profile": "effect",
+      "points": [
+        "INS-04",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-11"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-09"
+      ],
+      "focus": "Late/unknown evidence survives stop, expiry and applicability changes.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-12": {
+      "profile": "diagnostics",
+      "points": [
+        "INS-12"
+      ],
+      "authority": [
+        "INV-12"
+      ],
+      "scenarios": [
+        "SCN-08"
+      ],
+      "focus": "Diagnostic erasure/non-authority with collection off, failed or saturated.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-13": {
+      "profile": "fidelity",
+      "points": [
+        "INS-07"
+      ],
+      "authority": [
+        "INV-13"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-04"
+      ],
+      "focus": "Declared codec/fidelity round trip and no silent conversion substitution.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-14": {
+      "profile": "geometry",
+      "points": [
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "INV-14"
+      ],
+      "scenarios": [
+        "SCN-05"
+      ],
+      "focus": "One accepted geometry/context across supported consumers.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-15": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-15"
+      ],
+      "scenarios": [
+        "SCN-04",
+        "SCN-09"
+      ],
+      "focus": "Aggregate admission/reservations and no quota manufacture through aliases/children.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "INV-16": {
+      "profile": "lifecycle",
+      "points": [
+        "INS-04",
+        "INS-06",
+        "INS-08",
+        "INS-13"
+      ],
+      "authority": [
+        "INV-16"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-07",
+        "SCN-09",
+        "SCN-10"
+      ],
+      "focus": "Unsaved authored data, linked history and unresolved evidence survive lifecycle pressure.",
+      "limit": "Signals observe enforcement outcomes; invariant truth requires the authoritative state/scenario oracle, not telemetry presence or absence."
+    },
+    "LIVE-01": {
+      "profile": "admission",
+      "points": [
+        "INS-01",
+        "INS-02"
+      ],
+      "authority": [
+        "LIVE-01"
+      ],
+      "scenarios": [
+        "SCN-01",
+        "SCN-04"
+      ],
+      "focus": "Bounded local disposition under the supported admission/resource profile.",
+      "limit": "Pending age and censored requests matter; no numeric service bound or process-failure guarantee is inferred."
+    },
+    "LIVE-02": {
+      "profile": "derived",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-05",
+        "INS-13"
+      ],
+      "authority": [
+        "LIVE-02"
+      ],
+      "scenarios": [
+        "SCN-04",
+        "SCN-09"
+      ],
+      "focus": "Eligible admitted progress under declared host service and fair-sharing assumptions.",
+      "limit": "A throughput histogram cannot prove starvation freedom or preemption; denied eligibility is distinct from stalled admitted work."
+    },
+    "LIVE-03": {
+      "profile": "shutdown",
+      "points": [
+        "INS-04",
+        "INS-13"
+      ],
+      "authority": [
+        "LIVE-03"
+      ],
+      "scenarios": [
+        "SCN-09"
+      ],
+      "focus": "Bounded shutdown waiting with explicit unresolved-worker/effect obligations.",
+      "limit": "Wait cutoff does not prove worker completion, reclamation, save success or forced termination."
+    },
+    "ASM-01": {
+      "profile": "assumption",
+      "points": [
+        "INS-01",
+        "INS-03",
+        "INS-09"
+      ],
+      "authority": [
+        "ASM-01"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-06"
+      ],
+      "focus": "Accepted local host context/grants and capability declarations.",
+      "limit": "A compromised trusted process can falsify context and observations; local metrics cannot prove its honesty."
+    },
+    "ASM-02": {
+      "profile": "assumption",
+      "points": [
+        "INS-04",
+        "INS-07",
+        "INS-08"
+      ],
+      "authority": [
+        "ASM-02"
+      ],
+      "scenarios": [
+        "SCN-03",
+        "SCN-07"
+      ],
+      "focus": "Provider identity/equivalence, baseline/token and actual write/sync declarations.",
+      "limit": "Declared versus observed evidence is distinct; no universal aliases, conditional writes or hardware durability."
+    },
+    "ASM-03": {
+      "profile": "assumption",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-13"
+      ],
+      "authority": [
+        "ASM-03"
+      ],
+      "scenarios": [
+        "SCN-09"
+      ],
+      "focus": "Executor/time/clock/cancellation and actual host service context.",
+      "limit": "No cross-clock duration subtraction, arbitrary native preemption or guaranteed worker release."
+    },
+    "ASM-04": {
+      "profile": "assumption",
+      "points": [
+        "INS-05",
+        "INS-09"
+      ],
+      "authority": [
+        "ASM-04"
+      ],
+      "scenarios": [
+        "SCN-04",
+        "SCN-06"
+      ],
+      "focus": "Accepted trusted grammar/scanner/provider profile and generations.",
+      "limit": "Context validity does not establish grammar semantics, native safety or complete discovery."
+    },
+    "ASM-05": {
+      "profile": "assumption",
+      "points": [
+        "INS-10",
+        "INS-11"
+      ],
+      "authority": [
+        "ASM-05"
+      ],
+      "scenarios": [
+        "SCN-05"
+      ],
+      "focus": "Declared actual OS/backend/font/terminal/input/accessibility support.",
+      "limit": "Only observed submission/local timing; no unsupported platform parity or actual-display guarantee."
+    },
+    "ASM-06": {
+      "profile": "assumption",
+      "points": [
+        "INS-03",
+        "INS-12"
+      ],
+      "authority": [
+        "ASM-06"
+      ],
+      "scenarios": [
+        "SCN-02",
+        "SCN-08"
+      ],
+      "focus": "Mediated release versus already disclosed trusted consumers.",
+      "limit": "Cannot recall prior bytes or control copies/raw native memory; consumer honesty remains an assumption."
+    },
+    "ASM-07": {
+      "profile": "assumption",
+      "points": [
+        "INS-01",
+        "INS-04",
+        "INS-05",
+        "INS-06",
+        "INS-08",
+        "INS-13"
+      ],
+      "authority": [
+        "ASM-07"
+      ],
+      "scenarios": [
+        "SCN-04",
+        "SCN-07",
+        "SCN-09"
+      ],
+      "focus": "Declared retention/resource envelope and known staging/history/effect obligations.",
+      "limit": "The source-cell ledger is not a bound on result copies, history, native allocations or entire process memory."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+ "profile":"equal-source-companion-classification-reference/1",
+ "gates":["authorized","bounded","notStopped","interpretationCurrent","companionsReady","versionsAvailable","historyReady"],
+ "scope":{"equalBytePlacementPublicationChecked":true,"equalByteViewCompositionChecked":true,"sourceRevisionAndAuthoredHistoryFramesChecked":true,"actualMixedAuthoredAndDerivedCompositionChecked":true,"conservativeReversalCompositionChecked":true,
+ "allCompanionProfilesProved":false,"actualRecipientProjectionNoninterferenceProved":false,"generalTargetRestorationProved":false,"fullInvocationReplayEventCompositionProved":false,"actualConcurrentRootInstallationProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

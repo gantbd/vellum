@@ -1,0 +1,22 @@
+[package]
+name = "vellum-editor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+native-unicode = ["dep:vellum-unicode-icu"]
+
+[dependencies]
+vellum-engine = { path = "../vellum-engine" }
+vellum-session = { path = "../vellum-session" }
+vellum-local-fs = { path = "../vellum-local-fs" }
+vellum-annotation-json = { path = "../vellum-annotation-json" }
+vellum-unicode-icu = { path = "../vellum-unicode-icu", optional = true }
+unicode-segmentation = "=1.13.3"
+unicode-width = "=0.2.2"
+getrandom = "=0.4.3"
+sha2 = "=0.10.9"
+
+[lints]
+workspace = true

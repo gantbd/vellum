@@ -1,0 +1,20 @@
+{
+  "contract":"analysis-work/1","evidenceContract":"analysis-evidence/1","queryContract":"analysis-query/1",
+  "profile":"captured-analysis/1","languageProfile":"pinned-markdown-javascript-reference/1",
+  "requestFields":["contract","operation","profile","origin","provider","context","mode","base","journals"],
+  "contextFields":["document","sourceRevision","analysis","grammarGeneration","highlightQueryGeneration","discoveryQueryGeneration","registryGeneration","configurationGeneration","languageProfile"],
+  "recordFields":["analysis","document","provider","grammarGeneration","highlightQueryGeneration","discoveryQueryGeneration","registryGeneration","configurationGeneration","languageProfile"],
+  "parseKeyFields":["document","analysis","grammarGeneration","discoveryQueryGeneration","registryGeneration","configurationGeneration","languageProfile"],
+  "originFields":["operation","effect","attempt"],"modes":["parse-query","query-only"],
+  "failures":["missing-grammar","invalid-query","exhausted","cancelled","worker-fault","unsupported"],
+  "evidenceCommon":["contract","task","origin","provider","kind"],"evidenceVariants":{"result":["packet"],"failure":["reason"],"quiescence":[]},
+  "packetFields":["context","source","parseState","coverage","regions","captures"],
+  "regionFields":["label","language","closed","body","kind","ranges","captures","hasError"],
+  "regionKinds":["parsed","unsupported-language","grammar-unavailable","incomplete-fence","empty-body","region-budget"],
+  "queryCommon":["contract","operation","snapshot","view"],"queries":{"supported-analysis":["range"],"supplied-evidence-inspection":[]},
+  "limits":["maxTasks","maxOutstanding","maxIssued","maxCaptureBytes","maxEnvelopeBytes","maxHeldBytes","maxSourceBytes","maxRegions","maxRanges","maxCaptures","maxTagBytes","maxQueryBytes","maxReplyBytes"],
+  "scope":{"analysisWorkReferenceChecked":true,"nativePacketCompositionChecked":true,"currentSharedViewReleaseChecked":true,
+    "actualAuthenticationAndPolicyTruthProved":false,"actualParserLeaseAndLifetimeRefinementProved":false,"actualNativeBaseIdentityProved":false,
+    "physicalAccountingProved":false,"fullOwnerBindingAndHostEnvelopesProved":false,"hostileDecoderProved":false,
+    "fullInvocationEventCompositionProved":false,"otherSemanticProvidersProved":false,"allStateCompanionsProved":false,"implementationRefinement":false}
+}

@@ -1,0 +1,5 @@
+{
+ "scope":"owned-annotation-exact-output-comparison-only",
+ "releaseGates":["authorized","scope","continuous","live","notStopped","annotationReadable","completeDisclosure","resourcesReady","retained","transferReady","replyReady","comparisonAllowed"],
+ "scopeFlags":{"actualOwnedNativeArtifactComparisonChecked":true,"independentCurrentDisclosureForBothOperandsChecked":true,"exactBytesNotVersionsOrLengthsChecked":true,"historicalBasisAndNoMutationChecked":true,"annotationBindingPolicySelected":false,"savedBaselineOrExternalFreshnessProved":false,"annotationLoadOrRestorationProved":false,"hostPolicyAliasOrRetentionTruthProved":false,"hostileObjectDecoderProved":false,"globalPhysicalAccountingProved":false,"constantTimeOrTimingNoninterferenceProved":false,"publicQueryProtocolSelected":false,"actualConcurrentInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

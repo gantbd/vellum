@@ -1,0 +1,14 @@
+[package]
+name = "vellum-unicode-icu"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+vellum-engine = { path = "../vellum-engine" }
+icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+rust_icu_ubrk = "=5.8.0"
+rust_icu_sys = "=5.8.0"
+
+[lints]
+workspace = true

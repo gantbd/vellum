@@ -1,0 +1,49 @@
+{
+  "id": "v1-reference",
+  "revision": 1,
+  "adopted": "2026-10-27",
+  "selections": {
+    "execution": "closed-versioned-typed-products-with-authorized-metadata",
+    "text": "lossless-logical-lines-and-default-unicode-boundaries",
+    "history": "invocation-groups-with-explicit-bounded-typing-opt-in",
+    "annotations": "versioned-utf8-json-reference-host-core-storage-neutral",
+    "assets": "bundled-immutable-pins-and-validated-host-alternatives",
+    "configuration": "typed-deterministic-composition-and-adapter-bindings",
+    "observation": "content-free-bounded-nonblocking-capture-optional-drain",
+    "packaging": "minimal-core-separate-providers-adapters-and-both-apps"
+  },
+  "lines": {
+    "delimiters": ["CRLF", "LF", "CR"],
+    "origin": 0,
+    "columnUnit": "utf8-byte",
+    "bodyEndIncludedAsCaret": true,
+    "emptySourceLines": 1,
+    "trailingDelimiterAddsEmptyLine": true,
+    "crlfInterior": "unavailable",
+    "normalization": "none"
+  },
+  "segmentation": {
+    "unicode": "18.0.0",
+    "uax29Revision": 49,
+    "graphemes": "default-extended",
+    "words": "default",
+    "implicitTailoring": false,
+    "identifierCommands": "separately-named-supported-profile"
+  },
+  "annotationStorage": {
+    "encoding": "UTF-8",
+    "syntax": "RFC8259-JSON",
+    "versionedSchema": true,
+    "defaultMetadata": "empty",
+    "duplicateNames": "reject",
+    "location": "host-supplied-binding",
+    "load": "owned-stage-validate-then-atomic-publication"
+  },
+  "assurance": {
+    "numericLimitsMeasured": false,
+    "referenceUnicodeConformanceSelected": true,
+    "productionUnicodeConformanceExecuted": false,
+    "hostSupportVerified": false,
+    "concretePublicSchemaClosed": false
+  }
+}

@@ -1,0 +1,5 @@
+{
+ "scope":"annotation-inventory-lifecycle-composition-only",
+ "scopeFlags":{"actualScratchAndSourceActivationChecked":true,"existingInventoryNeverInferredChecked":true,"actualRelationsDisposalAndProvenanceChecked":true,"nativeEditingAfterCreationAndDisposedFencesChecked":true,"wholeCandidateInventoryBoundsChecked":true,
+ "legacyInventoryMigrationProved":false,"annotationSnapshotActivationProved":false,"actualIdentityOrHostTruthProved":false,"fullRetirementPlannerProved":false,"generalTargetRestorationProved":false,"pointPersistencePolicySelected":false,"fullInvocationEventCompositionProved":false,"physicalReclamationProved":false,"actualConcurrentInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

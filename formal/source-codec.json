@@ -1,0 +1,18 @@
+{
+  "profile":"strict-utf8-one-bom/1","captureContract":"serialized-source/1",
+  "contextFields":["origin","provider","resource","bindingGeneration","resourceVersion","profile"],
+  "captureFields":["contract","operation","document","expectedSource","expectedSerialization"],
+  "serializationFields":["generation","profile","bom"],
+  "limits":["maxImports","maxArtifacts","maxIssued","maxHeldBytes","maxContextBytes","maxInputBytes","maxSourceBytes","maxChunkBytes","maxChunks","maxCandidateBytes","maxOutputBytes","maxArtifactBytes","maxCompareBytes","maxCoordinate","maxReplyBytes"],
+  "phases":["open","complete","failed","aborted","retired"],
+  "utf8States":{
+    "start":[[0,127,"start"],[194,223,"need1"],[224,224,"e0"],[225,236,"need2"],[237,237,"ed"],[238,239,"need2"],[240,240,"f0"],[241,243,"need3"],[244,244,"f4"]],
+    "need1":[[128,191,"start"]],"need2":[[128,191,"need1"]],"need3":[[128,191,"need2"]],
+    "e0":[[160,191,"need1"]],"ed":[[128,159,"need1"]],"f0":[[144,191,"need2"]],"f4":[[128,143,"need2"]],"failed":[]
+  },
+  "scope":{"streamingUtf8AndBomChecked":true,"ownedSourceCaptureChecked":true,"coordinateDomainChecked":true,
+    "actualResourceSnapshotTruthProved":false,"fullResourceReadWriteAdmissionProved":false,"atomicLoadPublicationProved":false,
+    "actualPolicyAndRetentionTruthProved":false,"hostileObjectDecoderProved":false,"physicalAccountingProved":false,
+    "optionalCodecsProved":false,"actualFilesystemGuaranteesProved":false,"fullInvocationEventCompositionProved":false,
+    "independentCleanroomCertification":false,"implementationRefinement":false}
+}

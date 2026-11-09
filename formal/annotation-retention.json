@@ -1,0 +1,5 @@
+{
+ "scope":"shared-codec-native-annotation-retention-only",
+ "releaseGates":["authorized","scope","continuous","live","notStopped","annotationReadable","completeDisclosure","resourcesReady","retained","transferReady","replyReady"],
+ "scopeFlags":{"actualNativeCaptureAndOwnedRetentionChecked":true,"sharedSourceAnnotationCodecBudgetChecked":true,"boundCurrentChunkReleaseChecked":true,"stopAndDischargedRetirementSeparationChecked":true,"actualHostPolicyAliasOrDischargeTruthProved":false,"allEngineGlobalAdmissionProved":false,"physicalMemoryOrPeakCostProved":false,"providerWriteReceiptOrDestinationMutexProved":false,"publicArtifactProtocolSelected":false,"actualConcurrentInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

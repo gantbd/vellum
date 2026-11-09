@@ -1,0 +1,19 @@
+{
+  "contract": "execution-observation/1",
+  "family": "F06",
+  "common": ["contract", "operation", "invocation", "context", "profile"],
+  "variants": {
+    "status": [],
+    "bounded-observation-wait": ["after", "budget"],
+    "retained-outcome": [],
+    "minimal-control-status": []
+  },
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "actualClockProved": false,
+    "physicalAccountingProved": false,
+    "fullInvocationRefinementProved": false,
+    "implementationRefinement": false
+  }
+}

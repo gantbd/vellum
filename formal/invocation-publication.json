@@ -1,0 +1,15 @@
+{
+ "scope":"owned-invocation-publication-composition-only",
+ "contextFields":["authority","engine","recipient","purpose","destination","profile","continuity"],
+ "domainFields":["authority","engine"],
+ "limits":["maxSlots","maxIssued","maxIntentBytes","maxResultBytes","maxRootBytes","maxHeldBytes"],
+ "admissionGates":["authorized","scope","continuous","live","notStopped","interpretationCurrent","resourcesReady","bookkeepingReserved"],
+ "releaseGates":["authorized","scope","continuous","live","resourcesReady","retained","transferReady"],
+ "jobKinds":["compound","reversal","selection","line","boundary","replacement","clipboard","annotation","relation","lifecycle","registration","settings"],
+ "ownedEditingKinds":["selection","line","boundary","replacement","annotation","settings"],
+ "routes":["typed","dynamic"],
+ "phases":["issued","pending","running","done"],
+ "retirement":"absent-owned-binding-not-a-reusable-phase",
+ "scopeFlags":{"ownedFiniteInvocationFencingChecked":true,"actualSharedRootRecipientRoutingChecked":true,"actualCompoundAndViewPublicationChecked":true,"actualNativeReversalReplayChecked":true,"actualCommittedJournalCarryChecked":true,"atomicRootAndTerminalBookkeepingChecked":true,"currentOutcomeCeilingChecked":true,"resultEvictionAndEligibilitySeparationChecked":true,
+ "actualHostDomainOrPolicyTruthProved":false,"allOperationFamiliesOrEffectsProved":false,"fullExecutionWaitAndEventGatewayProved":false,"crashDurableDeduplicationProved":false,"actualConcurrentInstallationProved":false,"timingOrResourceNoninterferenceProved":false,"physicalAccountingProved":false,"hostileDecoderProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

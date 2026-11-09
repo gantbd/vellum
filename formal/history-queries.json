@@ -1,0 +1,18 @@
+{
+  "contract": "history-query/1",
+  "family": "F04",
+  "common": ["contract", "operation", "context", "scope", "direction", "profile"],
+  "variants": {
+    "frontier": [],
+    "availability": ["group"],
+    "permitted-blocking-detail": ["group"]
+  },
+  "availability": ["empty", "eligible", "blocked"],
+  "scope": {
+    "nativeSemanticProductsSelected": true,
+    "wireEncodingSelected": false,
+    "historyContextIssuanceProved": false,
+    "fullReversalEligibilityProved": false,
+    "implementationRefinement": false
+  }
+}

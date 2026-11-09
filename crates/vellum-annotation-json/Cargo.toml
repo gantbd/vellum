@@ -1,0 +1,16 @@
+[package]
+name = "vellum-annotation-json"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+vellum-engine = { path = "../vellum-engine" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+vellum-local-fs = { path = "../vellum-local-fs" }
+
+[lints]
+workspace = true

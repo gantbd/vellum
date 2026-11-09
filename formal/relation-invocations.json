@@ -1,0 +1,10 @@
+{
+ "contract":"relation-invocation/1",
+ "profile":"native-relation-lifecycle/1",
+ "family":"F17",
+ "common":["contract","operation","invocation","profile","action"],
+ "operations":{"view-container":"view","workspace-container":"workspace"},
+ "actions":{"create":[],"retire":["target","expected"]},
+ "releaseGates":["relationResultReadable","relationResultContextCurrent","historicalTargetReadable"],
+ "scope":"owned-native-relation-invocation-only"
+}

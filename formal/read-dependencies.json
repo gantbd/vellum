@@ -1,0 +1,29 @@
+{
+  "contract":"owned-annotation-plan/2",
+  "baseContract":"owned-annotation-plan/1",
+  "configurationContract":"owned-annotation-plan/4",
+  "configurationContracts":["owned-annotation-plan/4","owned-annotation-plan/5"],
+  "workspaceContract":"owned-annotation-plan/5",
+  "workspaceFields":["kind","workspace","expectedWorkspace"],
+  "configurationAuthorityContract":"native-read-authority/2",
+  "configurationKinds":{
+    "configuration-domain":["kind","target","domain","expectedSchema","expectedRestrictions","expectedAssociation","expectedGeneration"],
+    "configuration-state":["kind","authority","expectedSchema","expectedRestrictions","expectedAssociation","expectedConfiguration"]
+  },
+  "configurationDomains":["source","serialization","analysis"],
+  "planFields":["contract","invocation","descriptor","sources","annotations","reads"],
+  "kinds":{
+    "source":["kind","document","expectedSource"],
+    "annotation-set":["kind","document","expectedAnnotationSet"],
+    "annotation-body":["kind","document","id","incarnation","expectedBody"],
+    "annotation-authored-target":["kind","document","id","incarnation","expectedTarget"]
+  },
+  "versions":{"source":"expectedSource","annotation-set":"expectedAnnotationSet","annotation-body":"expectedBody","annotation-authored-target":"expectedTarget"},
+  "authorityContract":"native-read-authority/1",
+  "contextFields":["authority","engine","recipient","purpose","destination","profile","continuity"],
+  "authorityFields":["contract","context","grants"],
+  "grantFields":["dependency","readAllowed","presenceAllowed","equalityAllowed"],
+  "permissionFields":["readAllowed","presenceAllowed","equalityAllowed"],
+  "limitFields":["maxDependencies","maxIdentifierBytes"],
+  "scope":"native-compound-declared-read-only-dependencies-only"
+}

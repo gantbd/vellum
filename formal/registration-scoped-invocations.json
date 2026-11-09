@@ -1,0 +1,10 @@
+{
+ "contract":"scoped-registration-invocation/1",
+ "profile":"scoped-resource-registration/1",
+ "family":"F16",
+ "operation":"activate-context",
+ "fields":["contract","operation","invocation","profile","request"],
+ "scopeInvocationFields":["authority","engine","recipient","purpose","destination","continuity"],
+ "releaseGates":["scopedRegistrationResultReadable","scopedRegistrationResultContextCurrent","scopedRegistrationResultAllowed"],
+ "scope":"owned-scoped-native-registration-invocation-only"
+}

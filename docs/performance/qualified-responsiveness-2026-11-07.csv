@@ -1,0 +1,55 @@
+# entered-main; process-local timing excludes launch and pre-main initialization
+# responsiveness-v1; synthetic UTF-8 ASCII; trusted-owner; process monotonic ns
+# samples=512; warmup=32; p99_budget_ns=unset; arch=aarch64; os=macos
+# total=owned-request-to-query; no queue/UI/I/O; clock and correctness-check overhead included
+# allocations/RSS unmeasured; cohort time includes bounded drain/bookkeeping; no incomplete cohort is a pass
+workload,bytes_per_document,documents,edits_per_document,mode,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,timed_records,diagnostic_drops
+resident-small,4096,1,1,off,total,512,1750,1958,2209,4708,984833,0,0
+resident-small,4096,1,1,off,preparation,512,667,792,959,3375,984833,0,0
+resident-small,4096,1,1,off,commit,512,875,1000,1084,3541,984833,0,0
+resident-small,4096,1,1,off,query,512,83,84,84,208,984833,0,0
+resident-small,4096,1,1,capture,total,512,1625,1750,1791,1917,905542,0,0
+resident-small,4096,1,1,capture,preparation,512,584,667,709,750,905542,0,0
+resident-small,4096,1,1,capture,commit,512,833,916,959,1000,905542,0,0
+resident-small,4096,1,1,capture,query,512,83,84,125,125,905542,0,0
+resident-small,4096,1,1,timed,total,512,1833,1959,2083,2250,1008333,1536,0
+resident-small,4096,1,1,timed,preparation,512,667,791,834,959,1008333,1536,0
+resident-small,4096,1,1,timed,commit,512,875,1000,1042,1166,1008333,1536,0
+resident-small,4096,1,1,timed,query,512,125,167,208,292,1008333,1536,0
+resident-small,4096,1,1,saturated,total,512,709,1667,1750,33083,526750,0,2048
+resident-small,4096,1,1,saturated,preparation,512,292,625,667,27958,526750,0,2048
+resident-small,4096,1,1,saturated,commit,512,334,834,959,15583,526750,0,2048
+resident-small,4096,1,1,saturated,query,512,42,83,84,208,526750,0,2048
+agentic-multi,65536,2,16,off,total,512,10708,12084,14458,37000,5714958,0,0
+agentic-multi,65536,2,16,off,preparation,512,4916,5625,6625,28584,5714958,0,0
+agentic-multi,65536,2,16,off,commit,512,5667,6458,7625,29916,5714958,0,0
+agentic-multi,65536,2,16,off,query,512,83,125,166,833,5714958,0,0
+agentic-multi,65536,2,16,capture,total,512,11375,12709,14125,35583,5928083,0,0
+agentic-multi,65536,2,16,capture,preparation,512,5250,6292,6709,25042,5928083,0,0
+agentic-multi,65536,2,16,capture,commit,512,5959,6834,7333,9875,5928083,0,0
+agentic-multi,65536,2,16,capture,query,512,83,125,166,542,5928083,0,0
+agentic-multi,65536,2,16,timed,total,512,10084,11000,11167,11292,5278625,2048,0
+agentic-multi,65536,2,16,timed,preparation,512,4667,5125,5209,5292,5278625,2048,0
+agentic-multi,65536,2,16,timed,commit,512,5250,5750,5875,5917,5278625,2048,0
+agentic-multi,65536,2,16,timed,query,512,125,167,208,292,5278625,2048,0
+agentic-multi,65536,2,16,saturated,total,512,11333,14042,14250,34708,5928167,0,2560
+agentic-multi,65536,2,16,saturated,preparation,512,5167,6417,6667,7958,5928167,0,2560
+agentic-multi,65536,2,16,saturated,commit,512,6000,7417,7625,29250,5928167,0,2560
+agentic-multi,65536,2,16,saturated,query,512,83,125,125,458,5928167,0,2560
+resident-large,1048576,1,1,off,total,512,42750,48333,52791,65750,21932584,0,0
+resident-large,1048576,1,1,off,preparation,512,14959,18541,19709,29542,21932584,0,0
+resident-large,1048576,1,1,off,commit,512,27417,32125,33750,49958,21932584,0,0
+resident-large,1048576,1,1,off,query,512,41,42,84,417,21932584,0,0
+resident-large,1048576,1,1,capture,total,512,42958,47875,50875,68500,22254583,0,0
+resident-large,1048576,1,1,capture,preparation,512,15167,18209,19042,31083,22254583,0,0
+resident-large,1048576,1,1,capture,commit,512,27584,30542,32875,54250,22254583,0,0
+resident-large,1048576,1,1,capture,query,512,41,42,125,292,22254583,0,0
+resident-large,1048576,1,1,timed,total,512,42584,47709,53375,110584,22014375,1536,0
+resident-large,1048576,1,1,timed,preparation,512,14958,17792,19583,81084,22014375,1536,0
+resident-large,1048576,1,1,timed,commit,512,27125,30667,34209,53958,22014375,1536,0
+resident-large,1048576,1,1,timed,query,512,83,84,125,250,22014375,1536,0
+resident-large,1048576,1,1,saturated,total,512,42375,45958,50458,58250,21784458,0,2048
+resident-large,1048576,1,1,saturated,preparation,512,14917,17625,18417,19375,21784458,0,2048
+resident-large,1048576,1,1,saturated,commit,512,27125,30417,33334,43584,21784458,0,2048
+resident-large,1048576,1,1,saturated,query,512,42,42,84,208,21784458,0,2048
+# in_process_elapsed_ns=123288667

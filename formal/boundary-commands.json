@@ -1,0 +1,10 @@
+{
+  "contract":"boundary-command/1",
+  "profile":"unicode-logical-edit/1",
+  "common":["contract","operation","invocation","view","document","sourceRevision","expectedSelection","profile","boundary","unit","direction","count","extend"],
+  "families":{"F12":["logical-movement"],"F11":["ordinary-edit"]},
+  "units":["grapheme","word-start","word-end"],
+  "directions":["forward","backward"],
+  "scope":{"logicalBoundaryProductsChecked":true,"visualPageProductsProved":false,"actualIssuerPolicyRetentionProved":false,
+    "fullReplayCompositionProved":false,"allStateCompanionsProved":false,"physicalAccountingProved":false,"implementationRefinement":false}
+}

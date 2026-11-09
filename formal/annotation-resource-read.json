@@ -1,0 +1,10 @@
+{
+ "contract":"annotation-resource-read/1","evidenceContract":"annotation-resource-read-evidence/1",
+ "profile":"owned-annotation-resource-read-reference/1",
+ "requestFields":["contract","operation","origin","document","expectedSource","expectedAnnotationSet","expectedPair","expectedBinding","provider","resource","expectedRegistration","profile","requiredRead"],
+ "registrationFields":["provider","resource","generation","identityDomain","identityKey","identityKnown","locator","profile","atomicRead"],
+ "launchGates":["authorized","scope","continuous","live","notStopped","identityAllowed","bindingCoverageComplete","readAllowed","annotationReadable","providerAvailable","resourcesReady","launchAllowed"],
+ "releaseGates":["authorized","scope","continuous","live","notStopped","annotationReadable","retained","replyReady"],
+ "limits":["maxTasks","maxOutstanding","maxIssued","maxCaptureBytes","maxEnvelopeBytes","maxTranscriptBytes","maxHeldBytes","maxRegistryRows","maxTagBytes","maxInputBytes","maxChunkBytes","maxChunks","maxCandidateBytes","maxReplyBytes"],
+ "scopeFlags":{"ownedAnnotationReadTranscriptChecked":true,"actualSnapshotDecoderCompositionChecked":true,"currentOrdinaryBindingCaptureChecked":true,"nativeRestorationOrLoadedBaselineAdoptionProved":false,"actualProviderIdentityCoherenceOrPolicyTruthProved":false,"allEngineGlobalPhysicalAccountingProved":false,"publicInvocationEventOrWireProtocolSelected":false,"actualConcurrentOrCrashRefinementProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

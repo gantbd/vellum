@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import * as api from './invocation-publication.mjs';
+import {nativeAnnotationQueryFixture as fixture} from './native-annotation-query-checks.mjs';
+import {nativeAnnotationCaptureFixture as captureFixture} from './native-annotation-capture-checks.mjs';
+import {nativeAnnotationInstallationProfile as profile,nativeAnnotationInstallationFacts as facts} from './native-annotation-installation-checks.mjs';
+import {acquireRetainedAnnotation as acquire} from './native-retained-annotation-checks.mjs';
+export function checkRetainedAnnotationBoundaries(){let cases=0;const dimensions=[];
+ for(const field of ['maxContexts','maxSelectors','maxIssued']){dimensions.push(field);for(const delta of [-1,0,1]){const z=fixture({[field]:2+delta}),before=z.usage(),out=acquire(z);assert.equal(out.status,delta<0?'unavailable':'context',field);assert.equal(z.usage().contexts,before.contexts+(delta>=0?1:0));assert.equal(z.usage().selectors,before.selectors+(delta>=0?1:0));assert.equal(z.usage().issued,before.issued+(delta>=0?1:0));assert.equal(z.usage().declaredHeldBytes,before.declaredHeldBytes);cases++;}}
+ const profileName='retained-'.repeat(128),seed=captureFixture(),r={...seed.request,profile:profileName,selection:{kind:'retained',reference:null}},minimum=Buffer.byteLength(JSON.stringify(r));assert(minimum>Buffer.byteLength(JSON.stringify(profile)));dimensions.push('retained-request-bytes');
+ for(const delta of [-1,0,1]){const x=captureFixture(),scope={...x.scope,profile:profileName},currentRequest={...x.request,profile:profileName},cut=x.prepare(currentRequest,facts,x.grants(),scope);assert(cut);const handle=api.openInvocationAnnotationContexts(x.z.domain,{...profile,maxRequestBytes:minimum+delta},facts);assert(handle);const original=api.installInvocationAnnotationContext(x.z.domain,handle,x.handle,cut,scope,facts);assert.equal(original.status,'context');const before=api.invocationAnnotationContextUsage(x.z.domain),out=api.acquireInvocationRetainedAnnotationContext(x.z.domain,handle,{...currentRequest,selection:{kind:'retained',reference:original.context}},scope,facts),after=api.invocationAnnotationContextUsage(x.z.domain);assert.equal(out.status,delta<0?'unavailable':'context');assert.equal(after.contexts,before.contexts+(delta>=0?1:0));assert.equal(after.selectors,before.selectors+(delta>=0?1:0));assert.equal(after.issued,before.issued+(delta>=0?1:0));assert.equal(after.declaredHeldBytes,before.declaredHeldBytes);cases++;}
+ return {scope:'isolated-native-retained-annotation-exact-boundaries',cases,dimensions,wholeContextSelectorAndIssuanceAdmissionChecked:true,dominatedCopyBytesPhysicalOrAllProfilesProved:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(checkRetainedAnnotationBoundaries()));

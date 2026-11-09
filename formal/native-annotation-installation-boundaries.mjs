@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {parentFundedPoolAttachmentBytes} from './owner-attachment-test-helpers.mjs';
+import {pathToFileURL} from 'node:url';
+import * as api from './invocation-publication.mjs';
+import {copySettingsData} from './semantic-settings.mjs';
+import {captureAnnotations} from './annotation-queries.mjs';
+import {nativeAnnotationCaptureFixture as captureFixture} from './native-annotation-capture-checks.mjs';
+import {nativeAnnotationInstallationFixture as fixture,nativeAnnotationInstallationProfile as profile,nativeAnnotationInstallationFacts as facts} from './native-annotation-installation-checks.mjs';
+const size=v=>Buffer.byteLength(JSON.stringify(v));
+const charge=p=>copySettingsData(p,{maxRequestBytes:p.maxRequestBytes,maxInputNodes:p.maxInputNodes,maxInputDepth:p.maxInputDepth}).bytes+2*p.maxRequestBytes+3*p.maxCaptureBytes+2*p.maxContextBytes+3*p.maxReplyBytes+p.maxContexts*(2*p.maxCaptureBytes+p.maxContextBytes+p.maxReplyBytes)+(2*p.maxSelectors+p.maxHolds)*(p.maxSelectorBytes+p.maxSelectorRecordBytes);
+export function checkAnnotationInstallationBoundaries(){let cases=0;const dimensions=[],visit=(name,f)=>{for(const delta of [-1,0,1]){f(delta);cases++;}dimensions.push(name);};
+ let fixed={...profile};for(let n=0;n<4;n++)fixed={...fixed,maxHeldBytes:charge(fixed)};assert.equal(fixed.maxHeldBytes,charge(fixed));
+ visit('local-context-pool-reservation',delta=>{const x=captureFixture(),before=api.invocationUsage(x.z.domain),p={...fixed,maxHeldBytes:fixed.maxHeldBytes+delta},h=api.openInvocationAnnotationContexts(x.z.domain,p,facts);assert.equal(h!==null,delta>=0);assert.equal(api.invocationUsage(x.z.domain).declaredHeldBytes,before.declaredHeldBytes+(delta>=0?charge(p)+parentFundedPoolAttachmentBytes(api,x.z.domain,h):0));});
+ const parentProbe=captureFixture(),edgeProbe=fixture(),base=api.invocationUsage(parentProbe.z.domain).declaredHeldBytes,cost=charge(profile)+parentFundedPoolAttachmentBytes(api,edgeProbe.x.z.domain,edgeProbe.handle);
+ visit('actual-parent-headroom',delta=>{const x=captureFixture({},{invocationLimits:{maxHeldBytes:base+cost+delta}}),before=api.invocationUsage(x.z.domain);assert.equal(before.declaredHeldBytes,base);assert.equal(api.openInvocationAnnotationContexts(x.z.domain,profile,facts)!==null,delta>=0);assert.equal(api.invocationUsage(x.z.domain).declaredHeldBytes,base+(delta>=0?cost:0));});
+ const seed=fixture(),value=seed.x.read(seed.cut),context={kind:'native-annotation-read-context/1'},record={kind:'context',context},reply={status:'context',context,data:['annotations']};
+ const width=String(value.annotations.length).length,world=value.annotations.map((row,index)=>({reference:String(index).padStart(width,'0'),visible:true,bodyVisible:Object.hasOwn(row,'content'),targetVisible:Object.hasOwn(row,'location'),body:row.content?.body,contentVersion:row.content?.version,location:row.location})),annotations=captureAnnotations(world,{...seed.x.scope,snapshot:'1'},profile.annotationProfile);
+ const minima={maxCaptureBytes:Math.max(size(value),size(annotations)),maxContextBytes:size(seed.x.scope),maxSelectorBytes:size(context),maxSelectorRecordBytes:size(record),maxReplyBytes:size(reply)};
+ for(const [field,min]of Object.entries(minima))visit(field,delta=>{const z=fixture({[field]:min+delta}),before=z.x.usage(),usage=z.usage(),out=z.install();assert.equal(out.status,delta<0?'unavailable':'context',field);assert.equal(z.x.usage().prepared,before.prepared-(delta>=0?1:0));assert.equal(z.x.usage().issued,before.issued);assert.equal(z.usage().contexts,delta<0?0:1);assert.equal(z.usage().issued,delta<0?0:1);assert.equal(z.usage().declaredHeldBytes,usage.declaredHeldBytes);});
+ for(const field of ['maxContexts','maxSelectors','maxIssued'])visit(field,delta=>{const z=fixture({[field]:1+delta}),before=z.x.usage(),out=z.install();assert.equal(out.status,delta<0?'unavailable':'context');assert.equal(z.x.usage().prepared,before.prepared-(delta>=0?1:0));assert.equal(z.usage().issued,delta<0?0:1);});
+ let requestProfile={...profile};for(let n=0;n<4;n++)requestProfile={...requestProfile,maxRequestBytes:size(requestProfile)};assert.equal(requestProfile.maxRequestBytes,size(requestProfile));
+ visit('profile-copy-request-envelope',delta=>{const x=captureFixture(),before=api.invocationUsage(x.z.domain),p={...requestProfile,maxRequestBytes:requestProfile.maxRequestBytes+delta},handle=api.openInvocationAnnotationContexts(x.z.domain,p,facts);assert.equal(handle!==null,delta>=0);assert.equal(api.invocationUsage(x.z.domain).declaredHeldBytes,before.declaredHeldBytes+(delta>=0?charge(p)+parentFundedPoolAttachmentBytes(api,x.z.domain,handle):0));});
+ return {scope:'isolated-native-annotation-installation-exact-boundaries',cases,dimensions,cutConsumptionComparedSeparately:true,physicalAllocationOrAllProfilesProved:false};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(checkAnnotationInstallationBoundaries()));
+export {charge as annotationContextCharge};

@@ -1,0 +1,89 @@
+{
+  "description": "Selected scoped claim/argument/evidence links, not exhaustive assurance or certification. Check references identify configured obligations; only a passing complete results.json with current input hashes establishes execution evidence. Assumptions and limits remain part of every claim.",
+  "claims": [
+    {
+      "id": "ACS-01",
+      "kind": "BoundedSafety",
+      "claim": "Imported save-admission transitions conserve admitted request reservations and their abstract weighted cost, and partition logical offers into admitted/rejected outcomes.",
+      "argument": "Ghost counters update independently at actual Submit/Cancel/Expire/Resolve actions; compare them with the imported authoritative held set and cost function. Check imported Next correspondence and mutation-sensitive omissions, duplicate refunds, premature refunds and wrong units.",
+      "conditions": "Four one-shot requests, two resource classes, fixed modeled costs, five-transition horizon; safe-disposition evidence is supplied by the imported Resolve contract.",
+      "limit": "No repeated operation IDs, actual telemetry accuracy, physical memory, arbitrary-length histories, provider-truth or service theorem.",
+      "slices": ["PS-AC"],
+      "governs": ["INV-11", "INV-15", "INV-16"],
+      "assumptions": ["ASM-01", "ASM-03", "ASM-07"],
+      "scenarios": ["SCN-03", "SCN-09"],
+      "evidence": [
+        {"check": "accounting-imported-admission-safety", "property": "CountConservation"},
+        {"check": "accounting-imported-admission-safety", "property": "CostConservation"},
+        {"check": "accounting-imported-admission-safety", "property": "LogicalPartition"},
+        {"check": "accounting-imported-admission-safety", "property": "AdmissionSteps"}
+      ],
+      "controls": ["accounting-missing-admission-control", "accounting-double-refund-control", "accounting-premature-refund-control", "accounting-wrong-cost-control"],
+      "witnesses": ["AccountingBridge-StoppedHeld", "AccountingBridge-RefundedOnce", "AccountingBridge-RejectedOffer", "AccountingBridge-LateDischarge"]
+    },
+    {
+      "id": "ACS-02",
+      "kind": "BoundedSafety",
+      "claim": "A fixed recipient diagnostic projection masks modeled hidden existence and private identity differences and rechecks current release context after preparation.",
+      "argument": "Compose actual Disclosure steps with one prepare/drain pair, compare both recipient output sequences, and freeze delivery-time permission/epoch/disposal/hidden-divergence facts. Witnesses require those facts, not later core changes, and masking requires authorized Health delivery. Regression paths reach legacy false-positive states while the strengthened witnesses remain false. Diagnostics stutter the core; deliberately exposed private tags/counts and epoch bypass must fail.",
+      "conditions": "Same public action schedule, four imported core steps, one diagnostic delivery; private identity/existence are excluded from this profile's permitted operational disclosures.",
+      "limit": "No timing/resource/cache side-channel guarantee, anonymity or universal unlinkability; no retroactive revocation, physical erasure, legal compliance or complete LINDDUN analysis. Imported revocation changes epoch too, so isolated grant-check sensitivity is not established here.",
+      "slices": ["PS-PV"],
+      "governs": ["INV-08", "INV-09", "INV-12"],
+      "assumptions": ["ASM-01", "ASM-06", "ASM-07"],
+      "scenarios": ["SCN-02", "SCN-08"],
+      "evidence": [
+        {"check": "privacy-signal-paired-safety", "property": "FunctionalPrivacy"},
+        {"check": "privacy-signal-paired-safety", "property": "CurrentDiagnosticRelease"},
+        {"check": "privacy-signal-paired-safety", "property": "CoreSteps"},
+        {"check": "privacy-signal-paired-safety", "property": "DiagnosticIsolation"},
+        {"check": "privacy-signal-paired-safety", "property": "DeliveryStable"},
+        {"check": "privacy-signal-paired-safety", "property": "DeliveryMatchesOutput"},
+        {"check": "privacy-late-regrant-regression", "property": "NoFalseGap"},
+        {"check": "privacy-late-disposal-regression", "property": "NoFalseDisposal"},
+        {"check": "privacy-late-hidden-regression", "property": "NoFalseMask"},
+        {"check": "privacy-denied-mask-regression", "property": "NoFalseMask"}
+      ],
+      "controls": ["privacy-stable-tag-control", "privacy-hidden-count-control", "privacy-diagnostic-epoch-control"],
+      "witnesses": ["PrivacySignals-AuthorizedHealth", "PrivacySignals-GapDenied", "PrivacySignals-DisposedDenied", "PrivacySignals-HiddenExistenceMasked", "PrivacySignals-LateRegrantRejected", "PrivacySignals-LateDisposeRejected", "PrivacySignals-LateHiddenRejected", "PrivacySignals-DeniedMaskRejected"]
+    },
+    {
+      "id": "ACS-03",
+      "kind": "ConditionalTemporal",
+      "claim": "Every job in a closed finite cooperative backlog eventually receives a disposition under weak fairness of service.",
+      "argument": "Service removes exactly one pending job, the natural pending cardinality decreases, and non-service actions cannot increase it. Weak fairness prevents perpetual stuttering while service is enabled. Removing fairness must admit an unfinished infinite behavior.",
+      "conditions": "Two/three initial jobs, no arrivals/retries/new descendants, finite cancellation/invalidation state, cooperative service and explicit WF_vars(Serve). No transition-horizon cutoff is used.",
+      "limit": "Not a refinement of the engine or host scheduler, open-workload fairness, numeric latency/service bounds, guaranteed applied success or native preemption.",
+      "slices": ["PS-UP"],
+      "governs": ["LIVE-02", "LIVE-03", "INV-15"],
+      "assumptions": ["ASM-03", "ASM-07"],
+      "scenarios": ["SCN-09"],
+      "evidence": [
+        {"check": "useful-fair-drain", "property": "EventualDrain"},
+        {"check": "useful-fair-drain", "property": "ServiceDecreases"},
+        {"check": "useful-three-job-drain", "property": "EventualDrain"}
+      ],
+      "controls": ["useful-no-service-fairness-control"],
+      "witnesses": ["UsefulProgress-AppliedDone", "UsefulProgress-SupersededDone", "UsefulProgress-CancelledDone"]
+    },
+    {
+      "id": "ACS-04",
+      "kind": "FiniteStateSafety",
+      "claim": "Pending and terminal dispositions partition the modeled backlog; applied outcomes require current uncancelled work and cancellation intent alone does not discharge it.",
+      "argument": "Check the identity-level partition, stable terminal outcomes and captured acceptance-time facts. Silent dropping, stale success and cancellation-as-discharge each violate a named invariant. Applied, superseded and cancelled are separate legitimate outcomes, not interchangeable successes/errors.",
+      "conditions": "The fixed cooperative service model classifies each job at its service boundary; dependency correctness is represented by a boolean current fact.",
+      "limit": "No semantic dependency oracle, public RED/SLI schema, numeric objective, physical-resource ledger or production implementation proof.",
+      "slices": ["PS-UP"],
+      "governs": ["INV-04", "INV-11", "INV-15", "INV-16"],
+      "assumptions": ["ASM-03", "ASM-07"],
+      "scenarios": ["SCN-04", "SCN-09"],
+      "evidence": [
+        {"check": "useful-fair-drain", "property": "DispositionPartition"},
+        {"check": "useful-fair-drain", "property": "CurrentAcceptance"},
+        {"check": "useful-fair-drain", "property": "TerminalStable"}
+      ],
+      "controls": ["useful-silent-drop-control", "useful-stale-success-control", "useful-cancel-discharge-control"],
+      "witnesses": ["UsefulProgress-AppliedDone", "UsefulProgress-SupersededDone", "UsefulProgress-CancelledDone", "UsefulProgress-CancelStillPending"]
+    }
+  ]
+}

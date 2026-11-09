@@ -1,0 +1,60 @@
+# qualification=uncontrolled sequential local run; functional populations and cleanup only; not an accepted SLO, causal overhead comparison or regression baseline
+# command=/usr/bin/time -p target/release/examples/invocation_responsiveness --samples 512 --warmup 32
+# binary_sha256=a1b1e63ddace04f27459a910e2cce78eeaf2ee470c306b781f5d8cf56a180485
+# compiler=rustc 1.95.0 (59807616e 2026-04-14); LLVM 22.1.2; aarch64-apple-darwin; release profile
+# hardware_load=uncontrolled; physical allocations/RSS and UI/substrate/agent latency unmeasured
+# entered-main; process-local timing excludes launch/pre-main
+# invocation-responsiveness-v1; synthetic UTF-8 ASCII; trusted-owner; monotonic ns; arch=aarch64; os=macos
+# samples=512; warmup=32; p99_budget_ns=unset
+# two 4096-byte documents, four edits each; total includes observer query every operation; no queue/UI/I/O
+# issuance/cleanup/drain excluded from total, included in cohort time; observer counts include warmup; allocations/RSS unmeasured
+cohort,capture,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,observer_reserved_bytes,observer_admissions,lifetime_tickets,retained_jobs,diagnostic_drops,timed_records
+off,off,total,512,2041,2125,2250,3458,1405250,0,unmeasured,544,0,0,0
+off,off,admission,512,1125,1209,1291,1875,1405250,0,unmeasured,544,0,0,0
+off,off,service,512,709,791,834,1334,1405250,0,unmeasured,544,0,0,0
+off,off,result-query,512,42,84,84,167,1405250,0,unmeasured,544,0,0,0
+off,off,observer-query,512,0,42,42,83,1405250,0,unmeasured,544,0,0,0
+off,timed,total,512,2042,2292,2667,29125,1340667,0,unmeasured,544,0,0,3072
+off,timed,admission,512,1083,1250,1375,21958,1340667,0,unmeasured,544,0,0,3072
+off,timed,service,512,708,792,917,6417,1340667,0,unmeasured,544,0,0,3072
+off,timed,result-query,512,167,209,291,459,1340667,0,unmeasured,544,0,0,3072
+off,timed,observer-query,512,0,42,42,125,1340667,0,unmeasured,544,0,0,3072
+off,saturated,total,512,1833,2083,2583,2750,1192417,0,unmeasured,544,0,5632,0
+off,saturated,admission,512,1041,1208,1458,1584,1192417,0,unmeasured,544,0,5632,0
+off,saturated,service,512,625,750,875,1000,1192417,0,unmeasured,544,0,5632,0
+off,saturated,result-query,512,42,84,84,167,1192417,0,unmeasured,544,0,5632,0
+off,saturated,observer-query,512,0,42,42,125,1192417,0,unmeasured,544,0,5632,0
+counters,off,total,512,1791,2000,2458,2750,1108333,1400,544,544,0,0,0
+counters,off,admission,512,1000,1167,1416,1583,1108333,1400,544,544,0,0,0
+counters,off,service,512,625,709,834,1000,1108333,1400,544,544,0,0,0
+counters,off,result-query,512,42,84,84,167,1108333,1400,544,544,0,0,0
+counters,off,observer-query,512,0,42,42,42,1108333,1400,544,544,0,0,0
+counters,timed,total,512,1917,2083,2458,2667,1212084,1400,544,544,0,0,3072
+counters,timed,admission,512,1000,1125,1250,1375,1212084,1400,544,544,0,0,3072
+counters,timed,service,512,667,750,834,958,1212084,1400,544,544,0,0,3072
+counters,timed,result-query,512,167,167,209,292,1212084,1400,544,544,0,0,3072
+counters,timed,observer-query,512,0,42,42,42,1212084,1400,544,544,0,0,3072
+counters,saturated,total,512,1833,2125,2458,2542,1129708,1400,544,544,0,5632,0
+counters,saturated,admission,512,1041,1208,1375,1459,1129708,1400,544,544,0,5632,0
+counters,saturated,service,512,625,750,875,917,1129708,1400,544,544,0,5632,0
+counters,saturated,result-query,512,42,84,84,167,1129708,1400,544,544,0,5632,0
+counters,saturated,observer-query,512,41,42,42,42,1129708,1400,544,544,0,5632,0
+timed,off,total,512,2375,2792,2875,3417,1405792,18960,544,544,0,0,0
+timed,off,admission,512,1041,1125,1250,1500,1405792,18960,544,544,0,0,0
+timed,off,service,512,666,709,792,834,1405792,18960,544,544,0,0,0
+timed,off,result-query,512,42,84,84,125,1405792,18960,544,544,0,0,0
+timed,off,observer-query,512,542,959,1041,1458,1405792,18960,544,544,0,0,0
+timed,timed,total,512,2541,2958,3000,3208,1512959,18960,544,544,0,0,3072
+timed,timed,admission,512,1041,1084,1250,1375,1512959,18960,544,544,0,0,3072
+timed,timed,service,512,667,750,833,958,1512959,18960,544,544,0,0,3072
+timed,timed,result-query,512,167,167,209,250,1512959,18960,544,544,0,0,3072
+timed,timed,observer-query,512,542,1000,1041,1084,1512959,18960,544,544,0,0,3072
+timed,saturated,total,512,2458,3209,3333,20042,1577583,18960,544,544,0,5632,0
+timed,saturated,admission,512,1125,1292,1417,5125,1577583,18960,544,544,0,5632,0
+timed,saturated,service,512,708,792,917,6166,1577583,18960,544,544,0,5632,0
+timed,saturated,result-query,512,83,84,125,458,1577583,18960,544,544,0,5632,0
+timed,saturated,observer-query,512,542,1125,1167,18125,1577583,18960,544,544,0,5632,0
+# in_process_elapsed_ns=13396417
+# external_real_seconds=0.18
+# external_user_seconds=0.01
+# external_sys_seconds=0.00

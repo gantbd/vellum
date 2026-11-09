@@ -1,0 +1,16 @@
+{
+  "contract":"optional-diagnostics/1",
+  "record":"boundary-marker/1",
+  "scope":"owned-optional-diagnostic-queue-only",
+  "contextFields":["authority","engine","recipient","purpose","destination","policy","continuity","profile"],
+  "profile":"bounded-optional-capture/1",
+  "sites":["INS-01","INS-02","INS-03","INS-04","INS-05","INS-06","INS-07","INS-08","INS-09","INS-10","INS-11","INS-12","INS-13"],
+  "milestones":["offered","admitted","completed","rejected","cancelled","discarded"],
+  "counters":["offered","captured","drained","dropped","invalid","discarded","preparationRefused"],
+  "limits":["maxRecords","maxQueueBytes","maxPreparations","maxPreparedIssued","maxGenerations","maxRecordBytes","maxContextBytes","maxReplyBytes","maxHealthReplyBytes","maxDrainRecords","maxCounter","maxRetentionSteps","maxHeldBytes"],
+  "authorityGates":["authorized","scope","continuous","live","notStopped"],
+  "prepareGates":["captureAllowed","outsidePublicationGuard","resourcesReady","preparationReserved"],
+  "captureGates":["captureAllowed","captureReady"],
+  "drainGates":["releaseAllowed","retained","outsidePublicationGuard","transferReady","replyReady","resourcesReady"],
+  "healthGates":["ownerControlAllowed","healthAllowed","outsidePublicationGuard","healthReady","replyReady"]
+}

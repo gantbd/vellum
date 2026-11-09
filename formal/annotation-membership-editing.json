@@ -1,0 +1,7 @@
+{
+ "scope":"owned-native-annotation-membership-publication-only",
+ "operations":["create","delete"],
+ "allocationFields":["invocation","document","id","incarnation"],
+ "scopeFlags":{"actualNativeCreateDeletePublicationChecked":true,"originalAllocationAndLimitsBoundChecked":true,"actualNativeHistoryAndInvocationChecked":true,"allDeclaredLiveCreateTargetsChecked":true,
+ "actualIdentityIssuerOrHostTruthProved":false,"lifecycleActivationProved":false,"completeRetirementPlannerProved":false,"generalTargetRestorationProved":false,"pointPersistencePolicySelected":false,"decodedWireGatewayProved":false,"completeNativeResultProjectionProved":false,"allEventProjectionProved":false,"actualConcurrentInstallationProved":false,"physicalAccountingProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

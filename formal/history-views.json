@@ -1,0 +1,19 @@
+{
+  "contract": "owned-reversal-views/1",
+  "family": "F14",
+  "sharedForwardConsumer": "F11-owned-search-replacement",
+  "selectionProfile": "explicit-positional-selection/1",
+  "workLimits": ["maxViewBatches", "maxViewEdits", "maxViewBytes", "maxViewPlanBytes"],
+  "rules": {
+    "membership": "current-views-of-every-source-participant",
+    "undo": "retained-inverse-sequence-in-current-coordinates",
+    "redo": "retained-forward-batch",
+    "normalization": "once-after-the-complete-document-transform",
+    "historicalSelections": "not-restored",
+    "missingSourceViewInventory": "refuse-not-assume-empty",
+    "bodyOnly": "no-selection-participants"
+  },
+  "scope": {"positionalViewBridgeChecked": true, "allViewProfilesProved": false,
+    "invokingSelectionRestorationSelected": false, "nativeGeometryConformanceProved": false,
+    "allStateCompanionsProved": false, "physicalAccountingProved": false, "implementationRefinement": false}
+}

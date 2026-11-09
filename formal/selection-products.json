@@ -1,0 +1,18 @@
+{
+  "contract": "selection-edit/1",
+  "profile": "explicit-positional-selection/1",
+  "families": {"F12": ["set-selection", "logical-movement", "select-search-match"], "F11": ["ordinary-edit"]},
+  "common": ["contract", "operation", "invocation", "view", "document", "sourceRevision", "expectedSelection", "profile"],
+  "variants": {"set-selection": ["selections", "primary"], "logical-movement": ["unit", "extend"], "ordinary-edit": ["text", "selectionAfter"], "select-search-match": ["match", "direction", "affinity", "selectionMode"]},
+  "selectionModes": ["replace-all", "replace-primary", "add-primary"],
+  "selectionFields": ["anchor", "head", "affinity"],
+  "affinities": ["before", "after"],
+  "units": ["line-start", "line-end", "document-start", "document-end"],
+  "selectionAfter": ["mapped", "carets-after"],
+  "limits": ["maxRootBytes", "maxInputViews", "maxViews", "maxInputSelections", "maxSelections", "maxSelectionBytes", "maxTextBytes", "maxEditBytes"],
+  "scope": {"nativeSemanticProductsSelected": true, "globalUiMappingDefaultSelected": false,
+    "graphemeWordPageVisualProductsProved": false, "ownedSearchSelectionBridgeChecked": true,
+    "hostileDecoderProved": false, "replayOutcomeCompositionProved": false,
+    "rawHistoryHelperViewAware": false, "equalByteAnnotationCompanionsProved": false,
+    "allStateCompanionsProved": false, "physicalAccountingProved": false, "implementationRefinement": false}
+}

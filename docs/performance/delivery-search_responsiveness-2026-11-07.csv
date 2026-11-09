@@ -1,0 +1,75 @@
+# qualification=uncontrolled sequential local run; functional populations and cleanup only; not an accepted SLO, causal overhead comparison or regression baseline
+# command=/usr/bin/time -p target/release/examples/search_responsiveness --samples 512 --warmup 32
+# binary_sha256=5764000a2d8d35c27a174bf934b3780d95a533ed312ab447bd518f9a9db32cd0
+# compiler=rustc 1.95.0 (59807616e 2026-04-14); LLVM 22.1.2; aarch64-apple-darwin; release profile
+# hardware_load=uncontrolled; physical allocations/RSS and UI/substrate/agent latency unmeasured
+# entered-main; excludes launch/pre-main
+# native-retained-search-v1; synthetic Unicode; exact UTF-8; trusted local owner; process monotonic ns
+# samples=512; warmup=32; p99_budget_ns=unset; arch=aarch64; os=macos
+# total=evaluate+release/check+navigation/check+protected-retirement/check; no ingress/queue/UI/I/O
+# cohort includes drain/bookkeeping; allocations/RSS unmeasured; lifetime pressure grows without reset; refused/partial/incomplete work fails
+workload,bytes,matches,mode,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,timed_records,diagnostic_drops,issued_including_warmup
+unicode-prose,3520,64,off,total,512,8250,8750,9625,10042,4199334,0,0,544
+unicode-prose,3520,64,off,evaluate,512,6291,6542,7417,7958,4199334,0,0,544
+unicode-prose,3520,64,off,release-check,512,584,667,750,1833,4199334,0,0,544
+unicode-prose,3520,64,off,navigation-check,512,709,792,834,958,4199334,0,0,544
+unicode-prose,3520,64,off,retirement-check,512,500,666,667,709,4199334,0,0,544
+unicode-prose,3520,64,capture,total,512,7625,8625,10083,70833,4130208,0,0,544
+unicode-prose,3520,64,capture,evaluate,512,5833,6458,7667,67125,4130208,0,0,544
+unicode-prose,3520,64,capture,release-check,512,542,708,750,19041,4130208,0,0,544
+unicode-prose,3520,64,capture,navigation-check,512,667,792,875,2375,4130208,0,0,544
+unicode-prose,3520,64,capture,retirement-check,512,458,625,667,1459,4130208,0,0,544
+unicode-prose,3520,64,timed,total,512,7625,9166,10000,28792,4001958,2048,0,544
+unicode-prose,3520,64,timed,evaluate,512,5667,7000,7500,9084,4001958,2048,0,544
+unicode-prose,3520,64,timed,release-check,512,583,708,792,9542,4001958,2048,0,544
+unicode-prose,3520,64,timed,navigation-check,512,667,833,1000,18083,4001958,2048,0,544
+unicode-prose,3520,64,timed,retirement-check,512,458,625,750,1000,4001958,2048,0,544
+unicode-prose,3520,64,saturated,total,512,7417,7959,9708,10042,3870375,0,4608,544
+unicode-prose,3520,64,saturated,evaluate,512,5708,6208,7458,7750,3870375,0,4608,544
+unicode-prose,3520,64,saturated,release-check,512,542,625,750,875,3870375,0,4608,544
+unicode-prose,3520,64,saturated,navigation-check,512,666,750,875,1042,3870375,0,4608,544
+unicode-prose,3520,64,saturated,retirement-check,512,417,583,708,875,3870375,0,4608,544
+unicode-code-scopes,70656,1536,off,total,512,110833,116833,120333,145041,56289833,0,0,544
+unicode-code-scopes,70656,1536,off,evaluate,512,106417,112458,115875,137541,56289833,0,0,544
+unicode-code-scopes,70656,1536,off,release-check,512,3000,3250,3750,5083,56289833,0,0,544
+unicode-code-scopes,70656,1536,off,navigation-check,512,750,875,1000,1167,56289833,0,0,544
+unicode-code-scopes,70656,1536,off,retirement-check,512,500,667,750,1000,56289833,0,0,544
+unicode-code-scopes,70656,1536,capture,total,512,110416,113709,116208,119375,55316708,0,0,544
+unicode-code-scopes,70656,1536,capture,evaluate,512,106208,109541,111917,115083,55316708,0,0,544
+unicode-code-scopes,70656,1536,capture,release-check,512,2916,3084,3750,3917,55316708,0,0,544
+unicode-code-scopes,70656,1536,capture,navigation-check,512,750,833,1000,1042,55316708,0,0,544
+unicode-code-scopes,70656,1536,capture,retirement-check,512,500,625,708,792,55316708,0,0,544
+unicode-code-scopes,70656,1536,timed,total,512,102625,113250,116125,125917,53727500,2048,0,544
+unicode-code-scopes,70656,1536,timed,evaluate,512,98375,108709,111667,121209,53727500,2048,0,544
+unicode-code-scopes,70656,1536,timed,release-check,512,2792,3125,3750,3917,53727500,2048,0,544
+unicode-code-scopes,70656,1536,timed,navigation-check,512,750,834,1000,1125,53727500,2048,0,544
+unicode-code-scopes,70656,1536,timed,retirement-check,512,500,667,792,875,53727500,2048,0,544
+unicode-code-scopes,70656,1536,saturated,total,512,102375,113500,115834,125042,53199083,0,4608,544
+unicode-code-scopes,70656,1536,saturated,evaluate,512,98291,109125,111542,120792,53199083,0,4608,544
+unicode-code-scopes,70656,1536,saturated,release-check,512,2750,3041,3667,3916,53199083,0,4608,544
+unicode-code-scopes,70656,1536,saturated,navigation-check,512,708,833,917,1042,53199083,0,4608,544
+unicode-code-scopes,70656,1536,saturated,retirement-check,512,458,625,667,2000,53199083,0,4608,544
+mixed-large,1114112,16384,off,total,512,1519916,1624125,1632583,1668500,785292833,0,0,544
+mixed-large,1114112,16384,off,evaluate,512,1495166,1596834,1605500,1643583,785292833,0,0,544
+mixed-large,1114112,16384,off,release-check,512,23250,28000,30167,30875,785292833,0,0,544
+mixed-large,1114112,16384,off,navigation-check,512,750,917,1042,1459,785292833,0,0,544
+mixed-large,1114112,16384,off,retirement-check,512,500,708,875,1250,785292833,0,0,544
+mixed-large,1114112,16384,capture,total,512,1520500,1622000,1631917,1666583,788835750,0,0,544
+mixed-large,1114112,16384,capture,evaluate,512,1495708,1595417,1604083,1631666,788835750,0,0,544
+mixed-large,1114112,16384,capture,release-check,512,23291,26584,30000,31500,788835750,0,0,544
+mixed-large,1114112,16384,capture,navigation-check,512,750,875,1166,1542,788835750,0,0,544
+mixed-large,1114112,16384,capture,retirement-check,512,500,708,1000,1625,788835750,0,0,544
+mixed-large,1114112,16384,timed,total,512,1518208,1621000,1633709,1640792,779999541,2048,0,544
+mixed-large,1114112,16384,timed,evaluate,512,1492833,1594084,1608083,1610709,779999541,2048,0,544
+mixed-large,1114112,16384,timed,release-check,512,23125,27291,29916,39125,779999541,2048,0,544
+mixed-large,1114112,16384,timed,navigation-check,512,791,917,1041,1500,779999541,2048,0,544
+mixed-large,1114112,16384,timed,retirement-check,512,542,709,1000,1292,779999541,2048,0,544
+mixed-large,1114112,16384,saturated,total,512,1434750,1529125,1601125,1650583,749429833,0,4608,544
+mixed-large,1114112,16384,saturated,evaluate,512,1410041,1503375,1575292,1621792,749429833,0,4608,544
+mixed-large,1114112,16384,saturated,release-check,512,22666,26041,28292,35000,749429833,0,4608,544
+mixed-large,1114112,16384,saturated,navigation-check,512,708,792,1041,1208,749429833,0,4608,544
+mixed-large,1114112,16384,saturated,retirement-check,512,459,625,833,959,749429833,0,4608,544
+# in_process_elapsed_ns=3550035417
+# external_real_seconds=3.69
+# external_user_seconds=3.54
+# external_sys_seconds=0.00

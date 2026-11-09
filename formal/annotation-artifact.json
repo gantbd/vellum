@@ -1,0 +1,7 @@
+{
+ "scope":"native-annotation-storage-capture-only",
+ "contextFields":["authority","engine","recipient","purpose","destination","profile","continuity"],
+ "limits":["maxRootBytes","maxDocuments","maxRecords","maxBindingBytes","maxAliases","maxSourceBytes","maxArtifactBytes","maxReplyBytes"],
+ "gates":["authorized","scope","continuous","live","notStopped","annotationReadable","completeDisclosure","aliasesCurrent","sourceEvidenceReady","resourcesReady","retained","transferReady","preparationReserved"],
+ "scopeFlags":{"actualNativeRootAndInventoryChecked":true,"completeLosslessStorageProjectionChecked":true,"historicalSourceAndPointProfileSeparationChecked":true,"ownedSerializedCaptureAndNoPublicationChecked":true,"actualHostAliasPolicyOrHistoricalTruthProved":false,"actualSharedAdmissionOrReservationProved":false,"actualSharedPhysicalReservationProved":false,"nativeRestorationOrProviderWriteProved":false,"publicStorageAcquisitionSelected":false,"actualConcurrentInstallationProved":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

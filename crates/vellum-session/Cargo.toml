@@ -1,0 +1,13 @@
+[package]
+name = "vellum-session"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+vellum-engine = { path = "../vellum-engine" }
+vellum-local-fs = { path = "../vellum-local-fs" }
+vellum-annotation-json = { path = "../vellum-annotation-json" }
+
+[lints]
+workspace = true

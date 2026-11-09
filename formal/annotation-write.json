@@ -1,0 +1,9 @@
+{
+ "scope":"shared-writer-native-annotation-export-only",
+ "contract":"annotation-export/1",
+ "operation":"captured-annotation-export",
+ "requestFields":["contract","operation","origin","document","expectedSource","expectedAnnotationSet","expectedBinding","provider","resource","expectedRegistration","protection","acknowledgment","condition"],
+ "launchGates":["authorized","scope","continuous","live","notStopped","annotationReadable","completeDisclosure","writeAllowed","bindingCoverageComplete","writerCoverageComplete","providerAvailable","resourcesReady","launchAllowed","destinationAllowed","destinationContextAttested","identityAllowed","companionsReady","versionsAvailable","replyReady"],
+ "releaseGates":["authorized","scope","continuous","live","notStopped","annotationReadable","completeDisclosure","resourcesReady","retained","transferReady","replyReady"],
+ "scopeFlags":{"actualNativeCaptureAndSharedWriterChecked":true,"mixedSourceAnnotationDestinationFifoChecked":true,"exactAnnotationReceiptAttributionChecked":true,"stopDispositionQuiescenceSeparationChecked":true,"annotationSavedBaselinePublicationProved":false,"annotationLoadOrRestorationProved":false,"combinedAtomicExternalWriteProved":false,"hostAliasPolicyOrProviderTruthProved":false,"allEngineGlobalAdmissionProved":false,"physicalAccountingProved":false,"fullInvocationReplayEventCompositionProved":false,"actualConcurrentInstallationProved":false,"publicWireProtocolSelected":false,"implementationRefinement":false,"independentCleanroomCertification":false}
+}

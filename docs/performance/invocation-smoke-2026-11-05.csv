@@ -1,0 +1,56 @@
+# qualification=uncontrolled sequential smoke; not accepted SLO or controlled overhead attribution
+# entered-main; process-local timing excludes launch/pre-main
+# invocation-responsiveness-v1; synthetic UTF-8 ASCII; trusted-owner; monotonic ns; arch=aarch64; os=macos
+# samples=512; warmup=32; p99_budget_ns=unset
+# two 4096-byte documents, four edits each; total includes observer query every operation; no queue/UI/I/O
+# issuance/cleanup/drain excluded from total, included in cohort time; observer counts include warmup; allocations/RSS unmeasured
+cohort,capture,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,observer_reserved_bytes,observer_admissions,lifetime_tickets,retained_jobs,diagnostic_drops,timed_records
+off,off,total,512,1833,2042,2417,2625,1159375,0,unmeasured,544,0,0,0
+off,off,admission,512,1042,1208,1333,1500,1159375,0,unmeasured,544,0,0,0
+off,off,service,512,625,750,833,958,1159375,0,unmeasured,544,0,0,0
+off,off,result-query,512,42,84,125,167,1159375,0,unmeasured,544,0,0,0
+off,off,observer-query,512,0,42,42,83,1159375,0,unmeasured,544,0,0,0
+off,timed,total,512,2000,2125,2333,2833,1204250,0,unmeasured,544,0,0,1536
+off,timed,admission,512,1042,1166,1209,1583,1204250,0,unmeasured,544,0,0,1536
+off,timed,service,512,708,750,834,917,1204250,0,unmeasured,544,0,0,1536
+off,timed,result-query,512,125,167,167,250,1204250,0,unmeasured,544,0,0,1536
+off,timed,observer-query,512,0,42,42,42,1204250,0,unmeasured,544,0,0,1536
+off,saturated,total,512,1875,2041,2375,2541,1118750,0,unmeasured,544,0,5632,0
+off,saturated,admission,512,1042,1167,1375,1458,1118750,0,unmeasured,544,0,5632,0
+off,saturated,service,512,666,750,834,917,1118750,0,unmeasured,544,0,5632,0
+off,saturated,result-query,512,42,84,84,167,1118750,0,unmeasured,544,0,5632,0
+off,saturated,observer-query,512,0,42,42,42,1118750,0,unmeasured,544,0,5632,0
+counters,off,total,512,1875,2083,2375,2584,1128000,1400,544,544,0,0,0
+counters,off,admission,512,1042,1208,1375,1459,1128000,1400,544,544,0,0,0
+counters,off,service,512,666,750,792,916,1128000,1400,544,544,0,0,0
+counters,off,result-query,512,42,84,84,166,1128000,1400,544,544,0,0,0
+counters,off,observer-query,512,41,42,42,83,1128000,1400,544,544,0,0,0
+counters,timed,total,512,2000,2083,2125,2167,1180000,1400,544,544,0,0,1536
+counters,timed,admission,512,1042,1125,1167,1209,1180000,1400,544,544,0,0,1536
+counters,timed,service,512,667,709,750,792,1180000,1400,544,544,0,0,1536
+counters,timed,result-query,512,125,167,167,250,1180000,1400,544,544,0,0,1536
+counters,timed,observer-query,512,41,42,42,42,1180000,1400,544,544,0,0,1536
+counters,saturated,total,512,1875,2083,2375,2625,1128125,1400,544,544,0,5632,0
+counters,saturated,admission,512,1042,1167,1333,1500,1128125,1400,544,544,0,5632,0
+counters,saturated,service,512,666,750,833,917,1128125,1400,544,544,0,5632,0
+counters,saturated,result-query,512,42,84,84,208,1128125,1400,544,544,0,5632,0
+counters,saturated,observer-query,512,41,42,42,42,1128125,1400,544,544,0,5632,0
+timed,off,total,512,2667,3084,3334,4042,1542000,14584,544,544,0,0,0
+timed,off,admission,512,1125,1292,1459,1584,1542000,14584,544,544,0,0,0
+timed,off,service,512,667,792,875,958,1542000,14584,544,544,0,0,0
+timed,off,result-query,512,42,84,84,167,1542000,14584,544,544,0,0,0
+timed,off,observer-query,512,709,1083,1167,1500,1542000,14584,544,544,0,0,0
+timed,timed,total,512,2958,3292,5750,25792,1745083,14584,544,544,0,0,1536
+timed,timed,admission,512,1166,1291,1917,12333,1745083,14584,544,544,0,0,1536
+timed,timed,service,512,750,834,959,12125,1745083,14584,544,544,0,0,1536
+timed,timed,result-query,512,125,167,250,583,1745083,14584,544,544,0,0,1536
+timed,timed,observer-query,512,791,1084,1167,2792,1745083,14584,544,544,0,0,1536
+timed,saturated,total,512,2750,3042,3208,12167,1657167,14584,544,544,0,5632,0
+timed,saturated,admission,512,1125,1250,1416,5750,1657167,14584,544,544,0,5632,0
+timed,saturated,service,512,667,750,834,3708,1657167,14584,544,544,0,5632,0
+timed,saturated,result-query,512,42,84,84,500,1657167,14584,544,544,0,5632,0
+timed,saturated,observer-query,512,750,1041,1083,2041,1657167,14584,544,544,0,5632,0
+# in_process_elapsed_ns=13716250
+# outer_real_seconds=0.03
+# outer_user_seconds=0.01
+# outer_sys_seconds=0.00

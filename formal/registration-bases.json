@@ -1,0 +1,10 @@
+{
+ "profile":"native-registration-basis/1",
+ "family":"F16",
+ "contextFields":["authority","engine","recipient","purpose","destination","policy","continuity","profile"],
+ "limits":["maxBases","maxIssued","maxRootBytes","maxProfileBytes","maxScopeBytes","maxTagBytes","maxSlotBytes","maxBasisBytes","maxUseBytes","maxReplyBytes","maxHeldBytes"],
+ "currentGates":["authorized","scope","continuous","live","notStopped","registrationAllowed","identityAllowed","registryCoverageComplete","resourcesReady","retained","replyReady","registrationBasisAllowed","registrationPresenceObservable","registrationEqualityObservable","registrationSlotAllowed","ownerControlAllowed","preparationReserved"],
+ "retirementGates":["ownerControlAllowed","retentionReleased","deliveryDrained"],
+ "conditions":["present","absent"],
+ "scope":"native-scoped-registration-basis-authority-only"
+}

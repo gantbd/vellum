@@ -1,0 +1,17 @@
+{
+  "layer": "frontend",
+  "example": "ratatui",
+  "mapIntentFields": ["map", "expectedGeneration", "changes", "defaults"],
+  "bindingChangeFields": ["sequence", "action"],
+  "defaultChangeFields": ["prefix", "action"],
+  "actions": {"bind": ["kind", "command"], "block": ["kind"], "fallthrough": ["kind"]},
+  "scope": {
+    "frontendReferenceOnly": true,
+    "defaultBindingsSelected": false,
+    "physicalKeyEncodingSelected": false,
+    "nativeInputImeRefinementProved": false,
+    "registryProviderActivationProved": false,
+    "physicalAccountingProved": false,
+    "implementationRefinement": false
+  }
+}

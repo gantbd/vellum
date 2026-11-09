@@ -1,0 +1,14 @@
+[workspace]
+members = ["crates/vellum-engine", "crates/vellum-local-fs", "crates/vellum-annotation-json", "crates/vellum-unicode-reference", "crates/vellum-unicode-icu", "crates/vellum-session", "crates/vellum-editor", "crates/vellum-clipboard-macos", "crates/vellum-tui", "crates/vellum-iced"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

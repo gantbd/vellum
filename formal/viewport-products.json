@@ -1,0 +1,15 @@
+{
+  "contract":"viewport-edit/1",
+  "family":"F15",
+  "profile":"integer-viewport/1",
+  "common":["contract","operation","invocation","view","document","sourceRevision","expectedViewport","profile","context"],
+  "variants":{"scroll":["delta"],"viewport-intent":["intent"]},
+  "contextFields":["unit","configurationGeneration","metricsGeneration","projectionGeneration"],
+  "alignments":["nearest","start","end","center"],
+  "centerRounding":"floor-in-declared-unit",
+  "limits":["maxCoordinate","maxRequestBytes","maxPlanBytes"],
+  "scope":{"viewportIntentProductsChecked":true,"geometryRevealBridgeChecked":true,"nativeScrollAcknowledgmentProved":false,
+    "presentationProved":false,"richerVisualCaretIdentityProved":false,"providerTaskAdmissionProved":false,
+    "actualContextPolicyTruthProved":false,"hostileDecoderProved":false,"replayOutcomeEventCompositionProved":false,
+    "allStateCompanionsProved":false,"physicalAccountingProved":false,"implementationRefinement":false}
+}

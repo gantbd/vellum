@@ -1,0 +1,22 @@
+{
+  "scope": "owned-native-reversal-decision-receipts-only",
+  "grantFields": ["invocation", "authority", "target", "discloseTarget"],
+  "scopeFlags": {
+    "actualNativeUndoRedoReceiptsChecked": true,
+    "actualRootFactReceiptInstallationChecked": true,
+    "capturedAndCurrentTargetDisclosureChecked": true,
+    "historicalReceiptsNeverRecomputedChecked": true,
+    "sharedExclusiveReceiptReservationChecked": true,
+    "wireEncodingOrHistoryAliasBridgeProved": false,
+    "actualGrantAliasOrRetentionTruthProved": false,
+    "allOperationResultProductsProved": false,
+    "fullHistoryRetirementPlannerProved": false,
+    "generalTargetRestorationProved": false,
+    "pointPersistencePolicySelected": false,
+    "actualConcurrentInstallationProved": false,
+    "physicalAccountingProved": false,
+    "hostileDecoderProved": false,
+    "implementationRefinement": false,
+    "independentCleanroomCertification": false
+  }
+}

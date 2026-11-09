@@ -1,0 +1,47 @@
+{
+  "profile":"pinned-markdown-javascript-reference/1",
+  "assets":{
+    "tree-sitter":{"version":"0.26.0","license":"MIT","upstream":"https://github.com/tree-sitter/py-tree-sitter","sourceSha256":"b40c219edccc4564530c96f8f1556f6202b37cda964d1cbd7bd2b7e68b40a245","testedWheelSha256":"6189c6c340c7384357711e3d92645e96bfb79f7a502f86de1ebdb23eb43f7dab"},
+    "tree-sitter-markdown":{"version":"0.5.4","license":"MIT","upstream":"https://github.com/tree-sitter-grammars/tree-sitter-markdown","sourceSha256":"5fc422637d41aa5b286551a8e6fa674733d92dac1c6a42c1d4ada0be59045bd3","testedWheelSha256":"fcee0e62898deb43a2686508606ed3bcbd6e0e20050dd9423b034171e8315eb3"},
+    "tree-sitter-javascript":{"version":"0.25.0","license":"MIT","upstream":"https://github.com/tree-sitter/tree-sitter-javascript","sourceSha256":"329b5414874f0588a98f1c291f1b28138286617aa907746ffe55adfdcf963f38","testedWheelSha256":"8264a996b8845cfce06965152a013b5d9cbb7d199bc3503e12b5682e62bb1de1"}
+  },
+  "aliases":{"js":"javascript","javascript":"javascript"},
+  "referencePolicies":{"host":"split Markdown block and inline grammars; packaged extension profile, not a CommonMark validator","child":"independent fence with exact native included ranges excluding host continuation spans","query":"packaged lexical highlights with property-assertion patterns disabled; no locals service asserted","unknownOrMissing":"explicit literal fallback","incompleteFence":"literal fallback","combinedFences":false,"recursiveChildInjections":false,"crossingSourceTarget":"refuse, never clip","display":"child over inline over block; shorter capture then lexicographically first name for ties; host syntax holes retained"},
+  "environment":{
+    "python":"3.13.11","platform":"darwin","machine":"arm64",
+    "distributions":{
+      "tree-sitter":{"version":"0.26.0","files":{
+        "tree_sitter-0.26.0.dist-info/licenses/LICENSE":"1af0790543fffac99dd3bd290bf83ca963f4f8029065eb6f35638f4df863ae8e",
+        "tree_sitter/__init__.py":"0754ef728b311cfb8eb64de361390cbe1344f280c7f40fded08161a6e650268f",
+        "tree_sitter/__init__.pyi":"54ccd48b1aeafc791928b17e4ec6a7134603e78f7ed7b1e554111144139570dc",
+        "tree_sitter/_binding.cpython-313-darwin.so":"6e3e957aee2f969c40b0f97003e862468ede91f1dc28afb310591ad942e4772c"}},
+      "tree-sitter-markdown":{"version":"0.5.4","files":{
+        "tree_sitter_markdown-0.5.4.dist-info/licenses/LICENSE":"52ec8a1bf8256511e2a92613e0bb41ffefba3897f16fa958d7bb28c466dd4804",
+        "tree_sitter_markdown/__init__.py":"df3683a87a17f314b91b47614ccc031b72a40dc7f9659167f51a7e7508f0ab01",
+        "tree_sitter_markdown/__init__.pyi":"e44e808e984d05d7b844f5b13be91d01d9f6a2a775ec414c31896699209f52b1",
+        "tree_sitter_markdown/_binding.abi3.so":"517bd0422fdfefcaca5c2b63c1e306c5e50e63970dedcce19aae42320683c35e",
+        "tree_sitter_markdown/queries/markdown/highlights.scm":"2eb06e766ccd672d49599d14f398f07f4f5f7f2208262993d3cd9207c1078e2f",
+        "tree_sitter_markdown/queries/markdown/injections.scm":"64b1a6006b40176d8db986cc41350e4f9b292fd06bfedb0abfcdb1fb989aca3e",
+        "tree_sitter_markdown/queries/markdown_inline/highlights.scm":"9a88072f0ce54972c32fe7952ccb2d29254b6a7228bda1c7babc18df15cba797",
+        "tree_sitter_markdown/queries/markdown_inline/injections.scm":"97bf17b9a973db8ee6868f543dd1eabdd81f19b8751a4fcf92db45f74462f4c5"}},
+      "tree-sitter-javascript":{"version":"0.25.0","files":{
+        "tree_sitter_javascript-0.25.0.dist-info/licenses/LICENSE":"2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+        "tree_sitter_javascript/__init__.py":"2698d9027b5e25e144001780969f0bd74bdc54cac97eca4f6b06cda587811167",
+        "tree_sitter_javascript/__init__.pyi":"6597a73086aa430e563ec2e55d19db6794e1cb284c43511700cd8153080736f1",
+        "tree_sitter_javascript/_binding.abi3.so":"9b233b85ee46d8a9e46cbe895908dd9b3e1a4bc4bd65e9e8ff113038dabcd8ad",
+        "tree_sitter_javascript/queries/highlights-jsx.scm":"0cad1712acaf40804bc5dc7c8476858752c1f549cdf7d8c63c747317be0f8fa6",
+        "tree_sitter_javascript/queries/highlights-params.scm":"bbe7a58cacfb1c954cb0eab44779fd80421ed59b762b975723447207635de50d",
+        "tree_sitter_javascript/queries/highlights.scm":"d3630ae6dc9b2b27b230b5f8bb92b05cd491fb12bff353dae62a0a6d780461ee",
+        "tree_sitter_javascript/queries/injections.scm":"bea345407ce1f24bccf2b3c1a128acc14e19301327074285368586e793dcb86d",
+        "tree_sitter_javascript/queries/locals.scm":"c1dd2cfa1400d397fa974208fc9edfe817be4a3c8b42bb99af5c8d193b1bb753",
+        "tree_sitter_javascript/queries/tags.scm":"6ef988cce5a428a15b5460e3ee96f1478705f965fc6e848a91a18bfa6c6f0212"}}
+    },
+    "languages":{"markdown":{"abi":15,"semanticVersion":[0,5,4]},"markdown_inline":{"abi":15,"semanticVersion":[0,5,4]},"javascript":{"abi":15,"semanticVersion":[0,25,0]}}
+  },
+  "scope":{"nativeIncrementalReferenceChecked":true,"mixedLanguageReferenceChecked":true,
+    "universalGrammarConformanceProved":false,"grammarSemanticCompletenessProved":false,
+    "productionDependencySelected":false,"actualAnalysisWorkAdmissionProved":false,
+    "incrementalChildReuseProved":false,"localsResolutionProved":false,"concurrentOwnershipProved":false,
+    "physicalAccountingProved":false,"nativeHaltingAndPreemptionProved":false,
+    "fullHostMatrixProved":false,"independentCleanroomCertification":false,"implementationRefinement":false}
+}

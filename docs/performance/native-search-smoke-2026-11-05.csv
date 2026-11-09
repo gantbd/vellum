@@ -1,0 +1,70 @@
+# Uncontrolled local single-run smoke, 2026-11-05; not adopted budgets or regression/overhead qualification.
+# Compiler: rustc 1.95.0 (59807616e 2026-04-14), LLVM 22.1.2; host aarch64-apple-darwin; Cargo release profile; local tree has no Git revision.
+# Existing optimized executable; dependency-free native retained-search experiment; command: target/release/examples/search_responsiveness --samples 100 --warmup 4
+# entered-main; excludes launch/pre-main
+# native-retained-search-v1; synthetic Unicode; exact UTF-8; trusted local owner; process monotonic ns
+# samples=100; warmup=4; p99_budget_ns=unset; arch=aarch64; os=macos
+# total=evaluate+release/check+navigation/check+protected-retirement/check; no ingress/queue/UI/I/O
+# cohort includes drain/bookkeeping; allocations/RSS unmeasured; lifetime pressure grows without reset; refused/partial/incomplete work fails
+workload,bytes,matches,mode,phase,count,p50_ns,p95_ns,p99_ns,max_ns,cohort_elapsed_ns,timed_records,diagnostic_drops,issued_including_warmup
+unicode-prose,3520,64,off,total,100,7958,8916,9375,10375,807083,0,0,104
+unicode-prose,3520,64,off,evaluate,100,6208,7125,7583,8666,807083,0,0,104
+unicode-prose,3520,64,off,release-check,100,542,625,625,709,807083,0,0,104
+unicode-prose,3520,64,off,navigation-check,100,625,708,750,1875,807083,0,0,104
+unicode-prose,3520,64,off,retirement-check,100,416,500,500,500,807083,0,0,104
+unicode-prose,3520,64,capture,total,100,7833,8041,8125,9333,789167,0,0,104
+unicode-prose,3520,64,capture,evaluate,100,6167,6333,6458,7667,789167,0,0,104
+unicode-prose,3520,64,capture,release-check,100,500,625,625,667,789167,0,0,104
+unicode-prose,3520,64,capture,navigation-check,100,625,708,750,750,789167,0,0,104
+unicode-prose,3520,64,capture,retirement-check,100,375,459,500,500,789167,0,0,104
+unicode-prose,3520,64,timed,total,100,8083,9083,20458,28833,855458,400,0,104
+unicode-prose,3520,64,timed,evaluate,100,6291,7125,16292,23041,855458,400,0,104
+unicode-prose,3520,64,timed,release-check,100,542,708,1834,2792,855458,400,0,104
+unicode-prose,3520,64,timed,navigation-check,100,667,750,1167,1250,855458,400,0,104
+unicode-prose,3520,64,timed,retirement-check,100,417,541,1041,1417,855458,400,0,104
+unicode-prose,3520,64,saturated,total,100,7875,8166,9708,31416,817583,0,900,104
+unicode-prose,3520,64,saturated,evaluate,100,6250,6416,7792,16958,817583,0,900,104
+unicode-prose,3520,64,saturated,release-check,100,500,583,667,11375,817583,0,900,104
+unicode-prose,3520,64,saturated,navigation-check,100,625,709,750,1834,817583,0,900,104
+unicode-prose,3520,64,saturated,retirement-check,100,375,500,500,1042,817583,0,900,104
+unicode-code-scopes,70656,1536,off,total,100,111334,119125,123625,123791,11257625,0,0,104
+unicode-code-scopes,70656,1536,off,evaluate,100,107000,114542,118792,119458,11257625,0,0,104
+unicode-code-scopes,70656,1536,off,release-check,100,2958,3541,3834,4041,11257625,0,0,104
+unicode-code-scopes,70656,1536,off,navigation-check,100,667,833,875,1000,11257625,0,0,104
+unicode-code-scopes,70656,1536,off,retirement-check,100,417,542,708,708,11257625,0,0,104
+unicode-code-scopes,70656,1536,capture,total,100,98125,106291,120166,141500,10029250,0,0,104
+unicode-code-scopes,70656,1536,capture,evaluate,100,94333,102458,115958,132625,10029250,0,0,104
+unicode-code-scopes,70656,1536,capture,release-check,100,2667,2875,3292,5916,10029250,0,0,104
+unicode-code-scopes,70656,1536,capture,navigation-check,100,625,708,750,1333,10029250,0,0,104
+unicode-code-scopes,70656,1536,capture,retirement-check,100,375,500,542,1250,10029250,0,0,104
+unicode-code-scopes,70656,1536,timed,total,100,111333,130500,144459,227250,11470916,400,0,104
+unicode-code-scopes,70656,1536,timed,evaluate,100,106958,123417,137250,219292,11470916,400,0,104
+unicode-code-scopes,70656,1536,timed,release-check,100,3083,4125,5667,13125,11470916,400,0,104
+unicode-code-scopes,70656,1536,timed,navigation-check,100,709,1208,2792,3958,11470916,400,0,104
+unicode-code-scopes,70656,1536,timed,retirement-check,100,459,958,1250,1542,11470916,400,0,104
+unicode-code-scopes,70656,1536,saturated,total,100,111083,120958,142459,146292,11110459,0,900,104
+unicode-code-scopes,70656,1536,saturated,evaluate,100,106792,116042,136417,136750,11110459,0,900,104
+unicode-code-scopes,70656,1536,saturated,release-check,100,2958,3833,7708,17500,11110459,0,900,104
+unicode-code-scopes,70656,1536,saturated,navigation-check,100,666,833,1750,3875,11110459,0,900,104
+unicode-code-scopes,70656,1536,saturated,retirement-check,100,417,625,1625,1917,11110459,0,900,104
+mixed-large,1114112,16384,off,total,100,1628791,1700750,1724167,1823750,159239792,0,0,104
+mixed-large,1114112,16384,off,evaluate,100,1598500,1666375,1694083,1770583,159239792,0,0,104
+mixed-large,1114112,16384,off,release-check,100,25417,33125,50125,67250,159239792,0,0,104
+mixed-large,1114112,16384,off,navigation-check,100,708,1459,1708,2208,159239792,0,0,104
+mixed-large,1114112,16384,off,retirement-check,100,542,1750,2167,2167,159239792,0,0,104
+mixed-large,1114112,16384,capture,total,100,1632292,1734958,1753916,1770292,161441041,0,0,104
+mixed-large,1114112,16384,capture,evaluate,100,1605583,1697125,1718083,1732875,161441041,0,0,104
+mixed-large,1114112,16384,capture,release-check,100,25750,30750,34500,34791,161441041,0,0,104
+mixed-large,1114112,16384,capture,navigation-check,100,708,1125,1458,1542,161441041,0,0,104
+mixed-large,1114112,16384,capture,retirement-check,100,541,1459,1791,1792,161441041,0,0,104
+mixed-large,1114112,16384,timed,total,100,1631834,1697708,1736500,1798125,160991542,400,0,104
+mixed-large,1114112,16384,timed,evaluate,100,1604459,1664833,1708709,1757125,160991542,400,0,104
+mixed-large,1114112,16384,timed,release-check,100,25458,30666,37541,42500,160991542,400,0,104
+mixed-large,1114112,16384,timed,navigation-check,100,750,1167,1584,2708,160991542,400,0,104
+mixed-large,1114112,16384,timed,retirement-check,100,542,1625,2042,2375,160991542,400,0,104
+mixed-large,1114112,16384,saturated,total,100,1630375,1684791,1695000,1722291,161148125,0,900,104
+mixed-large,1114112,16384,saturated,evaluate,100,1602583,1656208,1665166,1694833,161148125,0,900,104
+mixed-large,1114112,16384,saturated,release-check,100,25375,30417,31208,31833,161148125,0,900,104
+mixed-large,1114112,16384,saturated,navigation-check,100,708,1042,1167,1250,161148125,0,900,104
+mixed-large,1114112,16384,saturated,retirement-check,100,459,1125,1583,1750,161148125,0,900,104
+# in_process_elapsed_ns=722209959
