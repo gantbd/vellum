@@ -8,12 +8,12 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
+vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
 vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
 
 [dev-dependencies]
-vellum-adapter-annotation-json = { version = "=0.1.0", path = "../vellum-adapter-annotation-json" }
-vellum-adapter-local-fs = { version = "=0.1.0", path = "../vellum-adapter-local-fs" }
+vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-annotation-json" }
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-local-fs" }
 
 [lints]
 workspace = true

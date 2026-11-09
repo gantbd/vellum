@@ -11,7 +11,7 @@ publish.workspace = true
 native-unicode = []
 
 [dependencies]
-vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
+vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
 vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
 vellum-session = { version = "=0.1.0", path = "../vellum-session" }
 unicode-segmentation = "=1.13.3"
@@ -20,9 +20,9 @@ getrandom = "=0.4.3"
 sha2 = "=0.10.9"
 
 [dev-dependencies]
-vellum-adapter-annotation-json = { version = "=0.1.0", path = "../vellum-adapter-annotation-json" }
-vellum-adapter-local-fs = { version = "=0.1.0", path = "../vellum-adapter-local-fs" }
-vellum-adapter-unicode-icu = { version = "=0.1.0", path = "../vellum-adapter-unicode-icu" }
+vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-annotation-json" }
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-local-fs" }
+vellum-adapter-unicode-icu = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-unicode-icu" }
 
 [lints]
 workspace = true
