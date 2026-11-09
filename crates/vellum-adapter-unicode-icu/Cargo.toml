@@ -8,8 +8,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
+vellum-sdk = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-sdk" }
 icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
 rust_icu_ubrk = "=5.8.0"
 rust_icu_sys = "=5.8.0"

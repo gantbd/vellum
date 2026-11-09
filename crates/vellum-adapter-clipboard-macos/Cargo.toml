@@ -16,9 +16,9 @@ name = "private-pasteboard"
 required-features = ["private-pasteboard-qualification"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
-vellum-model = { version = "=0.1.0", path = "../vellum-model" }
-vellum-session = { version = "=0.1.0", path = "../vellum-session" }
+vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
+vellum-model = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-model" }
+vellum-session = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-session" }
 objc2 = { version = "=0.6.5", features = ["exception"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSData", "NSThread"] }

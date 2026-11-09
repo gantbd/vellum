@@ -8,8 +8,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-vellum-engine = { version = "=0.1.0", path = "../vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
+vellum-sdk = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-sdk" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 

@@ -12,7 +12,7 @@ use vellum_session::host::TextTransferCaptureLimitsV1;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn reference_profile() -> vellum_model::ReferenceSessionConfig {
-    vellum_model::reference_profile(
+    let mut config = vellum_model::reference_profile(
         LocalFilesystemFactory::new(FilesystemLimits {
             max_resources: 16,
             max_bytes: 65536,
@@ -21,7 +21,16 @@ pub(crate) fn reference_profile() -> vellum_model::ReferenceSessionConfig {
         })
         .erase(),
         Box::new(vellum_adapter_annotation_json::JsonAnnotationCodec),
-    )
+    );
+    // Clipboard qualification exercises the largest admitted source and must
+    // explicitly supply the invocation algebra that the generic model leaves
+    // unconfigured. This is test composition, not adapter-owned policy.
+    config.engine.invocation = Some(InvocationLimits {
+        max_lifetime_issued: 64,
+        max_retained: 8,
+        max_intent_bytes: 262144,
+    });
+    config
 }
 pub(super) struct Fixture(pub(super) PathBuf);
 impl Fixture {
@@ -39,11 +48,6 @@ impl Fixture {
     pub(super) fn editor(&self, capture: usize) -> Editor {
         let mut config = reference_profile();
         config.capture_capacity = capture;
-        config.engine.invocation = Some(InvocationLimits {
-            max_lifetime_issued: 64,
-            max_retained: 8,
-            max_intent_bytes: 262144,
-        });
         let mut editor = Editor::open(&[self.0.join("a"), self.0.join("b")], config).unwrap();
         editor
             .configure_clipboard(

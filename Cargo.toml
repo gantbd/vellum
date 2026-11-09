@@ -1,0 +1,27 @@
+[workspace]
+members = [
+  "crates/vellum-adapter-local-fs",
+  "crates/vellum-adapter-annotation-json",
+  "crates/vellum-adapter-unicode-icu",
+  "crates/vellum-adapter-clipboard-macos",
+  "crates/vellum-unicode-reference",
+]
+resolver = "3"
+exclude = ["vendor/objc2-app-kit"]
+
+[patch.crates-io]
+objc2-app-kit = { path = "vendor/objc2-app-kit" }
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gantbd/vellum-adapters"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
