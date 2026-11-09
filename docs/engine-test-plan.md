@@ -92,15 +92,20 @@ ICU4C 79.1 root character iterator passes all grapheme cases through
 `rust_icu_ubrk` 5.8.0, with checked UTF-16-to-UTF-8 coordinate conversion. The
 native gate requires pkgconf/pkg-config, libclang and the selected ICU headers
 and libraries; inspect actual linked libraries as well as configuration version.
-The isolated probes' dependencies are optional in the reference crate, not runtime
-dependencies of the engine or applications. The new `vellum-adapter-unicode-icu` workspace
-member implements the in-process fallback, so whole-workspace checks now require
-the selected ICU4C installation too (set `PKG_CONFIG_PATH` as above). Targeted
-engine/UI builds remain independent of it. Its exact default-word evaluator uses
-normative revision-49 rules and pinned properties: ICU4X's word constructor groups
-Thai differently despite passing the canonical word corpus and is not used.
+Those remain isolated comparison probes, not runtime dependencies of the engine
+or applications. The production `vellum-adapter-unicode-icu` composes Unicode 18
+ICU4X data with revision-49 GB9c and direct default-word rules. Its portable gate
+passes all 853 grapheme and 1,944 word corpus cases:
 
-`PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig VELLUM_ICU4J_JAR=/absolute/path/to/icu4j-79.1.jar make check-unicode-native`
+```sh
+cargo run --offline --locked -p vellum-unicode-reference --features native-conformance --example portable_qualification
+```
+
+ICU4X's word constructor groups Thai differently despite passing the canonical
+word corpus and is not selected. Whole-workspace and UI builds require no system
+ICU, headers, loader, or `PKG_CONFIG_PATH`.
+
+`VELLUM_ICU4J_JAR=/absolute/path/to/icu4j-79.1.jar make check-unicode-native`
 compares all 2,805 complete native tables with the pinned oracle, including
 significant intervals, then runs native tables through real engine capture,
 movement, replay, deletion and undo. An additional 1,602 contextual cases challenge

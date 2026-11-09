@@ -104,10 +104,10 @@ The live private-board probe passed on the qualified macOS host on 2026-11-09,
 across capture capacities 0, 1 and 256. Exact raw text, bounds, native cut/paste,
 retained receipts, undo/replay, native-owner cleanup, explicit server-release calls
 and post-release refusal passed. The temporary source files were removed; General
-was never acquired. The pinned AppKit binding needs one missing method declaration,
-documented in [the vendor patch](../vendor/README.md); first-party unsafe-code
-prohibitions remain intact. This is isolated native I/O qualification, not desktop
-or cross-app qualification.
+was never acquired. The missing AppKit release binding is confined to the
+unpublished qualification runner; production adapters use the released binding
+without a consumer patch. First-party unsafe-code prohibitions remain intact.
+This is isolated native I/O qualification, not desktop or cross-app qualification.
 
 ## Remaining release work
 
@@ -115,11 +115,12 @@ The initial Unicode candidate probe is now executable via
 `make check-unicode-icu4x` and `make check-unicode-icu4c` (see the
 [testing guide](engine-test-plan.md)). Stable ICU4X 2.4 passes all 1,944 default
 word cases but fails 10/853 grapheme cases. The installed ICU4C 79.1 root
-character iterator passes all 853 grapheme cases. The separate `vellum-adapter-unicode-icu` adapter now
-integrates the ICU4C grapheme fallback and normative default-word rules over pinned
-ICU4X properties with original engine captures. ICU4X's word constructor is not
-used: it groups Thai differently from the raw default profile despite passing
-the canonical word corpus. The native adapter's complete tables match the pinned
+character iterator passes all 853 cases as an isolated comparison. The separate
+`vellum-adapter-unicode-icu` adapter composes ICU4X's stable grapheme implementation
+with revision-49 GB9c and direct default-word rules over pinned properties. Its
+portable production gate passes all 853 grapheme and 1,944 word cases. ICU4X's
+word constructor is not used: it groups Thai differently from the raw default
+profile despite passing the canonical word corpus. The adapter's complete tables match the pinned
 reference across all 2,805 inputs and 1,602 added contexts, and drive real engine
 movement/replay/deletion/undo. The terminal reference now explicitly opts into
 that provider through the shared editor/session: native movement/deletion,
@@ -142,11 +143,11 @@ Deployment, glyph geometry and desktop qualification remain separate.
 
 | UI item | Work retained for the examples/adapters |
 | --- | --- |
-| Layout and geometry | Terminal cell/selection mapping and iced's lossless source-to-widget projection exist. Narrow pinned Iced patches expose actual renderer caret/range geometry without moving the primary cursor or reshaping. Iced now paints bounded, clipped secondary ranges/carets and delegates its supported multi-selection edits to native commands; actual widget draw, atomic history and lossless save are tested. Other multi-selection gestures refuse explicitly. Glyph/width/bidi behavior and desktop viewport qualification remain separate; headless rendering tests are not desktop qualification. |
+| Layout and geometry | Terminal cell/selection mapping and iced's lossless source-to-widget projection exist. A bounded non-authoritative renderer mirror uses released Iced contracts to expose actual caret/range geometry without moving the source cursor or reshaping during reads. Iced paints bounded, clipped secondary ranges/carets and delegates its supported multi-selection edits to native commands; actual widget draw, atomic history and lossless save are tested. Other multi-selection gestures refuse explicitly. Glyph/width/bidi behavior and desktop viewport qualification remain separate; headless rendering tests are not desktop qualification. |
 | Decorations and annotations | Both UIs expose native comment operations, separate locks/history and explicit JSON save/reopen. Qualify discoverability, styling, clipping, accessible text and authorized projections; current trusted-host APIs are not untrusted recipient endpoints. |
 | Input and interaction | Keymaps, selection, native history and attachment-bound iced preedit are implemented. Actual OS IME, candidate/surrounding-text geometry, native focus/announcements and the remaining gesture/feature parity need qualification. Headless preedit tests are not physical input-method support. |
 | Accessibility | Bind semantic engine text/selection/actions to the native accessibility interface. Native focus, announcements and geometry remain UI/platform responsibilities. Do not equate keyboard access with verified screen-reader support. |
-| Host/framework support | First qualification target is this exact macOS 26.6.2 arm64 / Rust 1.95 configuration, not a broader matrix or minimum supported version. The qualified ICU4C 79.1 fallback serves source commands in both examples; glyph/width/form profiles and native redistribution remain separate. The rebuilt local GUI bundle passes signature/plist/host-dylib checks. The opt-in real-window probe passes native select/edit/CRLF-save/undo/save/close, four source-region-validated readbacks and inspection of its own synthetic screenshot. It neither injects physical input nor accesses a clipboard workflow or other windows. Physical keyboard/mouse, OS IME, accessibility and general clipboard qualification remain open. Product capacity/performance budgets still need explicit adoption; warm controller or whole-probe timings are not cold-start/presentation latency. |
+| Host/framework support | First qualification target is this exact macOS 26.6.2 arm64 / Rust 1.95 configuration, not a broader matrix or minimum supported version. Portable compiled Unicode 18 data serves source commands in both examples; glyph/width/form profiles remain separate. The rebuilt local GUI bundle passes signature/plist/host-dylib checks. The opt-in real-window probe passes native select/edit/CRLF-save/undo/save/close, four source-region-validated readbacks and inspection of its own synthetic screenshot. It neither injects physical input nor accesses a clipboard workflow or other windows. Physical keyboard/mouse, OS IME, accessibility and general clipboard qualification remain open. Product capacity/performance budgets still need explicit adoption; warm controller or whole-probe timings are not cold-start/presentation latency. |
 | Example packages and conformance | Keep both apps thin consumers and qualify the selected release profile through actual integrations. Compare equivalent explicit semantic requests, not pixel equality or identical keymaps. Existing focused native/frontend tests do not close untested desktop capabilities. |
 
 ## Existing work to reuse
