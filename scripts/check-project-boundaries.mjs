@@ -21,7 +21,7 @@ for (const pkg of packages.values()) {
   for (const dependency of pkg.dependencies) {
     if (dependency.path === null) continue;
     const kind = dependency.kind ?? 'normal';
-    if (['vellum', 'vellum-iced'].includes(dependency.name)) {
+    if (['vellum-tui', 'vellum-gui-macos'].includes(dependency.name)) {
       failures.push(`${pkg.name} has forbidden application dependency on ${dependency.name}`);
     }
     if (kind !== 'dev' && dependency.name.startsWith('vellum-adapter-')) {
