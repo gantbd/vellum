@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "UI-neutral interaction model for the Vellum editing engine"
 
 [features]
 native-unicode = []
