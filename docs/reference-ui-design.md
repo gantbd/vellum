@@ -5,9 +5,9 @@ adapter/example. It is outside engine completion. Requirements §§1.1/8–9.5 s
 require both integrations for the wider editor release; that does not make their
 UI policies part of the engine or require a UI to use the engine.
 
-Both reference consumers now exist: [ratatui](../crates/vellum-tui/src/main.rs)
-and [iced](../crates/vellum-iced/src/gui.rs), over the shared
-[Editor](../crates/vellum-model/src/app.rs) and one `LocalHost` across files.
+Both reference consumers now exist: [ratatui](https://github.com/gantbd/vellum-tui/blob/main/src/main.rs)
+and [the macOS GUI](https://github.com/gantbd/vellum-gui-macos/blob/main/src/gui.rs), over the shared
+`vellum-model` Editor and one `LocalHost` across files.
 They implement native editing/history/save, search/replacement, explicit
 destination confirmation, editing locks, session comments and guarded close.
 Both UIs expose explicit comment-file save/reopen over the shared Editor, with
@@ -160,9 +160,9 @@ clipboard mechanisms and workflow orchestration follow the separation above.
 The ownership catalog assigns F09/F15/F25,
 visual movement, UI host facilities and geometry-result acceptance to presentation.
 
-The [terminal keymap](../crates/vellum-tui/src/terminal.rs),
-[iced input routing](../crates/vellum-iced/src/gui.rs),
-[attachment guard](../crates/vellum-iced/src/attachment.rs) and shared Editor are
+The [terminal keymap](https://github.com/gantbd/vellum-tui/blob/main/src/terminal.rs),
+[GUI input routing](https://github.com/gantbd/vellum-gui-macos/blob/main/src/gui.rs),
+[attachment guard](https://github.com/gantbd/vellum-gui-macos/blob/main/src/attachment.rs) and shared Editor are
 the implementation starting points. Formal keymap/configuration/geometry
 references remain historical design inputs, not a second implementation or a
 reason to repeat their evidence campaign. The

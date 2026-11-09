@@ -14,7 +14,8 @@ closure:
 
 - `vellum-sdk` — host/session/model contracts
 - `vellum-adapters` — filesystem, serialization, Unicode, and clipboard ports
-- `vellum-apps` — the installable terminal and desktop composition roots
+- `vellum-tui` — terminal composition root and `vellum` executable
+- `vellum-gui-macos` — native macOS GUI composition root
 
 The extraction preserves project history and exact-version development paths.
 See [project boundaries](docs/project-boundaries.md) for the dependency law and
@@ -37,10 +38,6 @@ Run the headless example with:
 cargo run --offline -p vellum-engine --example headless_edit
 ```
 
-Application installation is owned and qualified by `vellum-apps`. Its canonical
-eventual commands are:
-
-```sh
-cargo install vellum --locked
-cargo install vellum --locked --features desktop
-```
+The application repositories are currently source-distributed and explicitly
+non-publishable. Each owns its own build and qualification workflow; neither is
+part of the engine workspace or a dependency of the other.

@@ -308,7 +308,7 @@ lossless bytes, explicit failures, capture pressure and protected cleanup.
 Frontend tests must connect events to actual engine behavior, not just render
 static widgets. Test real framework/terminal lifecycle as well as headless paths.
 
-The [iced bridge](../crates/vellum-iced/src/bridge.rs) now uses that same host and
+The [macOS GUI bridge](https://github.com/gantbd/vellum-gui-macos/blob/main/src/bridge.rs) now uses that same host and
 maps a normalized display to exact original source positions without a diff or
 widget-owned undo. Headless checks pass; native desktop interaction is not yet
 qualified. Its text projection must never normalize serialized source. Numeric
