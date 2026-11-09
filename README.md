@@ -11,6 +11,12 @@ Resource operations preserve original ownership and separately attributed
 evidence; cooperative shutdown preserves unresolved obligations until discharge.
 Instrumentation is optional, bounded and content-safe.
 
+The adopted delivery scope is the bounded local macOS reference release: the
+native engine, modular local-filesystem adapter and thin TUI/Iced examples, not a
+production desktop UI. General-clipboard, physical-input/IME, native accessibility
+and arbitrary shaping/bidi qualification remain open and are not claimed by this
+release. Federation is not a prerequisite.
+
 Its diagnostic FIFO storage is supplied by the sibling
 [`keystone-observe`](../keystone/crates/keystone-observe/src/lib.rs) crate. Vellum
 retains event meanings, opt-in timing and measurement accounting; shared capture
@@ -110,7 +116,8 @@ limits, native invocation configuration and trusted host facts. Both reference
 apps now use the eager AppKit plain-text provider through a shared integration
 workflow, lazily bound at an explicit source gesture. Retained delivery retries
 never repeat platform work; uncertain work blocks new transfers and close.
-Live OS clipboard qualification remains open; there is no session-clipboard fallback.
+Isolated live private-pasteboard qualification passed; general-clipboard and
+desktop qualification remain open. There is no session-clipboard fallback.
 Caller-selected logical-view and line-edit profiles expose original native
 view/context handles, normalized multi-selections, logical endpoints, literal
 replacement and explicit prefix/newline transformations. Source, initiating/peer
@@ -287,6 +294,14 @@ history/save, late-commit refusal and keyboard-focus continuation. They do not
 qualify an OS input method, candidate-window geometry or desktop interaction.
 Literal search/replacement fields and buttons use the same engine results;
 F3/Shift-F3 navigate. Search again after edits before another replacement.
+Select matches uses the complete native result and paints secondary ranges and
+carets from actual widget geometry. Literal multi-edits and horizontal movement
+delegate to native selection/history commands; unsupported multi-selection
+gestures refuse explicitly. Select-all or a new search returns to one selection.
+Successful match selection returns keyboard focus to its exact source attachment;
+delayed focus work cannot focus or blur a replacement attachment.
+Painting is clipped and bounded; desktop, bidi and accessibility qualification
+remain separate.
 Reference search limits include a 1024-byte query, 1,048,576 comparisons and
 4096 matches; exhaustion is explicit and does not authorize navigation or
 replace-all from partial results. These are sample-host budgets, not a selected
@@ -296,9 +311,23 @@ integration, not the widget's independent clipboard backend. Note forms and path
 fields cannot retarget a source transfer. Retry delivery does not repeat platform
 I/O. The reference host explicitly supplies trusted-local-owner premises; this
 is not credential authentication or an untrusted-client authorization service.
-Live OS clipboard qualification remains open. This is not a notarized distribution or a production
-Unicode/IME/accessibility/bidi qualification; desktop interaction testing still
-requires approval to launch this newly built application.
+The isolated native private-pasteboard probe passed with explicit resource
+release. A live, own-window renderer probe also passed native match selection →
+multi-edit → lossless CRLF save → atomic undo → save → close. It captures only its
+synthetic document window and does not inject system input or run a clipboard
+workflow. Reproduce it explicitly (opens a window and retains one BMP artifact):
+
+```sh
+PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig cargo run --locked --release --offline -p vellum-iced --features desktop-qualification -- --qualify-desktop
+```
+
+The probe feature is excluded from normal `make app-macos` builds. Readback waits
+for post-command drawing without an intervening UI message that could invalidate
+Iced's weak text primitives. Blank source regions, stale source readbacks,
+command/file mismatches and timeout refuse qualification; a nonblank toolbar is
+not sufficient. This is not physical keyboard/mouse, General-clipboard, OS IME,
+accessibility, arbitrary glyph/bidi, distribution or cold-start qualification.
+See the [UI qualification notes](docs/reference-ui-design.md).
 
 Run `cargo run --release --offline -p vellum-iced --example iced-interaction` for the
 headless widget/controller workload. It checks exact source behavior, saturation

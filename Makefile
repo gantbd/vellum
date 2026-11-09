@@ -17,7 +17,7 @@ doc:
 # Local reference bundle; select ICU4C 79.1 with PKG_CONFIG_PATH. Native dylibs
 # remain host prerequisites, not vendored portable/notarized distribution.
 app-macos:
-	cargo build --release --offline -p vellum-iced
+	cargo build --locked --release --offline -p vellum-iced
 	mkdir -p target/Vellum.app/Contents/MacOS
 	cp crates/vellum-iced/resources/Info.plist target/Vellum.app/Contents/Info.plist
 	cp target/release/vellum-iced target/Vellum.app/Contents/MacOS/Vellum

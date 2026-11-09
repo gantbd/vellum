@@ -1,6 +1,13 @@
 [workspace]
 members = ["crates/vellum-engine", "crates/vellum-local-fs", "crates/vellum-annotation-json", "crates/vellum-unicode-reference", "crates/vellum-unicode-icu", "crates/vellum-session", "crates/vellum-editor", "crates/vellum-clipboard-macos", "crates/vellum-tui", "crates/vellum-iced"]
 resolver = "3"
+exclude = ["vendor/objc2-app-kit", "vendor/iced_core", "vendor/iced_graphics", "vendor/iced_widget"]
+
+[patch.crates-io]
+objc2-app-kit = { path = "vendor/objc2-app-kit" }
+iced_core = { path = "vendor/iced_core" }
+iced_graphics = { path = "vendor/iced_graphics" }
+iced_widget = { path = "vendor/iced_widget" }
 
 [workspace.package]
 version = "0.1.0"

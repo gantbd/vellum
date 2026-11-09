@@ -69,7 +69,7 @@ fn retirement() -> CopyRetirementFactsV1 {
 
 /// Performs live OS I/O. Call only with explicit operator approval, on the main
 /// thread. This feature-gated probe owns only unique private boards and fixtures.
-/// Success includes explicit clearing of test payloads and native owner cleanup;
+/// Success includes clearing, private server-resource release and native cleanup;
 /// process termination or failure does not promise cleanup or physical erasure.
 pub fn qualify_private_pasteboard() -> Result<(), Box<dyn std::error::Error>> {
     objc2::rc::autoreleasepool(|_| {
@@ -118,6 +118,18 @@ fn qualify_mode(capture_capacity: usize) -> Result<(), Box<dyn std::error::Error
         .backend
         .clear_private_for_qualification()
         .map_err(|_| "private final clear failed")?;
+    provider
+        .backend
+        .release_private_for_qualification()
+        .map_err(|_| "private server-resource release failed or uncertain")?;
+    require(
+        provider.read() == Err(Error::Unavailable),
+        "released private target remained readable",
+    )?;
+    require(
+        provider.backend.write("must not reach General").is_err(),
+        "released private target did not refuse export",
+    )?;
     Ok(())
 }
 
