@@ -40,8 +40,12 @@ exactly `vellum-engine`; its gate rejects additional workspace members or any
 upward Vellum dependency.
 
 `vellum-editor` is a headless editor application layer, not authoritative
-document state. `vellum-host` owns trusted capability ports; the initial native
-service profile is single-client and in-process, so it makes no daemon, MCP, or
-multi-client claim. Local filesystem behavior is a replaceable adapter, not an
-engine intrinsic. A future navigable human/agent product that composes Vellum,
-Chronos, chat, and orchestration belongs in a separate product repository.
+document state. Its presentation-free `Workspace` serializes shared document
+authority while bounded client-owned `EditorView` values keep projections
+independent; the service separately scopes request identities and witnesses per
+client. `vellum-host` owns trusted capability ports. The native service profile
+is multi-client but in-process, so it makes no daemon, MCP, authentication,
+reconnect, or durable-registration claim. Local filesystem behavior is a
+replaceable adapter, not an engine intrinsic. A future navigable human/agent
+product that composes Vellum, Chronos, chat, and orchestration belongs in a
+separate product repository.
