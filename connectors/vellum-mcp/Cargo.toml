@@ -1,0 +1,31 @@
+[package]
+name = "vellum-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded current-protocol MCP projection for Vellum"
+
+[lib]
+name = "vellum_mcp"
+
+[[bin]]
+name = "vellum-mcp"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "=1.0.151"
+vellum-client = { version = "=0.1.0", path = "../../client/vellum-client" }
+vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
+vellum-transport = { version = "=0.1.0", path = "../../transport/vellum-transport" }
+
+[dev-dependencies]
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-daemon = { version = "=0.1.0", path = "../../applications/vellum-daemon" }
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-service = { version = "=0.1.0", path = "../../service/vellum-service" }
+
+[lints]
+workspace = true

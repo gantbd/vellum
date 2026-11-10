@@ -58,8 +58,8 @@ outcome decision. Copy has no source publication; accepted export does not imply
 cut deletion, and accepted read data is inert insertion data. Engine insertion
 semantics do not depend on whether text originated from a clipboard, file or agent.
 
-The native headless [transfer integration](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/host/copy_transfer.rs)
-and [Editor facade](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app/clipboard.rs) implement copy,
+The native headless [transfer integration](../host/vellum-session/src/host/copy_transfer.rs)
+and [Editor facade](../host/vellum-editor/src/app/clipboard.rs) implement copy,
 acknowledged cut and literal paste over original native invocations, captures and
 publication/history. They retain unknown/contested work and separate provider
 acceptance from local application. The selected next provider is eager plain-text

@@ -1,15 +1,20 @@
 # Vellum project boundaries
 
-Status: physically extracted and dependency-closed on 2026-11-09.
+Status: consolidated and dependency-closed on 2026-11-09.
 
-Vellum is delivered as five independently versionable projects. Repository
-placement follows dependency direction rather than deployment convenience.
+Vellum's non-UI semantic spine, service profile, first-party adapters,
+connectors, and composition roots share one atomic-evolution repository.
+Separate crates and categorical directories preserve dependency and authority
+boundaries. Presentation repositories retain independent release lifecycles.
 
 | Project | Owns | Must not own |
 | --- | --- | --- |
-| `vellum` | Closed semantic engine, authoritative source/history state, admission, retained outcomes and bounded instrumentation | UI state, filesystem paths, platform services or connector policy |
-| `vellum-sdk` | `vellum-host` capability ports, sessions, the headless `vellum-editor`, and the native protocol/service/client profile | Concrete OS, storage, clipboard, transport or rendering implementations |
-| `vellum-adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
+| `vellum/engine` | Closed semantic engine, authoritative source/history state, admission, retained outcomes and bounded instrumentation | UI state, filesystem paths, platform services or connector policy |
+| `vellum/host` | `vellum-host` capability ports, sessions, and the headless `vellum-editor` | Concrete OS, storage, clipboard, transport or rendering implementations |
+| `vellum/protocol`, `client`, `service`, `transport` | Native protocol and service profile | UI policy or alternate semantic authority |
+| `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
+| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots | Hidden engine or adapter authority |
+| `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |
 | `vellum-gui-macos` | Native macOS GUI composition root, bindings, rendering and lifecycle | Terminal policy, independent source/history authority or reusable adapter policy |
 
@@ -30,18 +35,18 @@ select a concrete adapter through a shipped dependency. An adapter may depend
 on host ports and engine evidence types; neither the host nor engine may depend
 on an adapter.
 
-The history-preserving extractions were established from source commit
-`920dbfc` and committed as:
+The former repository histories are retained in the consolidated Git graph:
 
-- `vellum-sdk` — `8f8d032`
-- `vellum-adapters` — `de59f30`
+- former `vellum-sdk` history, joined before import
+- former `vellum-adapters` history, joined before import
 - `vellum-tui` — extracted with path history from `vellum-apps`
 - `vellum-gui-macos` — extracted with path history from `vellum-apps`
 
-Each sibling has an executable boundary gate. The two applications are not yet
-published and do not advertise an install contract. This repository contains
-exactly `vellum-engine`; its gate rejects additional workspace members or any
-upward Vellum dependency.
+The workspace has one executable boundary gate covering crate presence,
+categorical placement, dependency direction, adapter selection, SDK facade
+closure, and qualification isolation. The two UI applications are not yet
+published and do not advertise an install contract. The gate rejects every
+upward dependency from `vellum-engine`.
 
 `vellum-editor` is a headless editor application layer, not authoritative
 document state. Its presentation-free `Workspace` serializes shared document

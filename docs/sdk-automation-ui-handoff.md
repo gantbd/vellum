@@ -6,7 +6,7 @@ untrusted-script sandbox or frozen compatibility promise.
 
 ## Starting points
 
-- [LocalHost](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/host.rs): one engine authority and
+- [LocalHost](../host/vellum-session/src/host.rs): one engine authority and
   filesystem module across multiple original document handles. Supports exact
   edits/batches, declared reads, linked history, original save tasks and explicit
   protected lifecycle operations.
@@ -173,11 +173,11 @@ untrusted-script sandbox or frozen compatibility promise.
   release. Both refuse retained read loans. `disable_annotation_read_baselines`
   detaches endpoints only after their consumers discharge. None implies erasure,
   file deletion or whole-engine shutdown.
-- [LocalSession](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/local.rs): single-file convenience
+- [LocalSession](../host/vellum-session/src/local.rs): single-file convenience
   over that same host; not a second implementation or engine-per-file mandate.
-- [Editor](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app.rs): shared presentation state above
+- [Editor](../host/vellum-editor/src/app.rs): shared presentation state above
   the host. The reference profile attaches original native logical views;
-  provider-neutral [clipboard routes](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app/clipboard.rs)
+  provider-neutral [clipboard routes](../host/vellum-editor/src/app/clipboard.rs)
   require explicit `configure_clipboard` limits and a native invocation profile.
   Register the real named provider, then begin copy/cut/paste against the active
   native context. The returned redacted `ClipboardPlan` identifies the original

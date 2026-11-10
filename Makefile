@@ -1,4 +1,4 @@
-.PHONY: check check-boundaries fmt lint test doc perf-build perf perf-run check-perf
+.PHONY: check check-boundaries fmt lint test doc perf-build perf perf-run check-perf qualify-unicode
 
 check: check-boundaries fmt lint test doc
 
@@ -34,3 +34,6 @@ check-perf:
 	$(if $(PERF_MAX_P99_NS),,$(error Set PERF_MAX_P99_NS to an explicit positive total p99 budget in nanoseconds))
 	$(MAKE) perf-build
 	$(PERF_BIN) $(PERF_ARGS) --max-p99-ns "$(PERF_MAX_P99_NS)"
+
+qualify-unicode:
+	cargo test --offline --manifest-path qualification/unicode-reference/Cargo.toml --all-targets --all-features

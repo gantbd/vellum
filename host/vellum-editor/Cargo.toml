@@ -1,0 +1,29 @@
+[package]
+name = "vellum-editor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Headless editor application layer for the Vellum editing engine"
+
+[features]
+native-unicode = []
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-host = { version = "=0.1.0", path = "../vellum-host" }
+vellum-session = { version = "=0.1.0", path = "../vellum-session" }
+unicode-segmentation = "=1.13.3"
+unicode-width = "=0.2.2"
+getrandom = "=0.4.3"
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../adapters/annotation-json" }
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-adapter-unicode-icu = { version = "=0.1.0", path = "../../adapters/unicode-icu" }
+
+[lints]
+workspace = true

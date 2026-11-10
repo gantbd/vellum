@@ -1,0 +1,21 @@
+[package]
+name = "vellum-adapter-annotation-json"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Bounded JSON annotation codec for Vellum SDK contracts"
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../local-fs" }
+
+[lints]
+workspace = true

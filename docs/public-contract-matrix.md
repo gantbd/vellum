@@ -136,7 +136,7 @@ does not assert that every cited reference covers every variant in its row.
 This is the finite C1/C2 reconciliation of the 71 variants above, not another
 specification or a claim that the reference bindings are implemented. Counts are
 variant inventory, not effort percentages. Paths below are relative to
-`crates/vellum-engine/src/coordinator/`; cited tests already exist and are reused.
+`engine/vellum-engine/src/coordinator/`; cited tests already exist and are reused.
 “Installed” means a private handler-origin check plus independent owning service,
 not a copied descriptor. Partial rows remain required work; absence is not closure.
 

@@ -1,6 +1,29 @@
 [workspace]
-members = ["crates/vellum-engine"]
+members = [
+    "engine/vellum-engine",
+    "host/vellum-host",
+    "host/vellum-session",
+    "host/vellum-editor",
+    "protocol/vellum-protocol",
+    "protocol/vellum-wire",
+    "service/vellum-service",
+    "client/vellum-client",
+    "transport/vellum-transport",
+    "adapters/local-fs",
+    "adapters/annotation-json",
+    "adapters/unicode-icu",
+    "adapters/clipboard-macos",
+    "connectors/vellum-mcp",
+    "applications/vellum-daemon",
+    "sdk/embedded",
+    "sdk/client",
+]
 resolver = "3"
+exclude = [
+    "qualification/unicode-reference",
+    "qualification/clipboard-macos",
+    "vendor/objc2-app-kit",
+]
 
 [workspace.package]
 version = "0.1.0"

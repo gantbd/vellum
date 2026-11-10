@@ -1,0 +1,21 @@
+[package]
+name = "vellum-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded in-process service interpreter for Vellum"
+
+[dependencies]
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
+
+[dev-dependencies]
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-client = { version = "=0.1.0", path = "../../client/vellum-client" }
+
+[lints]
+workspace = true

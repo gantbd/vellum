@@ -1,0 +1,18 @@
+[package]
+name = "vellum-adapter-unicode-icu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "ICU-backed Unicode boundary provider for Vellum SDK contracts"
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+
+[lints]
+workspace = true

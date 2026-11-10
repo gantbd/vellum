@@ -1,0 +1,17 @@
+[package]
+name = "vellum-sdk-embedded"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Trusted embedded Vellum SDK distribution facade"
+
+[dependencies]
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-session = { version = "=0.1.0", path = "../../host/vellum-session" }
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+
+[lints]
+workspace = true

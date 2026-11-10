@@ -7,7 +7,7 @@ organizes implementation against existing contracts, not new requirements.
 
 ## Starting points
 
-- [Adapter implementation](https://github.com/gantbd/vellum-adapters/blob/main/crates/vellum-adapter-local-fs/src/host.rs) and
+- [Adapter implementation](../adapters/local-fs/src/host.rs) and
   its colocated real-filesystem tests.
 - [Resource module design](substrate-module-design.md) and
   [engine API ownership](engine-api-boundaries.md).

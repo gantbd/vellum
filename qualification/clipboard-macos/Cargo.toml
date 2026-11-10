@@ -1,0 +1,30 @@
+[package]
+name = "vellum-clipboard-macos-qualification"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gantbd/vellum"
+publish = false
+description = "Repository-only live qualification for Vellum's macOS clipboard adapter"
+
+[workspace]
+resolver = "3"
+
+[patch.crates-io]
+objc2-app-kit = { path = "../../vendor/objc2-app-kit" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+vellum-adapter-clipboard-macos = { path = "../../adapters/clipboard-macos", features = ["qualification-harness"] }
+vellum-adapter-local-fs = { path = "../../adapters/local-fs" }
+vellum-adapter-annotation-json = { path = "../../adapters/annotation-json" }
+vellum-editor = { path = "../../host/vellum-editor" }
+objc2 = { version = "=0.6.5", features = ["exception"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSData", "NSThread"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
