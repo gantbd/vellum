@@ -8,20 +8,22 @@ placement follows dependency direction rather than deployment convenience.
 | Project | Owns | Must not own |
 | --- | --- | --- |
 | `vellum` | Closed semantic engine, authoritative source/history state, admission, retained outcomes and bounded instrumentation | UI state, filesystem paths, platform services or connector policy |
-| `vellum-sdk` | Stable host API, sessions, capability ports and `vellum-model` | Concrete OS, storage, clipboard or rendering implementations |
-| `vellum-adapters` | Qualified interpretations of SDK ports | Semantic authority, application navigation or hidden retry policy |
+| `vellum-sdk` | `vellum-host` capability ports, sessions, the headless `vellum-editor`, and the native protocol/service/client profile | Concrete OS, storage, clipboard, transport or rendering implementations |
+| `vellum-adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |
 | `vellum-gui-macos` | Native macOS GUI composition root, bindings, rendering and lifecycle | Terminal policy, independent source/history authority or reusable adapter policy |
 
 ```text
-vellum-tui --------+----> vellum-model ----> vellum-sdk ----> vellum-engine
-                   |                           ^
-vellum-gui-macos --+----> vellum-adapters -----+
+vellum-tui --------+----> vellum-editor ----> vellum-session -> vellum-engine
+                   |          |                    ^
+vellum-gui-macos --+          +--> vellum-host <---+--- vellum-adapters
+
+vellum-client ----> vellum-protocol <---- vellum-service ----> vellum-editor
 ```
 
-Applications are composition roots and inject adapters. The SDK/model cannot
+Applications are composition roots and inject adapters. The editor/host cannot
 select a concrete adapter through a shipped dependency. An adapter may depend
-on SDK ports and engine evidence types; neither the SDK nor engine may depend
+on host ports and engine evidence types; neither the host nor engine may depend
 on an adapter.
 
 The history-preserving extractions were established from source commit
@@ -37,7 +39,9 @@ published and do not advertise an install contract. This repository contains
 exactly `vellum-engine`; its gate rejects additional workspace members or any
 upward Vellum dependency.
 
-`vellum-model` is UI-independent interaction state, not authoritative document
-state. Local filesystem behavior is a replaceable adapter, not an engine
-intrinsic. A future navigable human/agent product that composes Vellum, Chronos,
-chat, and orchestration belongs in a separate product repository.
+`vellum-editor` is a headless editor application layer, not authoritative
+document state. `vellum-host` owns trusted capability ports; the initial native
+service profile is single-client and in-process, so it makes no daemon, MCP, or
+multi-client claim. Local filesystem behavior is a replaceable adapter, not an
+engine intrinsic. A future navigable human/agent product that composes Vellum,
+Chronos, chat, and orchestration belongs in a separate product repository.

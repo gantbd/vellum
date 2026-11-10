@@ -6,7 +6,7 @@ untrusted-script sandbox or frozen compatibility promise.
 
 ## Starting points
 
-- [LocalHost](../crates/vellum-session/src/host.rs): one engine authority and
+- [LocalHost](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/host.rs): one engine authority and
   filesystem module across multiple original document handles. Supports exact
   edits/batches, declared reads, linked history, original save tasks and explicit
   protected lifecycle operations.
@@ -173,11 +173,11 @@ untrusted-script sandbox or frozen compatibility promise.
   release. Both refuse retained read loans. `disable_annotation_read_baselines`
   detaches endpoints only after their consumers discharge. None implies erasure,
   file deletion or whole-engine shutdown.
-- [LocalSession](../crates/vellum-session/src/local.rs): single-file convenience
+- [LocalSession](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/local.rs): single-file convenience
   over that same host; not a second implementation or engine-per-file mandate.
-- [Editor](../crates/vellum-model/src/app.rs): shared presentation state above
+- [Editor](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app.rs): shared presentation state above
   the host. The reference profile attaches original native logical views;
-  provider-neutral [clipboard routes](../crates/vellum-model/src/app/clipboard.rs)
+  provider-neutral [clipboard routes](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app/clipboard.rs)
   require explicit `configure_clipboard` limits and a native invocation profile.
   Register the real named provider, then begin copy/cut/paste against the active
   native context. The returned redacted `ClipboardPlan` identifies the original
@@ -222,8 +222,8 @@ untrusted-script sandbox or frozen compatibility promise.
   commands are never repaired by that path. Candidate previews are computation,
   not source authority, and are measured separately from evidence generation.
   The iced example still exposes only its primary-selection visual workflow.
-- [Ratatui consumer](../crates/vellum-tui/src/terminal.rs) and
-  [terminal process](../crates/vellum-tui/src/main.rs): frontend-only keymaps,
+- [Ratatui consumer](https://github.com/gantbd/vellum-tui/blob/main/src/terminal.rs) and
+  [terminal process](https://github.com/gantbd/vellum-tui/blob/main/src/main.rs): frontend-only keymaps,
   safe terminal projection, explicit quit/discard and terminal restoration.
 - [Native contract matrix](public-contract-matrix.md) and
   [engine API boundaries](engine-api-boundaries.md): broader engine profiles,
@@ -301,7 +301,7 @@ the owning integration must discharge external obligations before retirement.
 ## Development and acceptance
 
 Exercise actual public routes and real temporary files. Start with focused tests
-in `vellum-session`, `vellum-model` and `vellum-tui`; reserve workspace-wide
+in `vellum-session`, `vellum-editor` and `vellum-tui`; reserve workspace-wide
 qualification for the integrated release checkpoint. Preserve tests for stale
 or foreign targets, cross-file dependencies, linked history, external changes,
 lossless bytes, explicit failures, capture pressure and protected cleanup.

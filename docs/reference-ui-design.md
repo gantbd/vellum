@@ -7,7 +7,7 @@ UI policies part of the engine or require a UI to use the engine.
 
 Both reference consumers now exist: [ratatui](https://github.com/gantbd/vellum-tui/blob/main/src/main.rs)
 and [the macOS GUI](https://github.com/gantbd/vellum-gui-macos/blob/main/src/gui.rs), over the shared
-`vellum-model` Editor and one `LocalHost` across files.
+`vellum-editor` Editor and one `LocalHost` across files.
 They implement native editing/history/save, search/replacement, explicit
 destination confirmation, editing locks, session comments and guarded close.
 Both UIs expose explicit comment-file save/reopen over the shared Editor, with
@@ -58,8 +58,8 @@ outcome decision. Copy has no source publication; accepted export does not imply
 cut deletion, and accepted read data is inert insertion data. Engine insertion
 semantics do not depend on whether text originated from a clipboard, file or agent.
 
-The native headless [transfer integration](../crates/vellum-session/src/host/copy_transfer.rs)
-and [Editor facade](../crates/vellum-model/src/app/clipboard.rs) implement copy,
+The native headless [transfer integration](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-session/src/host/copy_transfer.rs)
+and [Editor facade](https://github.com/gantbd/vellum-sdk/blob/main/crates/vellum-editor/src/app/clipboard.rs) implement copy,
 acknowledged cut and literal paste over original native invocations, captures and
 publication/history. They retain unknown/contested work and separate provider
 acceptance from local application. The selected next provider is eager plain-text

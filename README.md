@@ -12,7 +12,7 @@ The engine is deliberately one library crate:
 Sibling projects interpret and present the engine without becoming part of its
 closure:
 
-- `vellum-sdk` — host/session/model contracts
+- `vellum-sdk` — host/session/editor contracts and the initial native service profile
 - `vellum-adapters` — filesystem, serialization, Unicode, and clipboard ports
 - `vellum-tui` — terminal composition root and `vellum` executable
 - `vellum-gui-macos` — native macOS GUI composition root
