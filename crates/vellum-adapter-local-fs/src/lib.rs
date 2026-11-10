@@ -15,3 +15,7 @@ pub use macos::*;
 mod host;
 #[cfg(target_os = "macos")]
 pub use host::LocalFilesystemFactory;
+#[cfg(target_os = "macos")]
+mod workspace;
+#[cfg(target_os = "macos")]
+pub use workspace::*;
