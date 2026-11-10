@@ -1104,13 +1104,11 @@ fn clipped_line(
     out
 }
 
-/// Reference application budgets, not engine defaults, release SLOs or platform
-/// promises. Without explicit native-Unicode opt-in, UI-local graphemes use
-/// unicode-segmentation 1.13.3/Unicode 17. A session config selects no provider.
-pub fn reference_profile(
+/// Reference workspace budgets, not engine defaults, release SLOs or platform
+/// promises. This selects no annotation codec or presentation policy.
+pub fn reference_workspace_profile(
     resource_adapter: ErasedPathResourceAdapterFactory,
-    annotation_codec: Box<dyn AnnotationCodec>,
-) -> ReferenceSessionConfig {
+) -> crate::workspace::WorkspaceConfig {
     use vellum_engine::{
         coordinator::{CoordinatorConfig, CoordinatorLimits, HistoryLimits},
         instrumentation::NativeTimingProfileV1,
@@ -1201,8 +1199,17 @@ pub fn reference_profile(
         capture_capacity: 256,
         timing: NativeTimingProfileV1::ProcessMonotonicV1,
     };
+    crate::workspace::WorkspaceConfig::new(session)
+}
+
+/// Reference editor composition. Without explicit native-Unicode opt-in,
+/// UI-local graphemes use unicode-segmentation 1.13.3/Unicode 17.
+pub fn reference_profile(
+    resource_adapter: ErasedPathResourceAdapterFactory,
+    annotation_codec: Box<dyn AnnotationCodec>,
+) -> ReferenceSessionConfig {
     ReferenceSessionConfig {
-        session,
+        session: reference_workspace_profile(resource_adapter).into_session(),
         annotation_codec,
     }
 }

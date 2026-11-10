@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
-use vellum_editor::{Editor, EditorError};
+use vellum_editor::{EditorView, Workspace, WorkspaceError};
 use vellum_engine::{coordinator::DocumentVersion, source::Replacement};
 use vellum_protocol::{
     ClientId, CommandV1, OutcomeV1, RefusalV1, ReplyV1, RequestV1, SnapshotV1, VersionWitness,
@@ -30,7 +30,7 @@ impl vellum_protocol::ServicePort for Service {
 impl ServiceLimits {
     pub const fn reference() -> Self {
         Self {
-            max_clients: 1,
+            max_clients: 8,
             max_requests: 256,
             max_witnesses: 256,
             max_snapshot_bytes: 65_536,
@@ -65,6 +65,8 @@ pub struct ServiceUsage {
     pub limited: u64,
     pub unavailable: u64,
     pub counter_saturated: bool,
+    pub active_clients: usize,
+    pub client_capacity: usize,
     pub retained_requests: usize,
     pub request_capacity: usize,
     pub retained_witnesses: usize,
@@ -72,6 +74,7 @@ pub struct ServiceUsage {
 }
 
 struct WitnessRecord {
+    client: ClientId,
     id: VersionWitness,
     version: DocumentVersion,
     text: Arc<str>,
@@ -82,24 +85,29 @@ struct RequestRecord {
     reply: ReplyV1,
 }
 
-/// One serialized owner for the first native service profile.
+struct ClientRecord {
+    id: ClientId,
+    view: EditorView,
+}
+
+/// One serialized owner for a shared workspace and bounded client views.
 ///
-/// The editor currently contains presentation state, so this profile admits
-/// exactly one client. That is an explicit limit, not a multi-client claim.
-/// Semantic replacements are version-bound and do not use the editor cursor.
+/// Semantic replacements are version-bound and never borrow another client's
+/// cursor, selection, active document, request namespace, or witness namespace.
 pub struct Service {
-    editor: Editor,
+    workspace: Workspace,
     limits: ServiceLimits,
-    client: Option<ClientId>,
+    clients: Vec<ClientRecord>,
     requests: Vec<RequestRecord>,
     witnesses: Vec<WitnessRecord>,
+    next_client: u64,
     next_witness: u64,
     usage: ServiceUsage,
 }
 
 impl Service {
-    pub fn new(editor: Editor, limits: ServiceLimits) -> Result<Self, ServiceBuildError> {
-        if limits.max_clients != 1
+    pub fn new(workspace: Workspace, limits: ServiceLimits) -> Result<Self, ServiceBuildError> {
+        if limits.max_clients == 0
             || limits.max_requests == 0
             || limits.max_witnesses == 0
             || limits.max_snapshot_bytes == 0
@@ -107,6 +115,10 @@ impl Service {
         {
             return Err(ServiceBuildError::InvalidLimits);
         }
+        let mut clients = Vec::new();
+        clients
+            .try_reserve_exact(limits.max_clients)
+            .map_err(|_| ServiceBuildError::Capacity)?;
         let mut requests = Vec::new();
         requests
             .try_reserve_exact(limits.max_requests)
@@ -116,11 +128,12 @@ impl Service {
             .try_reserve_exact(limits.max_witnesses)
             .map_err(|_| ServiceBuildError::Capacity)?;
         Ok(Self {
-            editor,
+            workspace,
             limits,
-            client: None,
+            clients,
             requests,
             witnesses,
+            next_client: 1,
             next_witness: 1,
             usage: ServiceUsage::default(),
         })
@@ -131,28 +144,43 @@ impl Service {
             &mut self.usage.connect_attempts,
             &mut self.usage.counter_saturated,
         );
-        if self.client.is_some() {
+        if self.clients.len() == self.limits.max_clients {
             bump(
                 &mut self.usage.connection_refused,
                 &mut self.usage.counter_saturated,
             );
             return Err(RefusalV1::ClientCapacity);
         }
-        let client = ClientId::new(1).expect("one is nonzero");
-        self.client = Some(client);
+        let Some(client) = ClientId::new(self.next_client) else {
+            bump(
+                &mut self.usage.connection_refused,
+                &mut self.usage.counter_saturated,
+            );
+            return Err(RefusalV1::CounterExhausted);
+        };
+        let view = self.workspace.open_view().map_err(classify_workspace)?;
+        self.next_client = self.next_client.checked_add(1).unwrap_or(0);
+        self.clients.push(ClientRecord { id: client, view });
         bump(&mut self.usage.connected, &mut self.usage.counter_saturated);
         Ok(client)
     }
 
     pub fn execute(&mut self, request: RequestV1) -> ReplyV1 {
         bump(&mut self.usage.requests, &mut self.usage.counter_saturated);
-        if self.client != Some(request.client) {
+        if !self
+            .clients
+            .iter()
+            .any(|client| client.id == request.client)
+        {
             return self.observed(ReplyV1::Refused(RefusalV1::UnknownClient));
         }
         if let Some((same_request, retained_reply)) = self
             .requests
             .iter()
-            .find(|retained| retained.request.request == request.request)
+            .find(|retained| {
+                retained.request.client == request.client
+                    && retained.request.request == request.request
+            })
             .map(|retained| (retained.request == request, retained.reply.clone()))
         {
             let reply = if same_request {
@@ -166,7 +194,7 @@ impl Service {
         if self.requests.len() == self.limits.max_requests {
             return self.observed(ReplyV1::Refused(RefusalV1::RequestCapacity));
         }
-        let reply = self.execute_fresh(&request.command);
+        let reply = self.execute_fresh(request.client, &request.command);
         self.requests.push(RequestRecord {
             request,
             reply: reply.clone(),
@@ -176,6 +204,8 @@ impl Service {
 
     pub fn usage(&self) -> ServiceUsage {
         ServiceUsage {
+            active_clients: self.clients.len(),
+            client_capacity: self.limits.max_clients,
             retained_requests: self.requests.len(),
             request_capacity: self.limits.max_requests,
             retained_witnesses: self.witnesses.len(),
@@ -216,16 +246,16 @@ impl Service {
         reply
     }
 
-    fn execute_fresh(&mut self, command: &CommandV1) -> ReplyV1 {
+    fn execute_fresh(&mut self, client: ClientId, command: &CommandV1) -> ReplyV1 {
         let result = match command {
-            CommandV1::Snapshot => self.snapshot().map(OutcomeV1::Snapshot),
+            CommandV1::Snapshot => self.snapshot(client).map(OutcomeV1::Snapshot),
             CommandV1::Replace {
                 expected,
                 start,
                 end,
                 inserted,
             } => self
-                .replace(*expected, *start, *end, inserted)
+                .replace(client, *expected, *start, *end, inserted)
                 .map(OutcomeV1::Replaced),
         };
         match result {
@@ -234,18 +264,20 @@ impl Service {
         }
     }
 
-    fn snapshot(&mut self) -> Result<SnapshotV1, RefusalV1> {
+    fn snapshot(&mut self, client: ClientId) -> Result<SnapshotV1, RefusalV1> {
         self.preflight_witness()?;
-        let captured = self.editor.snapshot().map_err(classify_editor)?;
+        let view = self.view(client)?;
+        let captured = self.workspace.snapshot(&view).map_err(classify_workspace)?;
         if captured.text.len() > self.limits.max_snapshot_bytes {
             return Err(RefusalV1::SnapshotLimit);
         }
         let text: Arc<str> = Arc::from(captured.text);
-        Ok(self.install_witness(captured.version, text))
+        Ok(self.install_witness(client, captured.version, text))
     }
 
     fn replace(
         &mut self,
+        client: ClientId,
         expected: VersionWitness,
         start: u64,
         end: u64,
@@ -257,11 +289,12 @@ impl Service {
         let retained = self
             .witnesses
             .iter()
-            .find(|entry| entry.id == expected)
+            .find(|entry| entry.client == client && entry.id == expected)
             .ok_or(RefusalV1::UnknownWitness)?;
         let expected_version = retained.version.clone();
         let original = Arc::clone(&retained.text);
-        if self.editor.version().map_err(classify_editor)? != expected_version {
+        let view = self.view(client)?;
+        if self.workspace.version(&view).map_err(classify_workspace)? != expected_version {
             return Err(RefusalV1::Stale);
         }
         let start = usize::try_from(start).map_err(|_| RefusalV1::InvalidRange)?;
@@ -293,9 +326,6 @@ impl Service {
         projected.push_str(inserted);
         projected.push_str(&original[end..]);
         let projected: Arc<str> = Arc::from(projected);
-        let caret = start
-            .checked_add(inserted.len())
-            .ok_or(RefusalV1::InputLimit)?;
         let mut replacements = Vec::new();
         replacements
             .try_reserve_exact(1)
@@ -306,11 +336,11 @@ impl Service {
             expected: expected_fragment,
             inserted: inserted_owned,
         });
-        self.editor
-            .edit_snapshot(&expected_version, replacements, caret)
-            .map_err(classify_editor)?;
-        let version = self.editor.version().map_err(classify_editor)?;
-        Ok(self.install_witness(version, projected))
+        self.workspace
+            .edit_snapshot(&view, &expected_version, replacements)
+            .map_err(classify_workspace)?;
+        let version = self.workspace.version(&view).map_err(classify_workspace)?;
+        Ok(self.install_witness(client, version, projected))
     }
 
     fn preflight_witness(&self) -> Result<(), RefusalV1> {
@@ -323,7 +353,12 @@ impl Service {
         Ok(())
     }
 
-    fn install_witness(&mut self, version: DocumentVersion, text: Arc<str>) -> SnapshotV1 {
+    fn install_witness(
+        &mut self,
+        client: ClientId,
+        version: DocumentVersion,
+        text: Arc<str>,
+    ) -> SnapshotV1 {
         let witness = VersionWitness::new(self.next_witness).expect("preflight rejects zero");
         self.next_witness = self.next_witness.checked_add(1).unwrap_or(0);
         let snapshot = SnapshotV1 {
@@ -332,11 +367,20 @@ impl Service {
             text: Arc::clone(&text),
         };
         self.witnesses.push(WitnessRecord {
+            client,
             id: witness,
             version,
             text,
         });
         snapshot
+    }
+
+    fn view(&self, client: ClientId) -> Result<EditorView, RefusalV1> {
+        self.clients
+            .iter()
+            .find(|record| record.id == client)
+            .map(|record| record.view.clone())
+            .ok_or(RefusalV1::UnknownClient)
     }
 }
 
@@ -348,16 +392,12 @@ fn copy_string(value: &str) -> Result<String, RefusalV1> {
     Ok(copy)
 }
 
-fn classify_editor(error: EditorError) -> RefusalV1 {
+fn classify_workspace(error: WorkspaceError) -> RefusalV1 {
     match error {
-        EditorError::Closed => RefusalV1::EditorClosed,
-        EditorError::Capacity => RefusalV1::EditorCapacity,
-        EditorError::Unsaved
-        | EditorError::IdentityConflict
-        | EditorError::ClipboardPending
-        | EditorError::CommentsIncomplete => RefusalV1::EditorConflict,
-        EditorError::SaveIncomplete => RefusalV1::EditorIncomplete,
-        _ => RefusalV1::EditorUnavailable,
+        WorkspaceError::Capacity => RefusalV1::EditorCapacity,
+        WorkspaceError::Empty | WorkspaceError::InvalidView | WorkspaceError::Session(_) => {
+            RefusalV1::EditorUnavailable
+        }
     }
 }
 

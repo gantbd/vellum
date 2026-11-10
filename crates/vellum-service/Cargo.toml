@@ -14,7 +14,6 @@ vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engi
 vellum-protocol = { version = "=0.1.0", path = "../vellum-protocol" }
 
 [dev-dependencies]
-vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-annotation-json" }
 vellum-adapter-local-fs = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-local-fs" }
 vellum-client = { version = "=0.1.0", path = "../vellum-client" }
 

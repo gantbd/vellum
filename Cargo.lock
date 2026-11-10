@@ -498,7 +498,6 @@ version = "0.1.0"
 name = "vellum-service"
 version = "0.1.0"
 dependencies = [
- "vellum-adapter-annotation-json",
  "vellum-adapter-local-fs",
  "vellum-client",
  "vellum-editor",

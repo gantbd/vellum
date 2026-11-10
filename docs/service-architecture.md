@@ -1,6 +1,6 @@
 # Vellum service architecture
 
-Status: first bounded in-process profile implemented on 2026-11-09.
+Status: bounded multi-client in-process profile implemented on 2026-11-09.
 
 ## Dependency direction
 
@@ -15,29 +15,34 @@ vellum-client -> vellum-protocol <- vellum-service
 ```
 
 `vellum-host` contains trusted effect ports. `vellum-session` binds an engine
-owner to explicitly supplied host capabilities. `vellum-editor` provides the
-headless editor application behavior used by presentations. `vellum-protocol`
-contains closed client/service values and has no engine, editor, adapter, or
-transport dependency.
+owner to explicitly supplied host capabilities. `vellum-editor` provides both
+the presentation-free shared `Workspace` owner and client-owned `EditorView`
+projections alongside the richer headless `Editor` used by presentations.
+`vellum-protocol` contains closed client/service values and has no engine,
+editor, adapter, or transport dependency.
 
-The service is the sole serialized owner of its editor. The client assigns
-monotone request identities and does not reinterpret refusals.
+The service is the sole serialized owner of its workspace. Every registered
+client receives an independent view, request namespace, and witness namespace.
+The client assigns monotone request identities and does not reinterpret
+refusals.
 
 ## Implemented profile
 
 The current protocol supports:
 
-- connecting one explicitly bounded client;
+- connecting an explicitly bounded population of clients;
 - obtaining a content-redacted-debug snapshot with an opaque version witness;
 - replacing an exact UTF-8 range against that witness;
 - replaying an identical request without repeating the edit;
 - refusing conflicting request-identity reuse;
+- allowing the same request identity in different client namespaces;
+- refusing a version witness presented by a different client;
 - refusing stale, unknown, exhausted, oversized, or invalid requests;
 - bounding retained requests, witnesses, snapshot bytes, and insertion bytes.
 
 The service projects the replacement before publication and reserves its
-retained response slot before changing the editor. It supplies the engine with
-the exact expected source fragment from the retained witness. No cursor,
+retained response slot before changing the workspace. It supplies the engine
+with the exact expected source fragment from the retained witness. No cursor,
 selection, active tab, filesystem path, or engine identity crosses the
 protocol.
 
@@ -84,7 +89,8 @@ cross-process retention. This review must not be inherited as a remote claim.
 
 This profile does not yet claim:
 
-- multiple simultaneous clients or per-client editor views;
+- remote client authentication, durable client registration, disconnect, or
+  reconnect semantics;
 - a daemon, socket, HTTP, JSON-RPC, or stable wire encoding;
 - authentication or Aegis authorization;
 - MCP conformance;
@@ -93,19 +99,21 @@ This profile does not yet claim:
 - background coexistence with the current directly embedded TUI or GUI;
 - platform qualification beyond the existing application and adapter profiles.
 
-Until editor presentation state is decomposed, the service enforces
-`max_clients == 1`. It must not simulate multi-client support by sharing one
-cursor or by creating independent editors over the same files.
+The current protocol operates on the initial document in each independent
+view; document enumeration and explicit view selection have not yet crossed
+the protocol boundary. The richer legacy `Editor` still combines its own UI
+state with a host for directly embedded TUI/GUI use. Those applications have
+not yet migrated through `vellum-client` and make no background-service parity
+claim.
 
 ## Next earned boundaries
 
-1. Split shared workspace/document ownership from per-client `EditorView` state.
-2. Extend the service with bounded client registration and independent views.
-3. Define a canonical versioned wire codec with golden fixtures.
-4. Add a local daemon transport and make `vellum-client` transport-neutral in
+1. Define a canonical versioned wire codec with golden fixtures.
+2. Add a local daemon transport and make `vellum-client` transport-neutral in
    deployment as well as type shape.
-5. Migrate the TUI and macOS GUI through the client port.
-6. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
+3. Add durable registration/disconnect/reconnect and bounded event delivery.
+4. Migrate the TUI and macOS GUI through the client port.
+5. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
 
 The MCP adapter will expose semantic resources and tools; it will not accept
 keystrokes, borrow a human view, or receive raw host capability objects.

@@ -7,7 +7,7 @@ use std::{
 };
 use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
 use vellum_client::Client;
-use vellum_editor::Editor;
+use vellum_editor::Workspace;
 use vellum_protocol::{CommandV1, OutcomeV1, RefusalV1, ReplyV1, RequestId, RequestV1};
 use vellum_service::{Service, ServiceLimits, ServiceUsage};
 
@@ -34,10 +34,14 @@ impl Drop for Fixture {
 }
 
 fn service(source: &str) -> (Fixture, Service) {
+    service_with_limits(source, ServiceLimits::reference())
+}
+
+fn service_with_limits(source: &str, limits: ServiceLimits) -> (Fixture, Service) {
     let fixture = Fixture::new(source);
-    let editor = Editor::open(
+    let workspace = Workspace::open(
         std::slice::from_ref(&fixture.0),
-        vellum_editor::reference_profile(
+        vellum_editor::reference_workspace_profile(
             LocalFilesystemFactory::new(FilesystemLimits {
                 max_resources: 8,
                 max_bytes: 4096,
@@ -45,14 +49,10 @@ fn service(source: &str) -> (Fixture, Service) {
                 max_metadata_bytes: 4096,
             })
             .erase(),
-            Box::new(vellum_adapter_annotation_json::JsonAnnotationCodec),
         ),
     )
     .unwrap();
-    (
-        fixture,
-        Service::new(editor, ServiceLimits::reference()).unwrap(),
-    )
+    (fixture, Service::new(workspace, limits).unwrap())
 }
 
 fn request(client: vellum_protocol::ClientId, id: u64, command: CommandV1) -> RequestV1 {
@@ -64,19 +64,30 @@ fn request(client: vellum_protocol::ClientId, id: u64, command: CommandV1) -> Re
 }
 
 #[test]
-fn semantic_replace_is_version_bound_replay_safe_and_single_client() {
-    let (_fixture, mut service) = service("alpha beta");
-    let client = service.connect().unwrap();
+fn clients_share_authority_without_sharing_requests_witnesses_or_views() {
+    let mut limits = ServiceLimits::reference();
+    limits.max_clients = 2;
+    let (_fixture, mut service) = service_with_limits("alpha beta", limits);
+    let first_client = service.connect().unwrap();
+    let second_client = service.connect().unwrap();
+    assert_ne!(first_client, second_client);
     assert_eq!(service.connect(), Err(RefusalV1::ClientCapacity));
 
-    let first = service.execute(request(client, 1, CommandV1::Snapshot));
+    let first = service.execute(request(first_client, 1, CommandV1::Snapshot));
     let ReplyV1::Accepted(OutcomeV1::Snapshot(first)) = first else {
         panic!("expected snapshot")
     };
     assert_eq!(&*first.text, "alpha beta");
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(second)) =
+        service.execute(request(second_client, 1, CommandV1::Snapshot))
+    else {
+        panic!("expected second-client snapshot")
+    };
+    assert_eq!(&*second.text, "alpha beta");
+    assert_ne!(first.witness, second.witness);
 
     let edit = request(
-        client,
+        first_client,
         2,
         CommandV1::Replace {
             expected: first.witness,
@@ -94,7 +105,7 @@ fn semantic_replace_is_version_bound_replay_safe_and_single_client() {
     assert_eq!(service.execute(edit), replaced);
     assert_eq!(
         service.execute(request(
-            client,
+            first_client,
             2,
             CommandV1::Replace {
                 expected: first.witness,
@@ -107,10 +118,23 @@ fn semantic_replace_is_version_bound_replay_safe_and_single_client() {
     );
     assert_eq!(
         service.execute(request(
-            client,
-            3,
+            second_client,
+            2,
             CommandV1::Replace {
                 expected: first.witness,
+                start: 0,
+                end: 5,
+                inserted: "foreign".into(),
+            },
+        )),
+        ReplyV1::Refused(RefusalV1::UnknownWitness)
+    );
+    assert_eq!(
+        service.execute(request(
+            second_client,
+            3,
+            CommandV1::Replace {
+                expected: second.witness,
                 start: 0,
                 end: 5,
                 inserted: "stale".into(),
@@ -118,21 +142,42 @@ fn semantic_replace_is_version_bound_replay_safe_and_single_client() {
         )),
         ReplyV1::Refused(RefusalV1::Stale)
     );
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(fresh)) =
+        service.execute(request(second_client, 4, CommandV1::Snapshot))
+    else {
+        panic!("expected refreshed snapshot")
+    };
+    let ReplyV1::Accepted(OutcomeV1::Replaced(final_snapshot)) = service.execute(request(
+        second_client,
+        5,
+        CommandV1::Replace {
+            expected: fresh.witness,
+            start: 0,
+            end: 5,
+            inserted: "human".into(),
+        },
+    )) else {
+        panic!("expected second-client replacement")
+    };
+    assert_eq!(&*final_snapshot.text, "human agent");
     assert_eq!(
         service.usage(),
         ServiceUsage {
-            connect_attempts: 2,
-            connected: 1,
+            connect_attempts: 3,
+            connected: 2,
             connection_refused: 1,
-            requests: 5,
-            accepted: 3,
-            refused: 2,
+            requests: 9,
+            accepted: 6,
+            refused: 3,
             replayed: 1,
             conflicts: 1,
             stale: 1,
-            retained_requests: 3,
+            invalid: 1,
+            active_clients: 2,
+            client_capacity: 2,
+            retained_requests: 7,
             request_capacity: 256,
-            retained_witnesses: 2,
+            retained_witnesses: 5,
             witness_capacity: 256,
             ..ServiceUsage::default()
         }

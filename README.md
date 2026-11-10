@@ -7,10 +7,12 @@ crates are `vellum-host`, `vellum-session`, `vellum-editor`,
 serialization, Unicode, clipboard, remote transport, MCP, and presentation
 implementations live in sibling projects or later layers.
 
-The first service profile is deliberately in-process and admits one client.
-It exposes semantic version-bound range replacement without using editor cursor
-state. This is a real vertical slice, not a multi-client or remote-service
-claim. See [service architecture](docs/service-architecture.md).
+The current service profile is deliberately in-process and admits a bounded
+population of clients over one shared `Workspace`. Each client has an
+independent `EditorView`, request namespace, and version-witness namespace. It
+exposes semantic version-bound range replacement without borrowing presentation
+cursor state. This is a real multi-client vertical slice, not a remote-service,
+daemon, or authentication claim. See [service architecture](docs/service-architecture.md).
 
 Local development resolves exact-version path dependencies through the sibling
 `vellum` and `vellum-adapters` repositories. Published packages use the same
