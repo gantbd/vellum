@@ -1,6 +1,6 @@
 # Component architecture
 
-Version: 1  
+Version: 2
 Adopted: 2026-11-09  
 Canonical home: https://github.com/gantbd/keystone/blob/main/COMPONENT_ARCHITECTURE.md
 
@@ -209,6 +209,58 @@ other.
 A remote client need not reproduce internal types. Its protocol DTOs form a
 deliberate anti-corruption boundary and are mapped explicitly to internal
 commands and outcomes.
+
+## Composable presentations
+
+A presentation package is an embeddable component, not an executable event
+loop. The same presentation implementation must support:
+
+1. its component's standalone executable;
+2. a product executable that embeds only that component; and
+3. a product executable that composes it with peer presentations.
+
+The reusable boundary exposes framework-native state, a closed input or message
+algebra, bounded update behavior, projection rendering into caller-owned layout,
+and explicit lifecycle output. It must not initialize or restore a terminal,
+create or close the host window, terminate the process, install global shortcuts,
+or consume unfocused input. Those are composition-root responsibilities.
+
+The host application owns:
+
+- global event-loop and application lifecycle;
+- pane or widget layout and minimum-size policy;
+- focus, modality, z-order, and global shortcut arbitration;
+- routing of input, subscriptions, tasks, and lifecycle requests;
+- accessibility aggregation and cross-pane navigation;
+- selection of in-process or remote component clients.
+
+Component presentations own only their per-client projection state and
+component-local forms, confirmations, commands, and subscriptions. A request to
+close becomes a typed component lifecycle observation. A standalone host may
+interpret it as process exit; a composite host may remove only that component.
+
+For Ratatui, reusable rendering accepts a caller-supplied `Rect`, writes no
+cells outside it, and does not call `event::read` or terminal initialization.
+The host routes an event only to the focused component. For Iced, the reusable
+shape is component state plus `Message`, `update`, `view`, and
+`subscription`; tasks, elements, and subscriptions remain mappable into a
+parent message algebra, while native close and `iced::exit` stay in standalone
+wrappers. Other UI frameworks must preserve the same ownership separation using
+their native composition mechanisms.
+
+Peer presentation packages do not depend on one another. A third product
+application depends on and composes them. There is no universal semantic
+`Component` trait, untyped UI bus, shared mutable focus object, or framework
+abstraction in Keystone.
+
+Conformance evidence includes:
+
+- standalone and embedded paths exercising the same update and projection code;
+- spatial non-interference for bounded render regions;
+- focus and event-routing isolation between two components;
+- component-close behavior that cannot terminate a composite host;
+- bounded message, task, subscription, and retained projection state;
+- content-safe diagnostics and accessibility behavior for each claimed surface.
 
 ## Cross-component composition
 
