@@ -121,6 +121,31 @@ impl std::fmt::Display for EditorError {
 }
 impl std::error::Error for EditorError {}
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OpenMany {
+    pub added: usize,
+    pub joined: usize,
+}
+
+#[derive(Debug)]
+pub struct OpenManyFailure {
+    pub added: usize,
+    pub joined: usize,
+    pub error: EditorError,
+}
+
+impl std::fmt::Display for OpenManyFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "editor import stopped after {} added and {} joined: {}",
+            self.added, self.joined, self.error
+        )
+    }
+}
+
+impl std::error::Error for OpenManyFailure {}
+
 #[derive(Clone, Copy)]
 enum ClosePhase {
     Live,
@@ -356,6 +381,26 @@ impl Editor {
         };
         self.collect_diagnostics();
         Ok(added)
+    }
+    /// Opens a finite sequence in order and reports joins separately from new
+    /// attachments. Filesystem effects are not transactional: on refusal the
+    /// returned counts make all successfully completed prefix work explicit.
+    pub fn open_additional_many(&mut self, paths: &[PathBuf]) -> Result<OpenMany, OpenManyFailure> {
+        let mut outcome = OpenMany::default();
+        for path in paths {
+            match self.open_additional(path) {
+                Ok(true) => outcome.added += 1,
+                Ok(false) => outcome.joined += 1,
+                Err(error) => {
+                    return Err(OpenManyFailure {
+                        added: outcome.added,
+                        joined: outcome.joined,
+                        error,
+                    });
+                }
+            }
+        }
+        Ok(outcome)
     }
     pub fn text(&mut self) -> Result<&str, EditorError> {
         self.live()?;

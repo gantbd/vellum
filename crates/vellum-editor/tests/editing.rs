@@ -793,6 +793,28 @@ fn opening_additional_files_reuses_dirty_owners_and_failure_keeps_the_active_doc
 }
 
 #[test]
+fn batch_open_reports_new_joined_and_completed_prefix_work() {
+    let a = Fixture::new(b"A");
+    let b = Fixture::new(b"B");
+    let missing = a.0.join("missing");
+    let mut app = Editor::open(&[a.path()], reference_profile()).unwrap();
+
+    let outcome = app.open_additional_many(&[a.path(), b.path()]).unwrap();
+    assert_eq!(outcome.added, 1);
+    assert_eq!(outcome.joined, 1);
+    assert_eq!(app.document_count(), 2);
+
+    let failure = app
+        .open_additional_many(&[a.path(), missing, b.path()])
+        .unwrap_err();
+    assert_eq!(failure.added, 0);
+    assert_eq!(failure.joined, 1);
+    assert_eq!(app.document_count(), 2);
+    assert_eq!(app.text().unwrap(), "A");
+    app.close(false).unwrap();
+}
+
+#[test]
 fn editing_lock_is_native_policy_and_alias_open_does_not_clear_it() {
     let f = Fixture::new(b"A");
     let mut app = Editor::open(&[f.path()], reference_profile()).unwrap();
