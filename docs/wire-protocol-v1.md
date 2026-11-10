@@ -1,6 +1,6 @@
 # Vellum wire protocol V1
 
-Status: canonical in-process codec profile, implemented 2026-11-09.
+Status: canonical transport-neutral codec profile, implemented 2026-11-09.
 
 `vellum-wire` is the anti-corruption boundary between closed native protocol
 values and bytes. It does not select a stream, socket, daemon, authentication
@@ -17,19 +17,23 @@ padding bytes, ignored members, or trailing data.
 | --- | ---: | --- |
 | Connect request | `01` | none |
 | Execute request | `02` | client u64, request u64, command |
+| Disconnect request | `03` | client u64 |
 | Connected reply | `81` | client u64 |
 | Connect-refused reply | `82` | refusal u8 |
 | Executed reply | `83` | protocol reply |
+| Disconnected reply | `84` | none |
+| Disconnect-refused reply | `85` | refusal u8 |
 
 Commands use tag `01` for Snapshot. Replace uses tag `02`, followed by witness
 u64, start u64, end u64, and inserted text. Protocol replies use tag `01` for
 Accepted and `02` for Refused. Accepted outcomes use tag `01` for Snapshot and
 `02` for Replaced; both carry witness u64, revision u64, and source text.
 
-Refusal tags are fixed in the declaration order documented by the codec tests:
-`01` through `10` hexadecimal correspond to the sixteen closed `RefusalV1`
-variants from UnknownClient through CounterExhausted. Adding or reordering a
-Rust enum variant does not change these assigned octets.
+Refusal tags are explicit and independent of Rust declaration order. The
+original sixteen tags remain `01` UnknownClient, `02` ClientCapacity, `03`
+RequestCapacity through `10` hexadecimal CounterExhausted. Tag `11`
+hexadecimal is ClientLifetimeCapacity. Adding or reordering a Rust enum variant
+does not change assigned octets.
 
 Zero is invalid for client, request, and witness identities. Unknown versions,
 kinds, commands, outcomes, replies, or refusals are closed decoding errors;
@@ -56,9 +60,10 @@ Matching V1 values have one encoding, and decoding followed by encoding returns
 that encoding.
 
 The codec consumes exactly one complete frame. It is intentionally not stream
-framing. A daemon transport must add and bound an outer frame length, reject
-partial/oversized frames before allocation, and pass exactly one payload to the
-codec.
+framing. `vellum-transport` adds one bounded unsigned-32-bit outer frame length,
+rejects partial/oversized frames before payload allocation, and passes exactly
+one payload to the codec. `vellum-daemon` uses one such request/reply exchange
+per Unix connection.
 
 ## Golden and adversarial evidence
 

@@ -11,6 +11,7 @@ use vellum_protocol::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ServiceLimits {
     pub max_clients: usize,
+    pub max_issued_clients: usize,
     pub max_requests: usize,
     pub max_witnesses: usize,
     pub max_snapshot_bytes: usize,
@@ -18,12 +19,24 @@ pub struct ServiceLimits {
 }
 
 impl vellum_protocol::ServicePort for Service {
-    fn connect(&mut self) -> Result<ClientId, RefusalV1> {
+    fn connect(&mut self) -> Result<ClientId, vellum_protocol::ServiceControlErrorV1> {
         self.connect()
+            .map_err(vellum_protocol::ServiceControlErrorV1::Refused)
     }
 
-    fn execute(&mut self, request: RequestV1) -> ReplyV1 {
-        self.execute(request)
+    fn execute(
+        &mut self,
+        request: RequestV1,
+    ) -> Result<ReplyV1, vellum_protocol::ServiceAccessErrorV1> {
+        Ok(self.execute(request))
+    }
+
+    fn disconnect(
+        &mut self,
+        client: ClientId,
+    ) -> Result<(), vellum_protocol::ServiceControlErrorV1> {
+        self.disconnect(client)
+            .map_err(vellum_protocol::ServiceControlErrorV1::Refused)
     }
 }
 
@@ -31,6 +44,7 @@ impl ServiceLimits {
     pub const fn reference() -> Self {
         Self {
             max_clients: 8,
+            max_issued_clients: 64,
             max_requests: 256,
             max_witnesses: 256,
             max_snapshot_bytes: 65_536,
@@ -55,6 +69,10 @@ pub struct ServiceUsage {
     pub connect_attempts: u64,
     pub connected: u64,
     pub connection_refused: u64,
+    pub disconnect_attempts: u64,
+    pub disconnected: u64,
+    pub disconnect_replayed: u64,
+    pub disconnect_refused: u64,
     pub requests: u64,
     pub accepted: u64,
     pub refused: u64,
@@ -67,6 +85,9 @@ pub struct ServiceUsage {
     pub counter_saturated: bool,
     pub active_clients: usize,
     pub client_capacity: usize,
+    pub issued_clients: usize,
+    pub issued_client_capacity: usize,
+    pub retired_clients: usize,
     pub retained_requests: usize,
     pub request_capacity: usize,
     pub retained_witnesses: usize,
@@ -98,9 +119,11 @@ pub struct Service {
     workspace: Workspace,
     limits: ServiceLimits,
     clients: Vec<ClientRecord>,
+    retired_clients: Vec<ClientId>,
     requests: Vec<RequestRecord>,
     witnesses: Vec<WitnessRecord>,
     next_client: u64,
+    issued_clients: usize,
     next_witness: u64,
     usage: ServiceUsage,
 }
@@ -108,6 +131,7 @@ pub struct Service {
 impl Service {
     pub fn new(workspace: Workspace, limits: ServiceLimits) -> Result<Self, ServiceBuildError> {
         if limits.max_clients == 0
+            || limits.max_issued_clients < limits.max_clients
             || limits.max_requests == 0
             || limits.max_witnesses == 0
             || limits.max_snapshot_bytes == 0
@@ -118,6 +142,10 @@ impl Service {
         let mut clients = Vec::new();
         clients
             .try_reserve_exact(limits.max_clients)
+            .map_err(|_| ServiceBuildError::Capacity)?;
+        let mut retired_clients = Vec::new();
+        retired_clients
+            .try_reserve_exact(limits.max_issued_clients)
             .map_err(|_| ServiceBuildError::Capacity)?;
         let mut requests = Vec::new();
         requests
@@ -131,9 +159,11 @@ impl Service {
             workspace,
             limits,
             clients,
+            retired_clients,
             requests,
             witnesses,
             next_client: 1,
+            issued_clients: 0,
             next_witness: 1,
             usage: ServiceUsage::default(),
         })
@@ -151,6 +181,13 @@ impl Service {
             );
             return Err(RefusalV1::ClientCapacity);
         }
+        if self.issued_clients == self.limits.max_issued_clients {
+            bump(
+                &mut self.usage.connection_refused,
+                &mut self.usage.counter_saturated,
+            );
+            return Err(RefusalV1::ClientLifetimeCapacity);
+        }
         let Some(client) = ClientId::new(self.next_client) else {
             bump(
                 &mut self.usage.connection_refused,
@@ -160,9 +197,41 @@ impl Service {
         };
         let view = self.workspace.open_view().map_err(classify_workspace)?;
         self.next_client = self.next_client.checked_add(1).unwrap_or(0);
+        self.issued_clients += 1;
         self.clients.push(ClientRecord { id: client, view });
         bump(&mut self.usage.connected, &mut self.usage.counter_saturated);
         Ok(client)
+    }
+
+    pub fn disconnect(&mut self, client: ClientId) -> Result<(), RefusalV1> {
+        bump(
+            &mut self.usage.disconnect_attempts,
+            &mut self.usage.counter_saturated,
+        );
+        if self.retired_clients.contains(&client) {
+            bump(
+                &mut self.usage.disconnect_replayed,
+                &mut self.usage.counter_saturated,
+            );
+            return Ok(());
+        }
+        let Some(index) = self.clients.iter().position(|record| record.id == client) else {
+            bump(
+                &mut self.usage.disconnect_refused,
+                &mut self.usage.counter_saturated,
+            );
+            return Err(RefusalV1::UnknownClient);
+        };
+        self.clients.swap_remove(index);
+        self.requests
+            .retain(|record| record.request.client != client);
+        self.witnesses.retain(|record| record.client != client);
+        self.retired_clients.push(client);
+        bump(
+            &mut self.usage.disconnected,
+            &mut self.usage.counter_saturated,
+        );
+        Ok(())
     }
 
     pub fn execute(&mut self, request: RequestV1) -> ReplyV1 {
@@ -206,6 +275,9 @@ impl Service {
         ServiceUsage {
             active_clients: self.clients.len(),
             client_capacity: self.limits.max_clients,
+            issued_clients: self.issued_clients,
+            issued_client_capacity: self.limits.max_issued_clients,
+            retired_clients: self.retired_clients.len(),
             retained_requests: self.requests.len(),
             request_capacity: self.limits.max_requests,
             retained_witnesses: self.witnesses.len(),
@@ -230,6 +302,7 @@ impl Service {
                     | RefusalV1::UnknownWitness
                     | RefusalV1::InvalidRange => &mut self.usage.invalid,
                     RefusalV1::ClientCapacity
+                    | RefusalV1::ClientLifetimeCapacity
                     | RefusalV1::RequestCapacity
                     | RefusalV1::WitnessCapacity
                     | RefusalV1::InputLimit

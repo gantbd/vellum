@@ -11,9 +11,12 @@ use vellum_protocol::{
 const VERSION_V1: u8 = 1;
 const CONNECT_REQUEST: u8 = 0x01;
 const EXECUTE_REQUEST: u8 = 0x02;
+const DISCONNECT_REQUEST: u8 = 0x03;
 const CONNECTED_REPLY: u8 = 0x81;
 const CONNECT_REFUSED_REPLY: u8 = 0x82;
 const EXECUTED_REPLY: u8 = 0x83;
+const DISCONNECTED_REPLY: u8 = 0x84;
+const DISCONNECT_REFUSED_REPLY: u8 = 0x85;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WireLimits {
@@ -55,6 +58,7 @@ pub enum WireDecodeError {
 pub enum WireRequestV1 {
     Connect,
     Execute(RequestV1),
+    Disconnect(ClientId),
 }
 
 impl fmt::Debug for WireRequestV1 {
@@ -62,6 +66,7 @@ impl fmt::Debug for WireRequestV1 {
         match self {
             Self::Connect => f.write_str("Connect"),
             Self::Execute(request) => f.debug_tuple("Execute").field(request).finish(),
+            Self::Disconnect(client) => f.debug_tuple("Disconnect").field(client).finish(),
         }
     }
 }
@@ -71,6 +76,8 @@ pub enum WireReplyV1 {
     Connected(ClientId),
     ConnectRefused(RefusalV1),
     Executed(ReplyV1),
+    Disconnected,
+    DisconnectRefused(RefusalV1),
 }
 
 impl fmt::Debug for WireReplyV1 {
@@ -81,6 +88,10 @@ impl fmt::Debug for WireReplyV1 {
                 f.debug_tuple("ConnectRefused").field(refusal).finish()
             }
             Self::Executed(reply) => f.debug_tuple("Executed").field(reply).finish(),
+            Self::Disconnected => f.write_str("Disconnected"),
+            Self::DisconnectRefused(refusal) => {
+                f.debug_tuple("DisconnectRefused").field(refusal).finish()
+            }
         }
     }
 }
@@ -100,6 +111,10 @@ pub fn encode_request_v1(
             encoder.u64(request.client.get())?;
             encoder.u64(request.request.get())?;
             encode_command(&mut encoder, &request.command)?;
+        }
+        WireRequestV1::Disconnect(client) => {
+            encoder.u8(DISCONNECT_REQUEST)?;
+            encoder.u64(client.get())?;
         }
     }
     encoder.finish(length)
@@ -123,6 +138,7 @@ pub fn decode_request_v1(
                 command,
             })
         }
+        DISCONNECT_REQUEST => WireRequestV1::Disconnect(client_id(read_u64(&mut decoder)?)?),
         _ => return Err(WireDecodeError::UnknownTag),
     };
     finish_decode(&decoder)?;
@@ -150,6 +166,11 @@ pub fn encode_reply_v1(
             encoder.u8(EXECUTED_REPLY)?;
             encode_protocol_reply(&mut encoder, reply)?;
         }
+        WireReplyV1::Disconnected => encoder.u8(DISCONNECTED_REPLY)?,
+        WireReplyV1::DisconnectRefused(refusal) => {
+            encoder.u8(DISCONNECT_REFUSED_REPLY)?;
+            encoder.u8(refusal_tag(*refusal))?;
+        }
     }
     encoder.finish(length)
 }
@@ -163,6 +184,10 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
             WireReplyV1::ConnectRefused(decode_refusal(read_u8(&mut decoder)?)?)
         }
         EXECUTED_REPLY => WireReplyV1::Executed(decode_protocol_reply(&mut decoder)?),
+        DISCONNECTED_REPLY => WireReplyV1::Disconnected,
+        DISCONNECT_REFUSED_REPLY => {
+            WireReplyV1::DisconnectRefused(decode_refusal(read_u8(&mut decoder)?)?)
+        }
         _ => return Err(WireDecodeError::UnknownTag),
     };
     finish_decode(&decoder)?;
@@ -254,6 +279,7 @@ fn decode_snapshot(decoder: &mut Decoder<'_>) -> Result<SnapshotV1, WireDecodeEr
 fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
     match request {
         WireRequestV1::Connect => Ok(2),
+        WireRequestV1::Disconnect(_) => Ok(10),
         WireRequestV1::Execute(request) => match &request.command {
             CommandV1::Snapshot => Ok(19),
             CommandV1::Replace { inserted, .. } => {
@@ -269,6 +295,8 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
         WireReplyV1::Connected(_) => Ok(10),
         WireReplyV1::ConnectRefused(_) => Ok(3),
         WireReplyV1::Executed(ReplyV1::Refused(_)) => Ok(4),
+        WireReplyV1::Disconnected => Ok(2),
+        WireReplyV1::DisconnectRefused(_) => Ok(3),
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => {
             let text = match outcome {
                 OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => &snapshot.text,
@@ -282,6 +310,7 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
 fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), WireEncodeError> {
     let fields = match request {
         WireRequestV1::Connect => 2,
+        WireRequestV1::Disconnect(_) => 3,
         WireRequestV1::Execute(RequestV1 {
             command: CommandV1::Snapshot,
             ..
@@ -299,7 +328,10 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
 
 fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEncodeError> {
     let fields = match reply {
-        WireReplyV1::Connected(_) | WireReplyV1::ConnectRefused(_) => 3,
+        WireReplyV1::Connected(_)
+        | WireReplyV1::ConnectRefused(_)
+        | WireReplyV1::DisconnectRefused(_) => 3,
+        WireReplyV1::Disconnected => 2,
         WireReplyV1::Executed(ReplyV1::Refused(_)) => 4,
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => {
             let text = match outcome {
@@ -466,6 +498,7 @@ fn refusal_tag(refusal: RefusalV1) -> u8 {
     match refusal {
         RefusalV1::UnknownClient => 1,
         RefusalV1::ClientCapacity => 2,
+        RefusalV1::ClientLifetimeCapacity => 17,
         RefusalV1::RequestCapacity => 3,
         RefusalV1::RequestConflict => 4,
         RefusalV1::WitnessCapacity => 5,
@@ -487,6 +520,7 @@ fn decode_refusal(tag: u8) -> Result<RefusalV1, WireDecodeError> {
     match tag {
         1 => Ok(RefusalV1::UnknownClient),
         2 => Ok(RefusalV1::ClientCapacity),
+        17 => Ok(RefusalV1::ClientLifetimeCapacity),
         3 => Ok(RefusalV1::RequestCapacity),
         4 => Ok(RefusalV1::RequestConflict),
         5 => Ok(RefusalV1::WitnessCapacity),

@@ -1,17 +1,17 @@
 # Vellum service architecture
 
-Status: bounded multi-client in-process profile implemented on 2026-11-09.
+Status: bounded multi-client local-daemon profile implemented on 2026-11-09.
 
 ## Dependency direction
 
 ```text
 vellum-client -> vellum-protocol <- vellum-service
-                                      |
-                                vellum-editor
-                                      |
-                                vellum-session
-                                      |
-                     vellum-host -> vellum-engine
+      |                    ^             |
+vellum-transport -> vellum-wire     vellum-editor
+      |                                  |
+vellum-daemon ----------------> vellum-session
+      |                                  |
+local-fs adapter              vellum-host -> vellum-engine
 ```
 
 `vellum-host` contains trusted effect ports. `vellum-session` binds an engine
@@ -22,6 +22,9 @@ projections alongside the richer headless `Editor` used by presentations.
 editor, adapter, or transport dependency. `vellum-wire` maps those values to a
 canonical bounded V1 encoding using only Keystone's bounded codec cursor; it
 selects no socket, runtime, authentication, or daemon policy.
+`vellum-transport` adds bounded one-request framing and a remote `ServicePort`
+interpretation. `vellum-daemon` is the only composition root here: it selects a
+private Unix socket and the qualified local-filesystem adapter.
 
 The service is the sole serialized owner of its workspace. Every registered
 client receives an independent view, request namespace, and witness namespace.
@@ -41,7 +44,11 @@ The current protocol supports:
 - refusing a version witness presented by a different client;
 - refusing stale, unknown, exhausted, oversized, or invalid requests;
 - bounding retained requests, witnesses, snapshot bytes, and insertion bytes;
-- canonical request/reply encoding with golden fixtures and closed decoding.
+- canonical request/reply encoding with golden fixtures and closed decoding;
+- explicit idempotent disconnect with bounded retired-client tombstones and
+  reclamation of that client's requests and witnesses;
+- bounded Unix framing, remote-client access errors, I/O timeouts, and a local
+  daemon composition.
 
 The service projects the replacement before publication and reserves its
 retained response slot before changing the workspace. It supplies the engine
@@ -65,7 +72,7 @@ behind their own evidence boundaries.
 
 ## Threat and privacy posture
 
-The current STRIDE/LINDDUN review closes only the in-process profile:
+The following STRIDE/LINDDUN review closes the semantic service profile:
 
 - spoofing and elevation: client IDs are correlation handles, not
   authentication or authorization; no host capability crosses the protocol;
@@ -84,18 +91,18 @@ The current STRIDE/LINDDUN review closes only the in-process profile:
   purpose, retention policy, or legal basis; those belong to the authenticated
   product/orchestration boundary.
 
-A daemon or MCP adapter must repeat this analysis for framing, decoding,
-credentials, authorization, transport metadata, logs, cancellation, and
-cross-process retention. This review must not be inherited as a remote claim.
+The local daemon analysis is recorded in [local-daemon.md](local-daemon.md).
+MCP and any network transport must repeat the analysis for credentials,
+authorization, transport metadata, logs, cancellation, and cross-process
+retention. The local-user review must not be inherited as a network claim.
 
 ## Explicit non-claims
 
 This profile does not yet claim:
 
-- remote client authentication, durable client registration, disconnect, or
-  reconnect semantics;
-- a daemon, socket, HTTP, JSON-RPC, or transport framing;
-- authentication or Aegis authorization;
+- principal authentication, Aegis authorization, durable client registration,
+  reconnect, or session-resumption semantics;
+- TCP, HTTP, JSON-RPC, cross-user, or network transport;
 - MCP conformance;
 - event subscriptions, recovery, or durable request receipts;
 - cross-process replay after restart;
@@ -111,11 +118,9 @@ claim.
 
 ## Next earned boundaries
 
-1. Add a local daemon transport and make `vellum-client` transport-neutral in
-   deployment as well as type shape.
-2. Add durable registration/disconnect/reconnect and bounded event delivery.
-3. Migrate the TUI and macOS GUI through the client port.
-4. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
+1. Add durable registration/reconnect and bounded event delivery.
+2. Migrate the TUI and macOS GUI through the client port.
+3. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
 
 The MCP adapter will expose semantic resources and tools; it will not accept
 keystrokes, borrow a human view, or receive raw host capability objects.

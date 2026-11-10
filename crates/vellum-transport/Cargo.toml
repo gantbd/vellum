@@ -1,0 +1,19 @@
+[package]
+name = "vellum-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded request/reply framing and remote Vellum service transport"
+
+[dependencies]
+vellum-protocol = { version = "=0.1.0", path = "../vellum-protocol" }
+vellum-wire = { version = "=0.1.0", path = "../vellum-wire" }
+
+[dev-dependencies]
+vellum-client = { version = "=0.1.0", path = "../vellum-client" }
+
+[lints]
+workspace = true

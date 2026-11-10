@@ -101,6 +101,7 @@ pub enum OutcomeV1 {
 pub enum RefusalV1 {
     UnknownClient,
     ClientCapacity,
+    ClientLifetimeCapacity,
     RequestCapacity,
     RequestConflict,
     WitnessCapacity,
@@ -117,6 +118,21 @@ pub enum RefusalV1 {
     CounterExhausted,
 }
 
+/// Failures of access to a service interpreter, distinct from a semantic
+/// refusal returned by that interpreter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServiceAccessErrorV1 {
+    Unavailable,
+    Malformed,
+    Limit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServiceControlErrorV1 {
+    Refused(RefusalV1),
+    Access(ServiceAccessErrorV1),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReplyV1 {
     Accepted(OutcomeV1),
@@ -126,8 +142,9 @@ pub enum ReplyV1 {
 /// Transport-neutral client port. Implementations may call an in-process
 /// service or carry the same request/reply vocabulary over a qualified wire.
 pub trait ServicePort {
-    fn connect(&mut self) -> Result<ClientId, RefusalV1>;
-    fn execute(&mut self, request: RequestV1) -> ReplyV1;
+    fn connect(&mut self) -> Result<ClientId, ServiceControlErrorV1>;
+    fn execute(&mut self, request: RequestV1) -> Result<ReplyV1, ServiceAccessErrorV1>;
+    fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1>;
 }
 
 #[cfg(test)]

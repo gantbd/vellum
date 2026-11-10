@@ -175,6 +175,8 @@ fn clients_share_authority_without_sharing_requests_witnesses_or_views() {
             invalid: 1,
             active_clients: 2,
             client_capacity: 2,
+            issued_clients: 2,
+            issued_client_capacity: 64,
             retained_requests: 7,
             request_capacity: 256,
             retained_witnesses: 5,
@@ -223,11 +225,11 @@ fn invalid_ranges_and_limits_refuse_without_changing_source() {
 fn native_client_drives_the_real_in_process_service_contract() {
     let (_fixture, service) = service("one two");
     let mut client = Client::connect(service).unwrap();
-    let ReplyV1::Accepted(OutcomeV1::Snapshot(first)) = client.snapshot() else {
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(first)) = client.snapshot().unwrap() else {
         panic!("expected snapshot")
     };
     let ReplyV1::Accepted(OutcomeV1::Replaced(after)) =
-        client.replace(first.witness, 4, 7, "agent".into())
+        client.replace(first.witness, 4, 7, "agent".into()).unwrap()
     else {
         panic!("expected replacement")
     };
@@ -237,4 +239,28 @@ fn native_client_drives_the_real_in_process_service_contract() {
     assert_eq!(service.usage().requests, 2);
     assert_eq!(service.usage().accepted, 2);
     assert_eq!(service.usage().refused, 0);
+}
+
+#[test]
+fn disconnect_is_idempotent_reclaims_client_state_and_preserves_lifetime_bounds() {
+    let mut limits = ServiceLimits::reference();
+    limits.max_clients = 1;
+    limits.max_issued_clients = 2;
+    let (_fixture, mut service) = service_with_limits("alpha", limits);
+    let first = service.connect().unwrap();
+    assert!(matches!(
+        service.execute(request(first, 1, CommandV1::Snapshot)),
+        ReplyV1::Accepted(OutcomeV1::Snapshot(_))
+    ));
+    service.disconnect(first).unwrap();
+    service.disconnect(first).unwrap();
+    assert_eq!(service.usage().active_clients, 0);
+    assert_eq!(service.usage().retired_clients, 1);
+    assert_eq!(service.usage().retained_requests, 0);
+    assert_eq!(service.usage().retained_witnesses, 0);
+
+    let second = service.connect().unwrap();
+    assert_ne!(first, second);
+    service.disconnect(second).unwrap();
+    assert_eq!(service.connect(), Err(RefusalV1::ClientLifetimeCapacity));
 }

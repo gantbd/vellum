@@ -464,6 +464,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-daemon"
+version = "0.1.0"
+dependencies = [
+ "vellum-adapter-local-fs",
+ "vellum-client",
+ "vellum-editor",
+ "vellum-protocol",
+ "vellum-service",
+ "vellum-transport",
+]
+
+[[package]]
 name = "vellum-editor"
 version = "0.1.0"
 dependencies = [
@@ -517,6 +529,15 @@ dependencies = [
  "vellum-adapter-local-fs",
  "vellum-engine",
  "vellum-host",
+]
+
+[[package]]
+name = "vellum-transport"
+version = "0.1.0"
+dependencies = [
+ "vellum-client",
+ "vellum-protocol",
+ "vellum-wire",
 ]
 
 [[package]]

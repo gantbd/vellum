@@ -21,6 +21,8 @@ for (const name of [
   'vellum-service',
   'vellum-client',
   'vellum-wire',
+  'vellum-transport',
+  'vellum-daemon',
 ]) {
   if (!packages.has(name)) failures.push(`missing SDK project crate ${name}`);
 }
@@ -32,6 +34,21 @@ if (dependencyNames('vellum-protocol').size !== 0) {
 for (const forbidden of ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service']) {
   if (dependencyNames('vellum-client').has(forbidden)) {
     failures.push(`client has forbidden inward dependency on ${forbidden}`);
+  }
+}
+for (const required of ['vellum-service', 'vellum-transport', 'vellum-editor', 'vellum-adapter-local-fs']) {
+  if (!dependencyNames('vellum-daemon').has(required)) {
+    failures.push(`daemon composition root must depend on ${required}`);
+  }
+}
+for (const dependency of dependencyNames('vellum-daemon')) {
+  if (dependency.startsWith('vellum-adapter-') && dependency !== 'vellum-adapter-local-fs') {
+    failures.push(`daemon has undeclared concrete adapter ${dependency}`);
+  }
+}
+for (const required of ['vellum-protocol', 'vellum-wire']) {
+  if (!dependencyNames('vellum-transport').has(required)) {
+    failures.push(`transport must depend on ${required}`);
   }
 }
 for (const required of ['vellum-protocol', 'keystone-codec']) {
@@ -52,7 +69,7 @@ for (const pkg of packages.values()) {
     if (['vellum-tui', 'vellum-gui-macos'].includes(dependency.name)) {
       failures.push(`${pkg.name} has forbidden application dependency on ${dependency.name}`);
     }
-    if (kind !== 'dev' && dependency.name.startsWith('vellum-adapter-')) {
+    if (kind !== 'dev' && dependency.name.startsWith('vellum-adapter-') && pkg.name !== 'vellum-daemon') {
       failures.push(`${pkg.name} has forbidden concrete-adapter dependency on ${dependency.name}`);
     }
   }
@@ -62,4 +79,4 @@ if (failures.length !== 0) {
   for (const failure of failures) process.stderr.write(`SDK boundary: ${failure}\n`);
   process.exit(1);
 }
-process.stdout.write('SDK boundaries closed; 0 shipped concrete-adapter edges remain\n');
+process.stdout.write('SDK boundaries closed; 1 declared daemon composition-root adapter edge\n');

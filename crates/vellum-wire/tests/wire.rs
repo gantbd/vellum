@@ -166,6 +166,7 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
     let refusals = [
         RefusalV1::UnknownClient,
         RefusalV1::ClientCapacity,
+        RefusalV1::ClientLifetimeCapacity,
         RefusalV1::RequestCapacity,
         RefusalV1::RequestConflict,
         RefusalV1::WitnessCapacity,
@@ -217,4 +218,15 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
     });
     let encoded = encode_request_v1(&request, limits()).unwrap();
     assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+
+    let disconnect = WireRequestV1::Disconnect(ClientId::new(7).unwrap());
+    let encoded = encode_request_v1(&disconnect, limits()).unwrap();
+    assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), disconnect);
+    for reply in [
+        WireReplyV1::Disconnected,
+        WireReplyV1::DisconnectRefused(RefusalV1::UnknownClient),
+    ] {
+        let encoded = encode_reply_v1(&reply, limits()).unwrap();
+        assert_eq!(decode_reply_v1(&encoded, limits()).unwrap(), reply);
+    }
 }
