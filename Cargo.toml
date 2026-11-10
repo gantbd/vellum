@@ -9,6 +9,7 @@ members = [
     "crates/vellum-wire",
     "crates/vellum-transport",
     "crates/vellum-daemon",
+    "crates/vellum-mcp",
 ]
 resolver = "3"
 

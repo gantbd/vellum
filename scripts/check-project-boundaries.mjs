@@ -23,11 +23,28 @@ for (const name of [
   'vellum-wire',
   'vellum-transport',
   'vellum-daemon',
+  'vellum-mcp',
 ]) {
   if (!packages.has(name)) failures.push(`missing SDK project crate ${name}`);
 }
 const dependencyNames = (name) =>
   new Set((packages.get(name)?.dependencies ?? []).map((dependency) => dependency.name));
+const runtimeDependencyNames = (name) =>
+  new Set(
+    (packages.get(name)?.dependencies ?? [])
+      .filter((dependency) => (dependency.kind ?? 'normal') !== 'dev')
+      .map((dependency) => dependency.name),
+  );
+for (const required of ['vellum-client', 'vellum-protocol', 'vellum-transport']) {
+  if (!runtimeDependencyNames('vellum-mcp').has(required)) {
+    failures.push(`MCP adapter must depend on ${required}`);
+  }
+}
+for (const forbidden of ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service']) {
+  if (runtimeDependencyNames('vellum-mcp').has(forbidden)) {
+    failures.push(`MCP adapter has forbidden inward dependency on ${forbidden}`);
+  }
+}
 if (dependencyNames('vellum-protocol').size !== 0) {
   failures.push('protocol must not depend on engine, editor, service, adapters, or transports');
 }

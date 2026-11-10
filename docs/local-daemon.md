@@ -61,7 +61,8 @@ authorizes an edit or proves delivery, durability, authentication, or cleanup.
 - Consent, purpose, retention, principal authorization, and cross-user or
   remote networking remain outside this profile.
 
-This daemon is suitable for local integration and GitHub source distribution,
-not a crates.io or general remote-service release. MCP remains a peer inbound
-adapter over `vellum-client`; it must not call daemon internals or receive host
+This daemon is suitable for local integration and coordinated GitHub source
+distribution, not a crates.io or general remote-service release. `vellum-mcp`
+is the peer inbound adapter over `vellum-client`; it calls the same socket
+contract as any remote client and receives no daemon internals or host
 capabilities.

@@ -507,6 +507,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-mcp"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "vellum-adapter-local-fs",
+ "vellum-client",
+ "vellum-daemon",
+ "vellum-editor",
+ "vellum-protocol",
+ "vellum-service",
+ "vellum-transport",
+]
+
+[[package]]
 name = "vellum-protocol"
 version = "0.1.0"
 

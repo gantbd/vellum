@@ -1,17 +1,18 @@
 # Vellum service architecture
 
-Status: bounded multi-client local-daemon profile implemented on 2026-11-09.
+Status: bounded multi-client local-daemon and MCP stdio profile implemented on
+2026-11-09.
 
 ## Dependency direction
 
 ```text
-vellum-client -> vellum-protocol <- vellum-service
-      |                    ^             |
-vellum-transport -> vellum-wire     vellum-editor
-      |                                  |
-vellum-daemon ----------------> vellum-session
-      |                                  |
-local-fs adapter              vellum-host -> vellum-engine
+vellum-mcp ------> vellum-client -> vellum-protocol <- vellum-service
+      |                  |                                  |
+      +------> vellum-transport -> vellum-wire         vellum-editor
+                         ^                                  |
+vellum-daemon -----------+--------------------------> vellum-session
+      |                                                      |
+local-fs adapter                                vellum-host -> vellum-engine
 ```
 
 `vellum-host` contains trusted effect ports. `vellum-session` binds an engine
@@ -23,8 +24,11 @@ editor, adapter, or transport dependency. `vellum-wire` maps those values to a
 canonical bounded V1 encoding using only Keystone's bounded codec cursor; it
 selects no socket, runtime, authentication, or daemon policy.
 `vellum-transport` adds bounded one-request framing and a remote `ServicePort`
-interpretation. `vellum-daemon` is the only composition root here: it selects a
+interpretation. `vellum-daemon` is the service composition root: it selects a
 private Unix socket and the qualified local-filesystem adapter.
+`vellum-mcp` is a peer inbound adapter over `vellum-client`; it depends on the
+remote transport but not editor, service, engine, session, or host crates. Its
+binary is a separate adapter composition root selecting that remote client.
 
 The service is the sole serialized owner of its workspace. Every registered
 client receives an independent view, request namespace, and witness namespace.
@@ -48,7 +52,10 @@ The current protocol supports:
 - explicit idempotent disconnect with bounded retired-client tombstones and
   reclamation of that client's requests and witnesses;
 - bounded Unix framing, remote-client access errors, I/O timeouts, and a local
-  daemon composition.
+  daemon composition;
+- a bounded, current-version MCP stdio projection with deterministic closed
+  tool schemas for snapshot and revision-checked, natively witness-bound
+  replacement.
 
 The service projects the replacement before publication and reserves its
 retained response slot before changing the workspace. It supplies the engine
@@ -91,8 +98,9 @@ The following STRIDE/LINDDUN review closes the semantic service profile:
   purpose, retention policy, or legal basis; those belong to the authenticated
   product/orchestration boundary.
 
-The local daemon analysis is recorded in [local-daemon.md](local-daemon.md).
-MCP and any network transport must repeat the analysis for credentials,
+The local daemon analysis is recorded in [local-daemon.md](local-daemon.md),
+and the MCP projection in [mcp.md](mcp.md). Any network transport must repeat
+the analysis for credentials,
 authorization, transport metadata, logs, cancellation, and cross-process
 retention. The local-user review must not be inherited as a network claim.
 
@@ -102,8 +110,9 @@ This profile does not yet claim:
 
 - principal authentication, Aegis authorization, durable client registration,
   reconnect, or session-resumption semantics;
-- TCP, HTTP, JSON-RPC, cross-user, or network transport;
-- MCP conformance;
+- TCP, HTTP, cross-user, or network transport;
+- legacy MCP revisions, Streamable HTTP, subscriptions, prompts, resources,
+  server-to-client requests, or asynchronous cancellation;
 - event subscriptions, recovery, or durable request receipts;
 - cross-process replay after restart;
 - background coexistence with the current directly embedded TUI or GUI;
@@ -120,7 +129,9 @@ claim.
 
 1. Add durable registration/reconnect and bounded event delivery.
 2. Migrate the TUI and macOS GUI through the client port.
-3. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
+3. Add explicit document enumeration/selection before exposing MCP resources.
+4. Qualify a separately authenticated network adapter if remote use is needed.
 
-The MCP adapter will expose semantic resources and tools; it will not accept
-keystrokes, borrow a human view, or receive raw host capability objects.
+The MCP adapter exposes semantic tools; it does not accept keystrokes, borrow a
+human view, or receive raw host capability objects. Resource projection waits
+for explicit document identity rather than fabricating an “active document” URI.
