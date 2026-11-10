@@ -13,8 +13,8 @@ use vellum_engine::resource::{
     SaveRequirements, Synchronization,
 };
 use vellum_engine::source::Replacement;
-use vellum_sdk::annotation::AnnotationCodec;
-use vellum_sdk::resource::{
+use vellum_host::annotation::AnnotationCodec;
+use vellum_host::resource::{
     ErasedPathResourceAdapter, ErasedPathResourceAdapterFactory, ErasedResourceHandle,
 };
 use vellum_session::host::{
@@ -22,10 +22,10 @@ use vellum_session::host::{
 };
 type LocalDocument = SessionDocument<ErasedResourceHandle>;
 type LocalHost = SessionHost<ErasedPathResourceAdapter>;
-/// Qualified reference composition used by the current model-facing apps.
+/// Qualified reference composition used by the current editor applications.
 ///
 /// Applications should treat this as a composition profile, not as a claim
-/// that local filesystem effects belong to the semantic model.
+/// that local filesystem effects belong to the editor application layer.
 pub struct ReferenceSessionConfig {
     session: SessionConfig<ErasedPathResourceAdapterFactory>,
     annotation_codec: Box<dyn AnnotationCodec>,
@@ -57,7 +57,7 @@ pub use destination::DestinationPlan;
 #[cfg(feature = "native-unicode")]
 pub use unicode::NativeUnicodeProfile;
 #[cfg(feature = "native-unicode")]
-pub use vellum_sdk::unicode::UnicodeProviderUsage as NativeUnicodeUsage;
+pub use vellum_host::unicode::UnicodeProviderUsage as NativeUnicodeUsage;
 
 /// Presentation intents, not engine executable vocabulary or key bindings.
 #[derive(Debug)]
@@ -107,7 +107,7 @@ pub enum EditorError {
     IdentityUnavailable,
     IdentityConflict,
     #[cfg(feature = "native-unicode")]
-    Unicode(vellum_sdk::unicode::UnicodeProviderFailure),
+    Unicode(vellum_host::unicode::UnicodeProviderFailure),
 }
 impl From<SessionError> for EditorError {
     fn from(e: SessionError) -> Self {

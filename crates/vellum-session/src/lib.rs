@@ -2,7 +2,5 @@
 //! Not an untrusted-script sandbox, policy evaluator or wire protocol.
 #![forbid(unsafe_code)]
 
-#[cfg(target_os = "macos")]
 pub mod host;
-#[cfg(target_os = "macos")]
 pub mod local;

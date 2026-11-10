@@ -16,7 +16,7 @@ use vellum_engine::resource::{
     SavedState,
 };
 use vellum_engine::source::Replacement;
-use vellum_sdk::resource::{
+use vellum_host::resource::{
     AdapterFailure, ClassifiedAdapterError, ResourceAdapter, ResourceAdapterFactory,
     WriteCompletion,
 };
@@ -64,7 +64,7 @@ pub enum SessionError {
     Search(SearchError),
     Resource(ResourceError),
     Adapter(AdapterFailure),
-    AnnotationCodec(vellum_sdk::annotation::AnnotationCodecFailure),
+    AnnotationCodec(vellum_host::annotation::AnnotationCodecFailure),
     Serialization(vellum_engine::coordinator::SourceSerializationErrorV1),
     Selection(vellum_engine::selection::SelectionError),
     LineEdit(vellum_engine::coordinator::LineEditError),

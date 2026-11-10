@@ -4,7 +4,7 @@ use vellum_engine::resource::{
     AnnotationBaselineEvidence, AnnotationReadId, AnnotationReadStatus,
     AnnotationRestorationOutcome, AnnotationRestorerPort, ContentComparison, ReadStrength,
 };
-use vellum_sdk::annotation::{
+use vellum_host::annotation::{
     AnnotationCodec, AnnotationRestorationFailure, CodecLimits, DeclaredContext, DecodeContext,
     DecodedAnnotationRead, RestorationAssociations,
 };

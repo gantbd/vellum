@@ -9,7 +9,7 @@ type Grid = Arc<Vec<BytePosition>>;
 mod native {
     use super::*;
     use vellum_engine::{coordinator::*, instrumentation::Recorder};
-    use vellum_sdk::unicode::{UnicodeProvider, UnicodeProviderFactory, UnicodeProviderUsage};
+    use vellum_host::unicode::{UnicodeProvider, UnicodeProviderFactory, UnicodeProviderUsage};
 
     pub struct NativeUnicodeProfile {
         pub boundaries: BoundaryLimits,

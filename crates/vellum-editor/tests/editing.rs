@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use support::reference_profile;
-use vellum_model::{Action, Editor, Movement};
+use vellum_editor::{Action, Editor, Movement};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -15,7 +15,7 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 mod native_unicode {
     use super::*;
     use vellum_adapter_unicode_icu::IcuFactory;
-    use vellum_model::{EditorError, NativeUnicodeProfile};
+    use vellum_editor::{EditorError, NativeUnicodeProfile};
 
     fn open(f: &Fixture, capacity: usize) -> Editor {
         let mut config = reference_profile();
@@ -444,7 +444,7 @@ fn complete_matches_become_native_multi_selections_for_typing_movement_history_a
         app.select_matches().unwrap();
         assert_eq!(app.selection_count(), 2);
         let selected = app.native_selection().unwrap().unwrap().context();
-        app.navigate_match(vellum_model::SearchDirection::Previous, false)
+        app.navigate_match(vellum_editor::SearchDirection::Previous, false)
             .unwrap();
         assert_eq!(app.native_selection().unwrap().unwrap().context(), selected);
         assert_eq!(app.selection_count(), 2);
@@ -830,7 +830,7 @@ fn editing_lock_is_native_policy_and_alias_open_does_not_clear_it() {
 
 #[test]
 fn search_replacement_uses_native_history_and_releases_search_owners_on_close() {
-    use vellum_model::SearchDirection;
+    use vellum_editor::SearchDirection;
     let f = Fixture::new("\u{feff}é name\r\nname".as_bytes());
     let mut app = Editor::open(&[f.path()], reference_profile()).unwrap();
     app.find("name").unwrap();

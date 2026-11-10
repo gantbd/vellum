@@ -1,7 +1,7 @@
 //! Read, decode, activation and baseline adoption are separate native facts.
 use super::*;
 use vellum_engine::resource::{AnnotationReadStatus, AnnotationRestorationOutcome};
-use vellum_sdk::annotation::{
+use vellum_host::annotation::{
     DecodeContext, DecodedAnnotationRead, RecordIdentity, RestorationAssociations,
 };
 use vellum_session::host::AnnotationReadAttempt;
@@ -53,7 +53,7 @@ impl Editor {
         max_baseline_bytes: usize,
         prepare: impl FnOnce(
             &mut LocalHost,
-            &dyn vellum_sdk::annotation::AnnotationCodec,
+            &dyn vellum_host::annotation::AnnotationCodec,
             &AnnotationReadAttempt,
             &LocalDocument,
         ) -> Result<PreparedLoad<'a>, EditorError>,
@@ -132,7 +132,7 @@ impl Editor {
                 names
                     .records
                     .extend(outcome.annotations.iter().zip(labels).map(|(a, identity)| {
-                        vellum_sdk::annotation::RecordAssociation {
+                        vellum_host::annotation::RecordAssociation {
                             native: a.annotation.clone(),
                             identity,
                         }

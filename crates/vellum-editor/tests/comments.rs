@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use support::reference_profile;
-use vellum_model::{
+use vellum_editor::{
     Action, CommentHistoryDirection as Direction, CommentPlacement as Placement,
     CommentPointProfile as Profile, CommentTarget as Target, Editor, EditorError,
 };

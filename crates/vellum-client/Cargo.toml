@@ -1,0 +1,15 @@
+[package]
+name = "vellum-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Transport-neutral native client for a Vellum service"
+
+[dependencies]
+vellum-protocol = { version = "=0.1.0", path = "../vellum-protocol" }
+
+[lints]
+workspace = true

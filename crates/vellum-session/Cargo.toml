@@ -10,7 +10,7 @@ description = "Bounded host session orchestration for the Vellum editing engine"
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+vellum-host = { version = "=0.1.0", path = "../vellum-host" }
 
 [dev-dependencies]
 vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../../vellum-adapters/crates/vellum-adapter-annotation-json" }

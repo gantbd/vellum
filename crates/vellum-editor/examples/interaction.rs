@@ -9,10 +9,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time::Instant,
     };
     use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
+    use vellum_editor::{Action, Editor};
     use vellum_engine::instrumentation::NativeTimingProfileV1;
-    use vellum_model::{Action, Editor};
     let reference_profile = || {
-        vellum_model::reference_profile(
+        vellum_editor::reference_profile(
             LocalFilesystemFactory::new(FilesystemLimits {
                 max_resources: 16,
                 max_bytes: 65536,
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut editor = Editor::open(std::slice::from_ref(&path), config)?;
             #[cfg(feature = "native-unicode")]
             if native {
-                let mut profile = vellum_model::NativeUnicodeProfile::reference();
+                let mut profile = vellum_editor::NativeUnicodeProfile::reference();
                 profile.capture_capacity = capacity;
                 let mut factory = vellum_adapter_unicode_icu::IcuFactory::reference();
                 factory.timing = if capacity == 0 {

@@ -5,7 +5,7 @@ use vellum_engine::coordinator::AnnotationSnapshot;
 use vellum_engine::resource::{
     AnnotationBaselineFact, AnnotationEncoderPort, EncodedAnnotations, SavePurpose,
 };
-use vellum_sdk::annotation::{
+use vellum_host::annotation::{
     AnnotationCodec, AnnotationEncodingFailure, CaptureAssociations, CodecLimits,
 };
 mod read;

@@ -2,7 +2,7 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use vellum_engine::coordinator::AnnotationId;
-use vellum_sdk::annotation::{
+use vellum_host::annotation::{
     DocumentAssociation, DocumentIdentity, RecordAssociation, RecordIdentity, SourceAssociation,
     SourceEvidence,
 };
@@ -162,7 +162,7 @@ impl Editor {
     /// the native restoration owner have all validated their respective facts.
     pub fn load_comment_file(&mut self) -> Result<(), EditorError> {
         use super::read::{Approval, PreparedLoad};
-        use vellum_sdk::annotation::{
+        use vellum_host::annotation::{
             DecodeContext, RestorationAssociations, RestorationSourceAssociation,
         };
         let limits = self
@@ -225,7 +225,7 @@ impl Editor {
                     || !valid_source
                 {
                     return Err(EditorError::Session(SessionError::AnnotationCodec(
-                        vellum_sdk::annotation::AnnotationCodecFailure::SourceMismatch,
+                        vellum_host::annotation::AnnotationCodecFailure::SourceMismatch,
                     )));
                 }
                 if text.len() > limits.max_source_bytes || limits.max_sources == 0 {
@@ -239,7 +239,7 @@ impl Editor {
                 let decoded = host.decode_annotations(codec, attempt, &context, limits.codec)?;
                 if decoded.snapshot().needs_historical_evidence() {
                     return Err(EditorError::Session(SessionError::AnnotationCodec(
-                        vellum_sdk::annotation::AnnotationCodecFailure::HistoricalEvidenceMissing,
+                        vellum_host::annotation::AnnotationCodecFailure::HistoricalEvidenceMissing,
                     )));
                 }
                 let mut records = Vec::new();

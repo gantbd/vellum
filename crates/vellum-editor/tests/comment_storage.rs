@@ -8,12 +8,12 @@ use std::{
 };
 use support::reference_profile;
 use vellum_adapter_annotation_json::*;
+use vellum_editor::{Action, CommentPointProfile, Editor, EditorError};
 use vellum_engine::{
     coordinator::AnnotationSnapshot,
     instrumentation::{Boundary, Recorder},
     resource::{Application, SavePurpose, Synchronization},
 };
-use vellum_model::{Action, CommentPointProfile, Editor, EditorError};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
@@ -21,7 +21,7 @@ impl Fixture {
     fn new() -> Self {
         loop {
             let p = std::env::temp_dir().join(format!(
-                "vellum-model-persist-{}-{}",
+                "vellum-editor-persist-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -270,7 +270,7 @@ fn persisted(
 ) -> (
     DecodeContext,
     Vec<RecordIdentity>,
-    vellum_model::CommentHandle,
+    vellum_editor::CommentHandle,
 ) {
     let mut app = f.app(0);
     create(&mut app, "\u{feff}inert\r\nGrüße\x1b");
@@ -331,14 +331,14 @@ fn fresh_editor_reopens_exact_comments_with_new_native_ids_loaded_baseline_and_t
         assert!(rows.iter().all(|r| r.body == "\u{feff}inert\r\nGrüße\x1b"));
         assert!(matches!(
             rows[0].authored_target,
-            vellum_model::CommentTarget::Point {
+            vellum_editor::CommentTarget::Point {
                 profile: CommentPointProfile::Position,
                 ..
             }
         ));
         assert!(matches!(
             rows[1].authored_target,
-            vellum_model::CommentTarget::Point {
+            vellum_editor::CommentTarget::Point {
                 profile: CommentPointProfile::Content,
                 ..
             }
@@ -515,13 +515,13 @@ fn historical_targets_require_actual_source_witnesses_not_just_json_labels_or_ma
 
 fn managed(f: &Fixture) -> Editor {
     let mut app = f.app(256);
-    app.enable_comment_files(vellum_model::CommentFileLimits::reference())
+    app.enable_comment_files(vellum_editor::CommentFileLimits::reference())
         .unwrap();
     app
 }
 fn stored(f: &Fixture, app: &mut Editor) -> Snapshot {
     let bytes = fs::read(f.notes()).unwrap();
-    let profile = vellum_model::CommentFileLimits::reference().codec;
+    let profile = vellum_editor::CommentFileLimits::reference().codec;
     let declared = inspect_context(&bytes, profile).unwrap();
     let text = app.snapshot().unwrap().text;
     decode(
@@ -598,7 +598,7 @@ fn managed_stale_plans_and_host_retention_refusals_do_not_publish_or_write() {
     assert!(app.confirm_comment_file(&plan).is_err());
     app.close(true).unwrap();
     let mut app = f.app(256);
-    let mut profile = vellum_model::CommentFileLimits::reference();
+    let mut profile = vellum_editor::CommentFileLimits::reference();
     profile.max_source_bytes = 1;
     app.enable_comment_files(profile).unwrap();
     let before = app.version().unwrap();

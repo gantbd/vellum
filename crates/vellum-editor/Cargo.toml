@@ -1,19 +1,19 @@
 [package]
-name = "vellum-model"
+name = "vellum-editor"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "UI-neutral interaction model for the Vellum editing engine"
+description = "Headless editor application layer for the Vellum editing engine"
 
 [features]
 native-unicode = []
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../vellum-sdk" }
+vellum-host = { version = "=0.1.0", path = "../vellum-host" }
 vellum-session = { version = "=0.1.0", path = "../vellum-session" }
 unicode-segmentation = "=1.13.3"
 unicode-width = "=0.2.2"

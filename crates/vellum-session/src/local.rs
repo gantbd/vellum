@@ -8,7 +8,7 @@ use vellum_engine::coordinator::{
 use vellum_engine::instrumentation::{Observation, Recorder};
 use vellum_engine::resource::{SaveId, SaveOutcome, SaveRequirements};
 use vellum_engine::source::Replacement;
-use vellum_sdk::resource::{ResourceAdapter, ResourceAdapterFactory};
+use vellum_host::resource::{ResourceAdapter, ResourceAdapterFactory};
 
 pub struct LocalSession<A: ResourceAdapter> {
     host: LocalHost<A>,

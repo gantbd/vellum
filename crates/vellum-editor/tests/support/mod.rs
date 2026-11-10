@@ -1,7 +1,7 @@
 use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
 
-pub fn reference_profile() -> vellum_model::ReferenceSessionConfig {
-    vellum_model::reference_profile(
+pub fn reference_profile() -> vellum_editor::ReferenceSessionConfig {
+    vellum_editor::reference_profile(
         LocalFilesystemFactory::new(FilesystemLimits {
             max_resources: 16,
             max_bytes: 65536,

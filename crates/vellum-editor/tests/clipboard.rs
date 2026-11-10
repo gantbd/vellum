@@ -7,8 +7,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use support::reference_profile;
+use vellum_editor::{Action, Editor, EditorError, ReferenceSessionConfig};
 use vellum_engine::coordinator::InvocationLimits;
-use vellum_model::{Action, Editor, EditorError, ReferenceSessionConfig};
 use vellum_session::host::{TextTransferCaptureLimitsV1, copy_transfer::*};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Fixture(PathBuf);
@@ -316,7 +316,7 @@ fn terminal_capable_facade_pastes_every_native_selection_and_closes_after_native
     #[cfg(feature = "native-unicode")]
     a.enable_native_unicode(
         vellum_adapter_unicode_icu::IcuFactory::reference(),
-        vellum_model::NativeUnicodeProfile::reference(),
+        vellum_editor::NativeUnicodeProfile::reference(),
     )
     .unwrap();
     a.find("A").unwrap();

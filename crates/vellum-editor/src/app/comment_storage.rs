@@ -2,7 +2,7 @@
 //! source-save coupling or fabricated historical witnesses.
 use super::*;
 use vellum_engine::coordinator::AnnotationSnapshot;
-use vellum_sdk::annotation::{CaptureAssociations, CodecLimits};
+use vellum_host::annotation::{CaptureAssociations, CodecLimits};
 mod managed;
 mod read;
 pub use managed::CommentFileLimits;

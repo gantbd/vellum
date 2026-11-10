@@ -13,8 +13,26 @@ if (cargo.status !== 0) {
 const metadata = JSON.parse(cargo.stdout);
 const packages = new Map(metadata.packages.map((pkg) => [pkg.name, pkg]));
 const failures = [];
-for (const name of ['vellum-sdk', 'vellum-session', 'vellum-model']) {
+for (const name of [
+  'vellum-host',
+  'vellum-session',
+  'vellum-editor',
+  'vellum-protocol',
+  'vellum-service',
+  'vellum-client',
+]) {
   if (!packages.has(name)) failures.push(`missing SDK project crate ${name}`);
+}
+
+const dependencyNames = (name) =>
+  new Set((packages.get(name)?.dependencies ?? []).map((dependency) => dependency.name));
+if (dependencyNames('vellum-protocol').size !== 0) {
+  failures.push('protocol must not depend on engine, editor, service, adapters, or transports');
+}
+for (const forbidden of ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service']) {
+  if (dependencyNames('vellum-client').has(forbidden)) {
+    failures.push(`client has forbidden inward dependency on ${forbidden}`);
+  }
 }
 
 for (const pkg of packages.values()) {

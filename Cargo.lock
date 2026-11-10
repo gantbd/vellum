@@ -430,7 +430,7 @@ dependencies = [
  "serde",
  "serde_json",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
@@ -439,7 +439,7 @@ version = "0.1.0"
 dependencies = [
  "rustix",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
@@ -449,18 +449,18 @@ dependencies = [
  "icu_properties",
  "icu_segmenter",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
-name = "vellum-engine"
+name = "vellum-client"
 version = "0.1.0"
 dependencies = [
- "keystone-observe",
+ "vellum-protocol",
 ]
 
 [[package]]
-name = "vellum-model"
+name = "vellum-editor"
 version = "0.1.0"
 dependencies = [
  "getrandom",
@@ -471,16 +471,39 @@ dependencies = [
  "vellum-adapter-local-fs",
  "vellum-adapter-unicode-icu",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
  "vellum-session",
 ]
 
 [[package]]
-name = "vellum-sdk"
+name = "vellum-engine"
+version = "0.1.0"
+dependencies = [
+ "keystone-observe",
+]
+
+[[package]]
+name = "vellum-host"
 version = "0.1.0"
 dependencies = [
  "serde",
  "vellum-engine",
+]
+
+[[package]]
+name = "vellum-protocol"
+version = "0.1.0"
+
+[[package]]
+name = "vellum-service"
+version = "0.1.0"
+dependencies = [
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-local-fs",
+ "vellum-client",
+ "vellum-editor",
+ "vellum-engine",
+ "vellum-protocol",
 ]
 
 [[package]]
@@ -490,7 +513,7 @@ dependencies = [
  "vellum-adapter-annotation-json",
  "vellum-adapter-local-fs",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
