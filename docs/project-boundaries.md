@@ -19,6 +19,8 @@ vellum-tui --------+----> vellum-editor ----> vellum-session -> vellum-engine
 vellum-gui-macos --+          +--> vellum-host <---+--- vellum-adapters
 
 vellum-client ----> vellum-protocol <---- vellum-service ----> vellum-editor
+      |                    ^                    ^
+vellum-transport -> vellum-wire          vellum-daemon -> local-fs adapter
 ```
 
 Applications are composition roots and inject adapters. The editor/host cannot
@@ -44,8 +46,9 @@ document state. Its presentation-free `Workspace` serializes shared document
 authority while bounded client-owned `EditorView` values keep projections
 independent; the service separately scopes request identities and witnesses per
 client. `vellum-host` owns trusted capability ports. The native service profile
-is multi-client but in-process, so it makes no daemon, MCP, authentication,
-reconnect, or durable-registration claim. Local filesystem behavior is a
-replaceable adapter, not an engine intrinsic. A future navigable human/agent
-product that composes Vellum, Chronos, chat, and orchestration belongs in a
-separate product repository.
+is multi-client and has a bounded macOS local Unix daemon. The daemon is the
+composition root selecting the local-filesystem adapter; it makes no MCP,
+principal-authentication, network, reconnect, or durable-registration claim.
+Local filesystem behavior remains a replaceable adapter, not an engine
+intrinsic. A future navigable human/agent product that composes Vellum, Chronos,
+chat, and orchestration belongs in a separate product repository.
