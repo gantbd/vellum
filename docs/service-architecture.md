@@ -19,7 +19,9 @@ owner to explicitly supplied host capabilities. `vellum-editor` provides both
 the presentation-free shared `Workspace` owner and client-owned `EditorView`
 projections alongside the richer headless `Editor` used by presentations.
 `vellum-protocol` contains closed client/service values and has no engine,
-editor, adapter, or transport dependency.
+editor, adapter, or transport dependency. `vellum-wire` maps those values to a
+canonical bounded V1 encoding using only Keystone's bounded codec cursor; it
+selects no socket, runtime, authentication, or daemon policy.
 
 The service is the sole serialized owner of its workspace. Every registered
 client receives an independent view, request namespace, and witness namespace.
@@ -38,7 +40,8 @@ The current protocol supports:
 - allowing the same request identity in different client namespaces;
 - refusing a version witness presented by a different client;
 - refusing stale, unknown, exhausted, oversized, or invalid requests;
-- bounding retained requests, witnesses, snapshot bytes, and insertion bytes.
+- bounding retained requests, witnesses, snapshot bytes, and insertion bytes;
+- canonical request/reply encoding with golden fixtures and closed decoding.
 
 The service projects the replacement before publication and reserves its
 retained response slot before changing the workspace. It supplies the engine
@@ -91,7 +94,7 @@ This profile does not yet claim:
 
 - remote client authentication, durable client registration, disconnect, or
   reconnect semantics;
-- a daemon, socket, HTTP, JSON-RPC, or stable wire encoding;
+- a daemon, socket, HTTP, JSON-RPC, or transport framing;
 - authentication or Aegis authorization;
 - MCP conformance;
 - event subscriptions, recovery, or durable request receipts;
@@ -108,12 +111,11 @@ claim.
 
 ## Next earned boundaries
 
-1. Define a canonical versioned wire codec with golden fixtures.
-2. Add a local daemon transport and make `vellum-client` transport-neutral in
+1. Add a local daemon transport and make `vellum-client` transport-neutral in
    deployment as well as type shape.
-3. Add durable registration/disconnect/reconnect and bounded event delivery.
-4. Migrate the TUI and macOS GUI through the client port.
-5. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
+2. Add durable registration/disconnect/reconnect and bounded event delivery.
+3. Migrate the TUI and macOS GUI through the client port.
+4. Add `vellum-mcp` as a thin peer adapter over `vellum-client`.
 
 The MCP adapter will expose semantic resources and tools; it will not accept
 keystrokes, borrow a human view, or receive raw host capability objects.

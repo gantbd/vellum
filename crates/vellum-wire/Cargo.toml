@@ -1,0 +1,16 @@
+[package]
+name = "vellum-wire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Canonical bounded wire encoding for the Vellum native protocol"
+
+[dependencies]
+keystone-codec = { version = "=0.0.1", path = "../../../keystone/crates/keystone-codec" }
+vellum-protocol = { version = "=0.1.0", path = "../vellum-protocol" }
+
+[lints]
+workspace = true

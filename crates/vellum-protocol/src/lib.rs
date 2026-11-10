@@ -1,9 +1,10 @@
 //! Closed native protocol between Vellum clients and a Vellum service.
 //!
 //! This first profile is deliberately in-process and single-workspace. It is
-//! not yet a wire-format, compatibility, authentication, or remote-transport
-//! claim. MCP and other transports must project this vocabulary rather than
-//! exposing editor or engine internals.
+//! not itself a wire-format, authentication, or remote-transport claim.
+//! `vellum-wire` owns the canonical encoding of these values. MCP and other
+//! transports must project this vocabulary rather than exposing editor or
+//! engine internals.
 #![forbid(unsafe_code)]
 
 use std::{fmt, num::NonZeroU64, sync::Arc};
@@ -35,7 +36,7 @@ opaque_id!(ClientId);
 opaque_id!(RequestId);
 opaque_id!(VersionWitness);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum CommandV1 {
     Snapshot,
     Replace {
@@ -44,6 +45,26 @@ pub enum CommandV1 {
         end: u64,
         inserted: String,
     },
+}
+
+impl fmt::Debug for CommandV1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Snapshot => f.write_str("Snapshot"),
+            Self::Replace {
+                expected,
+                start,
+                end,
+                inserted: _,
+            } => f
+                .debug_struct("Replace")
+                .field("expected", expected)
+                .field("start", start)
+                .field("end", end)
+                .field("inserted", &"<redacted>")
+                .finish(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -125,5 +146,19 @@ mod tests {
         assert!(debug.contains("<opaque>"));
         assert!(!debug.contains("private source"));
         assert!(!debug.contains('9'));
+
+        let request = RequestV1 {
+            client: ClientId::new(1).unwrap(),
+            request: RequestId::new(2).unwrap(),
+            command: CommandV1::Replace {
+                expected: VersionWitness::new(3).unwrap(),
+                start: 0,
+                end: 0,
+                inserted: "private insertion".into(),
+            },
+        };
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("private insertion"));
+        assert!(debug.contains("<redacted>"));
     }
 }

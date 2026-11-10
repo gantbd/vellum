@@ -3,9 +3,11 @@
 Trusted host capability contracts, session orchestration, and the headless
 editor application layer for the Vellum semantic engine. The repository's
 crates are `vellum-host`, `vellum-session`, `vellum-editor`,
-`vellum-protocol`, `vellum-service`, and `vellum-client`. Concrete filesystem,
-serialization, Unicode, clipboard, remote transport, MCP, and presentation
-implementations live in sibling projects or later layers.
+`vellum-protocol`, `vellum-service`, `vellum-client`, and `vellum-wire`.
+Concrete filesystem, Unicode, clipboard, remote transport, MCP, and
+presentation implementations live in sibling projects or later layers.
+`vellum-wire` supplies the canonical bounded V1 encoding without selecting a
+transport.
 
 The current service profile is deliberately in-process and admits a bounded
 population of clients over one shared `Workspace`. Each client has an

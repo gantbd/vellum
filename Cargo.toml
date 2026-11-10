@@ -6,6 +6,7 @@ members = [
     "crates/vellum-protocol",
     "crates/vellum-service",
     "crates/vellum-client",
+    "crates/vellum-wire",
 ]
 resolver = "3"
 

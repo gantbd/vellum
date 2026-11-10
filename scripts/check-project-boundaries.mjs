@@ -20,10 +20,10 @@ for (const name of [
   'vellum-protocol',
   'vellum-service',
   'vellum-client',
+  'vellum-wire',
 ]) {
   if (!packages.has(name)) failures.push(`missing SDK project crate ${name}`);
 }
-
 const dependencyNames = (name) =>
   new Set((packages.get(name)?.dependencies ?? []).map((dependency) => dependency.name));
 if (dependencyNames('vellum-protocol').size !== 0) {
@@ -32,6 +32,16 @@ if (dependencyNames('vellum-protocol').size !== 0) {
 for (const forbidden of ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service']) {
   if (dependencyNames('vellum-client').has(forbidden)) {
     failures.push(`client has forbidden inward dependency on ${forbidden}`);
+  }
+}
+for (const required of ['vellum-protocol', 'keystone-codec']) {
+  if (!dependencyNames('vellum-wire').has(required)) {
+    failures.push(`wire must depend on ${required}`);
+  }
+}
+for (const forbidden of ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service']) {
+  if (dependencyNames('vellum-wire').has(forbidden)) {
+    failures.push(`wire has forbidden semantic dependency on ${forbidden}`);
   }
 }
 
