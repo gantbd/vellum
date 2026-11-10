@@ -21,6 +21,8 @@ vellum-gui-macos --+          +--> vellum-host <---+--- vellum-adapters
 vellum-client ----> vellum-protocol <---- vellum-service ----> vellum-editor
       |                    ^                    ^
 vellum-transport -> vellum-wire          vellum-daemon -> local-fs adapter
+      ^
+vellum-mcp
 ```
 
 Applications are composition roots and inject adapters. The editor/host cannot
@@ -49,6 +51,12 @@ client. `vellum-host` owns trusted capability ports. The native service profile
 is multi-client and has a bounded macOS local Unix daemon. The daemon is the
 composition root selecting the local-filesystem adapter; it makes no MCP,
 principal-authentication, network, reconnect, or durable-registration claim.
+`vellum-mcp` is a separate current-protocol stdio process over the native client
+port. It is an inbound peer to the human applications, not a capability of the
+daemon or a dependency of the semantic engine. It exposes snapshot and
+revision-checked replacement tools, deriving a fresh native witness within the
+mutation request; resource projection waits for explicit stable document
+identity.
 Local filesystem behavior remains a replaceable adapter, not an engine
 intrinsic. A future navigable human/agent product that composes Vellum, Chronos,
 chat, and orchestration belongs in a separate product repository.
