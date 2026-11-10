@@ -837,7 +837,7 @@ dependencies = [
  "serde_json",
  "vellum-adapter-local-fs",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
@@ -849,8 +849,8 @@ dependencies = [
  "objc2-foundation",
  "vellum-adapter-annotation-json",
  "vellum-adapter-local-fs",
+ "vellum-editor",
  "vellum-engine",
- "vellum-model",
  "vellum-session",
 ]
 
@@ -860,7 +860,7 @@ version = "0.1.0"
 dependencies = [
  "rustix 1.1.4",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]
@@ -870,7 +870,20 @@ dependencies = [
  "icu_properties",
  "icu_segmenter",
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
+]
+
+[[package]]
+name = "vellum-editor"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "sha2",
+ "unicode-segmentation",
+ "unicode-width",
+ "vellum-engine",
+ "vellum-host",
+ "vellum-session",
 ]
 
 [[package]]
@@ -881,20 +894,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vellum-model"
-version = "0.1.0"
-dependencies = [
- "getrandom",
- "sha2",
- "unicode-segmentation",
- "unicode-width",
- "vellum-engine",
- "vellum-sdk",
- "vellum-session",
-]
-
-[[package]]
-name = "vellum-sdk"
+name = "vellum-host"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -906,7 +906,7 @@ name = "vellum-session"
 version = "0.1.0"
 dependencies = [
  "vellum-engine",
- "vellum-sdk",
+ "vellum-host",
 ]
 
 [[package]]

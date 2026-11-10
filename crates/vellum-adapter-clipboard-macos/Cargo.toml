@@ -13,7 +13,7 @@ qualification-harness = []
 
 [target.'cfg(target_os = "macos")'.dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
-vellum-model = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-model" }
+vellum-editor = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-editor" }
 vellum-session = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-session" }
 objc2 = { version = "=0.6.5", features = ["exception"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard"] }

@@ -6,13 +6,13 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
+use vellum_editor::{Action, Editor};
 use vellum_engine::coordinator::InvocationLimits;
-use vellum_model::{Action, Editor};
 use vellum_session::host::TextTransferCaptureLimitsV1;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
-pub(crate) fn reference_profile() -> vellum_model::ReferenceSessionConfig {
-    let mut config = vellum_model::reference_profile(
+pub(crate) fn reference_profile() -> vellum_editor::ReferenceSessionConfig {
+    let mut config = vellum_editor::reference_profile(
         LocalFilesystemFactory::new(FilesystemLimits {
             max_resources: 16,
             max_bytes: 65536,

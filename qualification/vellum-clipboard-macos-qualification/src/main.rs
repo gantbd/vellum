@@ -140,9 +140,9 @@ mod macos {
         objc2::rc::autoreleasepool(|_| qualify_backend(PrivatePasteboard::new, reference_profile))
     }
 
-    fn reference_profile() -> vellum_model::ReferenceSessionConfig {
+    fn reference_profile() -> vellum_editor::ReferenceSessionConfig {
         use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
-        vellum_model::reference_profile(
+        vellum_editor::reference_profile(
             LocalFilesystemFactory::new(FilesystemLimits {
                 max_resources: 16,
                 max_bytes: 65536,

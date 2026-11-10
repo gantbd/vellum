@@ -10,7 +10,7 @@ use vellum_engine::{
         ProviderPort, ResourceRead, SaveDispatch,
     },
 };
-use vellum_sdk::resource::{
+use vellum_host::resource::{
     AdapterFailure, AnnotationReadCompletion, ClassifiedAdapterError,
     ErasedPathResourceAdapterFactory, ResourceAdapter, ResourceAdapterFactory, WriteCompletion,
 };
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn local_filesystem_closes_the_sdk_resource_contract() {
+    fn local_filesystem_closes_the_host_resource_contract() {
         assert_contract::<LocalFilesystem>();
         assert_eq!(
             FilesystemError::UnsupportedFile.classification(),

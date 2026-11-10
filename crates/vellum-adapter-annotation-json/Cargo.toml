@@ -10,7 +10,7 @@ description = "Bounded JSON annotation codec for Vellum SDK contracts"
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-sdk" }
+vellum-host = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-host" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 

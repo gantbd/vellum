@@ -3,7 +3,7 @@
 An in-process provider for the engine's existing Unicode 18 / UAX #29 revision
 49 boundary profile. It neither publishes source nor implicitly selects UI policy.
 Both reference apps explicitly opt into its source movement/deletion profile via
-the [shared editor](../vellum-model/src/app/unicode.rs); rendering, form input
+the [shared editor](../vellum-editor/src/app/unicode.rs); rendering, form input
 and widget word/line gestures remain separate profiles.
 
 - ICU4X 2.4 supplies the stable Unicode 18 grapheme implementation. The adapter

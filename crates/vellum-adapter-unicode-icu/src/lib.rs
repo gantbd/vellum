@@ -18,7 +18,7 @@ use vellum_engine::{
     },
     instrumentation::{Boundary, Disposition, Observation, Recorder},
 };
-use vellum_sdk::unicode::{
+use vellum_host::unicode::{
     UnicodeProvider, UnicodeProviderFactory, UnicodeProviderFailure, UnicodeProviderUsage,
 };
 
@@ -56,13 +56,13 @@ impl IcuFactory {
         }
     }
 }
-pub use vellum_sdk::unicode::UnicodeProviderFailure as Error;
+pub use vellum_host::unicode::UnicodeProviderFailure as Error;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureError {
     Engine(BoundaryError),
     Provider(Error),
 }
-pub use vellum_sdk::unicode::UnicodeProviderUsage as Usage;
+pub use vellum_host::unicode::UnicodeProviderUsage as Usage;
 #[derive(Debug)]
 pub struct Provider {
     limits: Limits,

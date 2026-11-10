@@ -1,7 +1,7 @@
 //! Original-operation orchestration over Editor, never a semantic publisher.
 
 use crate::{ACKNOWLEDGMENT_PROFILE, Backend, Error, ExportOutcome, Limits, Provider, Usage};
-use vellum_model::{ClipboardPlan, ClipboardReport, Editor, EditorError};
+use vellum_editor::{ClipboardPlan, ClipboardReport, Editor, EditorError};
 use vellum_session::host::copy_transfer::*;
 mod desktop;
 #[cfg(feature = "qualification-harness")]

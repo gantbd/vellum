@@ -2,7 +2,7 @@
 //! repository-only runners so production packages need no patched SDK surface.
 use super::*;
 use std::{fs, path::PathBuf};
-use vellum_model::Action;
+use vellum_editor::Action;
 
 /// Explicit port for repository-only live qualification backends.
 ///
@@ -94,7 +94,7 @@ fn retirement() -> CopyRetirementFactsV1 {
 /// confinement. Each backend is cleared and explicitly released.
 pub fn qualify_backend<B: QualificationBackend>(
     mut make_backend: impl FnMut() -> Result<B, Error>,
-    config: fn() -> vellum_model::ReferenceSessionConfig,
+    config: fn() -> vellum_editor::ReferenceSessionConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for capture_capacity in [0, 1, 256] {
         let backend = make_backend().map_err(|_| "qualification backend unavailable")?;
@@ -106,7 +106,7 @@ pub fn qualify_backend<B: QualificationBackend>(
 fn qualify_mode<B: QualificationBackend>(
     capture_capacity: usize,
     backend: B,
-    config: fn() -> vellum_model::ReferenceSessionConfig,
+    config: fn() -> vellum_editor::ReferenceSessionConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut provider = Provider::new(
         backend,
@@ -163,7 +163,7 @@ fn qualify_mode<B: QualificationBackend>(
 fn qualify_workflow<B: Backend>(
     capture_capacity: usize,
     provider: Provider<B>,
-    mut config: vellum_model::ReferenceSessionConfig,
+    mut config: vellum_editor::ReferenceSessionConfig,
 ) -> Result<Provider<B>, Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
     config.capture_capacity = capture_capacity;

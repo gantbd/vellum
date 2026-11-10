@@ -12,6 +12,6 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
 #[cfg(target_os = "macos")]
-mod sdk;
+mod host;
 #[cfg(target_os = "macos")]
-pub use sdk::LocalFilesystemFactory;
+pub use host::LocalFilesystemFactory;

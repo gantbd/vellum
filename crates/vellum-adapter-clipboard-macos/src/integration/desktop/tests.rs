@@ -1,6 +1,6 @@
 use super::*;
 use crate::integration::tests::Fixture;
-use vellum_model::Action;
+use vellum_editor::Action;
 
 struct Fake {
     reads: usize,

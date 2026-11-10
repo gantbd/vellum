@@ -13,11 +13,11 @@ use vellum_engine::attachment::{
 };
 use vellum_engine::coordinator::AnnotationSnapshot;
 use vellum_engine::instrumentation::{Boundary, Disposition, Observation, Recorder};
-use vellum_sdk::annotation::{
+use vellum_host::annotation::{
     AnnotationCodec, AnnotationCodecFailure, AnnotationEncodingFailure,
     AnnotationRestorationFailure,
 };
-pub use vellum_sdk::annotation::{
+pub use vellum_host::annotation::{
     AnnotationCodecFailure as CodecError, CaptureAssociations, CodecLimits, DeclaredContext,
     DecodeContext, DecodedAnnotationRead, DocumentAssociation, DocumentIdentity, PointAffinity,
     PointMeaning, RecordAssociation, RecordIdentity, RestorationAssociations,

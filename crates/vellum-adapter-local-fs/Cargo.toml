@@ -10,7 +10,7 @@ description = "Bounded local filesystem resource adapter for Vellum"
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../../vellum/crates/vellum-engine" }
-vellum-sdk = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-sdk" }
+vellum-host = { version = "=0.1.0", path = "../../../vellum-sdk/crates/vellum-host" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rustix = { version = "=1.1.4", features = ["fs"] }

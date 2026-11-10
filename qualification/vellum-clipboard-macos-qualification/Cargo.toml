@@ -18,7 +18,7 @@ objc2-app-kit = { path = "../../vendor/objc2-app-kit" }
 vellum-adapter-clipboard-macos = { path = "../../crates/vellum-adapter-clipboard-macos", features = ["qualification-harness"] }
 vellum-adapter-local-fs = { path = "../../crates/vellum-adapter-local-fs" }
 vellum-adapter-annotation-json = { path = "../../crates/vellum-adapter-annotation-json" }
-vellum-model = { path = "../../../vellum-sdk/crates/vellum-model" }
+vellum-editor = { path = "../../../vellum-sdk/crates/vellum-editor" }
 objc2 = { version = "=0.6.5", features = ["exception"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSData", "NSThread"] }
