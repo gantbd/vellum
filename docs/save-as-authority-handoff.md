@@ -59,12 +59,13 @@ The following gaps are release-blocking for that public surface:
    the engine capture only after the complete product is validated, and its adapter
    handoff retains a congruent one-use destination object. This closes the portable
    authority mechanism, not the retained service lifecycle or an exposed command.
-3. The workspace wrapper retains ordinary saves but does not yet retain source-export
-   preparations, reservations, tasks, or the postwrite activation outcome. On any
-   error after dispatch it must keep enough state to distinguish a terminal
-   `NotDurable`, an `Unknown` physical effect, a durable write with activation
-   refused, and an indeterminate activation. It must not discard a possibly live
-   task merely to construct a reply.
+3. `vellum-session` now owns a portable retained Save As coordinator over opaque
+   preparation, attempt, and activation tokens. Admission, write, activation,
+   release, and retirement errors preserve the exact reconciliation token; no
+   recovery path can repeat admission, write, or activation. A non-effecting native
+   recovery API reconstructs the activated document handle when the original task
+   proves binding publication completed. The workspace wrapper must still own this
+   coordinator per stable document and commit the private locator/handle swap.
 4. Save As activation is a fault-fenced engine publication. `vellum-host` now owns
    the closed native receipt sum with separate `Durable | NotDurable | Unknown |
    NotAttempted` physical and `Activated | NotActivated | Unknown` binding

@@ -13,6 +13,12 @@ use vellum_host::export_copy::{
     ExportCopyAuthorityPortV1, ExportCopyAuthorizationRefusalV1,
 };
 
+mod retained;
+pub use retained::{
+    PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
+    RetainedSourceSaveAsV1, SourceSaveAsObservationV1, SourceSaveAsSessionPortV1,
+};
+
 #[derive(Debug)]
 pub enum SourceExportCopyPreparationErrorV1 {
     Authority(ExportCopyAuthorizationRefusalV1),
@@ -270,6 +276,31 @@ impl<A: ResourceAdapter> LocalHost<A> {
         )?;
         Ok(SaveAsActivation {
             changed,
+            document: LocalDocument {
+                resource: attempt.destination.clone(),
+                loaded: attempt.source.clone(),
+            },
+        })
+    }
+
+    /// Recover a binding handle after an activation call returned an error but
+    /// the original engine task proves that publication completed. This makes
+    /// no probe, write, activation, or baseline-publication call.
+    pub fn recover_source_save_as_activation(
+        &mut self,
+        attempt: &SourceExportAttempt<A::Handle>,
+    ) -> Result<SaveAsActivation<A::Handle>, SessionError> {
+        if attempt.purpose != SourceExportPurposeV1::SaveAs {
+            return Err(ResourceError::Unsupported.into());
+        }
+        let outcome = self
+            .owner
+            .save_outcome(&attempt.task, &mut self.diagnostics)?;
+        if outcome.source_save_as_binding_applied != Some(true) {
+            return Err(ResourceError::Unavailable.into());
+        }
+        Ok(SaveAsActivation {
+            changed: true,
             document: LocalDocument {
                 resource: attempt.destination.clone(),
                 loaded: attempt.source.clone(),
