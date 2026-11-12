@@ -217,6 +217,13 @@ pub struct ServiceUsage {
     pub replace_and_save_not_durable: u64,
     pub replace_and_save_unknown: u64,
     pub replace_and_save_not_attempted: u64,
+    pub workspace_edit_requests: u64,
+    pub workspace_edit_refused: u64,
+    pub workspace_edit_documents_requested: u64,
+    pub workspace_edit_documents_changed: u64,
+    pub workspace_edit_documents_unchanged: u64,
+    pub workspace_edit_transactions_changed: u64,
+    pub workspace_edit_transactions_unchanged: u64,
     pub durable_effect_requests: u64,
     pub durable_effect_completed: u64,
     pub durable_effect_refused: u64,
@@ -1714,9 +1721,45 @@ impl Service {
             } => self
                 .replace(client, *expected, *start, *end, inserted)
                 .map(OutcomeV1::Replaced),
-            CommandV1::WorkspaceEdit { documents } => self
-                .workspace_edit(client, documents)
-                .map(OutcomeV1::WorkspaceEdited),
+            CommandV1::WorkspaceEdit { documents } => {
+                bump(
+                    &mut self.usage.workspace_edit_requests,
+                    &mut self.usage.counter_saturated,
+                );
+                add(
+                    &mut self.usage.workspace_edit_documents_requested,
+                    u64::try_from(documents.len()).unwrap_or(u64::MAX),
+                    &mut self.usage.counter_saturated,
+                );
+                let result = self.workspace_edit(client, documents);
+                match &result {
+                    Ok(receipt) => {
+                        let changed = receipt.documents.len();
+                        add(
+                            &mut self.usage.workspace_edit_documents_changed,
+                            u64::try_from(changed).unwrap_or(u64::MAX),
+                            &mut self.usage.counter_saturated,
+                        );
+                        add(
+                            &mut self.usage.workspace_edit_documents_unchanged,
+                            u64::try_from(documents.len().saturating_sub(changed))
+                                .unwrap_or(u64::MAX),
+                            &mut self.usage.counter_saturated,
+                        );
+                        let counter = if changed == 0 {
+                            &mut self.usage.workspace_edit_transactions_unchanged
+                        } else {
+                            &mut self.usage.workspace_edit_transactions_changed
+                        };
+                        bump(counter, &mut self.usage.counter_saturated);
+                    }
+                    Err(_) => bump(
+                        &mut self.usage.workspace_edit_refused,
+                        &mut self.usage.counter_saturated,
+                    ),
+                }
+                result.map(OutcomeV1::WorkspaceEdited)
+            }
         };
         match result {
             Ok(outcome) => ReplyV1::Accepted(outcome),

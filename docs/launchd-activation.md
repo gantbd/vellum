@@ -5,12 +5,13 @@ builds, tests, release workflows, Cargo installation, or candidate
 qualification.
 
 `vellum-launchd-activate` is a separate distribution package. It is not one of
-the two binaries installed by the `vellum` Cargo-install package and is not
-inside the daemon/MCP release-candidate payload. An operator must build it from
-reviewed Vellum source, create an exact private configuration, retain the
-qualified candidate and prior candidates, render both exact inert plists, and
-create a separate affirmative approval before the executable can enter its
-effect path.
+the two binaries installed by the `vellum` Cargo-install package. The GitHub
+release-candidate payload now checksum-closes the exact native executable and
+qualification runs only its `--help` path, recording `launchdEffect:
+not-attempted`. An operator must still create an exact private configuration,
+retain the qualified candidate and prior candidates, render both exact inert
+plists, and create a separate affirmative approval before the executable can
+enter its effect path.
 
 The only activating invocation is:
 

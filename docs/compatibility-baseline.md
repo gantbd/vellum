@@ -139,11 +139,13 @@ unknown persistence facts; treating every accepted outcome as durable is an
 incompatible consumer assumption, not a promise of this contract.
 
 The launchd distribution slice changes no Rust library API or native V1 frame.
-It advances the private GitHub candidate manifest from schema 2 to schema 3,
-adds one checksum-closed inert deployment artifact, and adds that renderer to
-the captured build-input closure. Existing local candidate directories and
-qualification evidence must be rebuilt under schema 3; there is no migration
-that treats an unlisted helper as trusted payload.
+Its current private GitHub candidate manifest schema 4 retains the two product
+binaries, adds the checksum-closed inert renderer and explicit activation
+executor as distinct deployment artifacts, and captures both source closures.
+Existing schema-2/schema-3 candidate directories and qualification evidence
+must be rebuilt under schema 4; there is no migration that treats an unlisted
+helper as trusted payload. Qualification help-smokes the activator without its
+explicit effect switch and therefore performs no launchd effect.
 
 The cargo-install qualification slice likewise changes no Rust package API or
 wire frame. It tightens distribution evidence from an ambient path-install

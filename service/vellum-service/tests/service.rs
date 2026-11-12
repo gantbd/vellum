@@ -72,24 +72,21 @@ fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim()
         };
         witnessed.push((document, snapshot.revision));
     }
-    let reply = service.execute(request(
-        client,
-        8,
-        CommandV1::WorkspaceEdit {
-            documents: witnessed
-                .iter()
-                .map(|(document, expected_revision)| WorkspaceDocumentEditV1 {
-                    document: *document,
-                    expected_revision: *expected_revision,
-                    replacements: vec![WorkspaceReplacementV1 {
-                        start: 1,
-                        end: 3,
-                        inserted: "QQ".into(),
-                    }],
-                })
-                .collect(),
-        },
-    ));
+    let edit = CommandV1::WorkspaceEdit {
+        documents: witnessed
+            .iter()
+            .map(|(document, expected_revision)| WorkspaceDocumentEditV1 {
+                document: *document,
+                expected_revision: *expected_revision,
+                replacements: vec![WorkspaceReplacementV1 {
+                    start: 1,
+                    end: 3,
+                    inserted: "QQ".into(),
+                }],
+            })
+            .collect(),
+    };
+    let reply = service.execute(request(client, 8, edit.clone()));
     let ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt)) = reply else {
         panic!("workspace edit must commit")
     };
@@ -98,6 +95,10 @@ fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim()
     assert_eq!(&*receipt.documents[1].snapshot.text, "wQQz");
     assert_eq!(fs::read_to_string(&first.0).unwrap(), "abcd");
     assert_eq!(fs::read_to_string(&second.0).unwrap(), "wxyz");
+    assert_eq!(
+        service.execute(request(client, 8, edit)),
+        ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt.clone()))
+    );
 
     let no_op = service.execute(request(
         client,
@@ -162,6 +163,14 @@ fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim()
         panic!("snapshot must remain available")
     };
     assert_eq!(&*after_refusal.text, "wQQz");
+    let usage = service.usage();
+    assert_eq!(usage.workspace_edit_requests, 3);
+    assert_eq!(usage.workspace_edit_refused, 1);
+    assert_eq!(usage.workspace_edit_documents_requested, 5);
+    assert_eq!(usage.workspace_edit_documents_changed, 2);
+    assert_eq!(usage.workspace_edit_documents_unchanged, 1);
+    assert_eq!(usage.workspace_edit_transactions_changed, 1);
+    assert_eq!(usage.workspace_edit_transactions_unchanged, 1);
 }
 
 struct Fixture(PathBuf);

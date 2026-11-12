@@ -13,7 +13,9 @@ will follow Semantic Versioning once a public release contract is selected.
   validates every explicit document and replacement before a single in-memory
   publication; stale or malformed participants refuse the whole batch, exact
   no-ops remain no-ops, and receipts state that filesystem persistence was not
-  attempted.
+  attempted. Passive content-free counters distinguish requests, refusals,
+  requested/changed/unchanged documents, and changed versus all-no-op
+  transactions without participating in admission.
 - Added provider-native incoming and outgoing call hierarchy queries through
   the semantic host algebra, session protocol/wire, service/client, LSP
   adapter, and semantic MCP peer. The two-stage LSP exchange preserves the
@@ -24,6 +26,14 @@ will follow Semantic Versioning once a public release contract is selected.
   synchronized snapshot before readiness, withholds replacement publication
   until exact old-provider cleanup, never replays queries, and permanently
   fuses on uncertain cleanup, timing, launch, or readiness.
+- Added the ordered actor replacement seam required by the authenticated
+  semantic service. It atomically suspends command admission while retaining
+  broker/snapshot/deadline state, replays snapshots into one fresh provider,
+  advances one exact provider epoch, invalidates pending queries without
+  replay, clears their deadlines, returns displaced-provider cleanup authority,
+  preserves actor usage on resume, and permanently fences old senders. The
+  standalone binary remains unchanged until real-process candidate launch and
+  both cleanup products can be owned end to end.
 - Added a separate source-built `vellum-launchd-activate` executor. An explicit
   operator approval binds exact qualified candidate/prior artifacts; every
   launchctl mutation is durably bracketed, running identity and daemon status
@@ -467,6 +477,12 @@ will follow Semantic Versioning once a public release contract is selected.
   machinery for the daemon and MCP binaries. It performs no installation,
   activation, signing, attestation, GitHub Release publication, or crates.io
   publication; TUI and GUI applications remain independent release units.
+- Added the separately authorized native launchd activation executor to the
+  checksum-closed GitHub candidate deployment-tool set without adding it to the
+  two-binary Cargo-install package. Candidate qualification invokes only its
+  explicit-authorization help contract and records that no launchd effect was
+  attempted. The workflow now compares two distinct candidate materializations
+  byte-for-byte before upload without claiming cross-run reproducible builds.
 - Extended local candidate qualification through both packaged launchd
   renderers: the candidate and its selected rollback version must each render
   the exact inert direct-exec plist from fresh private scratch state and pass

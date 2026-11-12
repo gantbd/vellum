@@ -156,9 +156,10 @@ No provider artifact is uploaded, installed, or added to a release candidate
 by this workflow.
 
 The local release-candidate qualifier also executes the exact packaged launchd
-renderer for both the candidate and its selected distinct rollback version.
-That renderer is a locked workspace-built Rust executable and adds no Node
-runtime requirement to the artifact. It
+renderer for both the candidate and its selected distinct rollback version,
+and executes only `--help` on each packaged activation executor. Both are
+locked workspace-built Rust executables and add no Node runtime requirement to
+the artifact. The renderer
 uses only private scratch paths, requires the exact inert read-only profile and
 `plutil` acceptance, and retains content-free dispositions rather than the
 rendered plist or deployment paths. This is packaged-renderer compatibility
@@ -180,14 +181,23 @@ gates after both repository objects are remotely retrievable.
 
 The manually dispatched `release-candidate.yml` workflow checks out the exact
 Vellum workflow revision and the Keystone commit pinned by the coordinated
-source manifest. On macOS it performs a locked release build of only
-`vellum-daemon` and `vellum-mcp`, stages those binaries, and executes each
-staged `--help` path. It also checksum-closes the inert, relocatable
-`vellum-launchd-render` helper. It uploads a short-lived Actions artifact
-containing the two binaries, that helper, a content-safe `manifest.json`, and
-`SHA256SUMS`. The helper emits a fail-closed read-only LaunchAgent plist but
+source manifest. On macOS its product scope remains exactly `vellum-daemon`
+and `vellum-mcp`; it also builds the two separately classified launchd
+deployment tools. It stages the product binaries, executes each staged
+`--help` path, and checksum-closes the inert, relocatable
+`vellum-launchd-render` helper and activation executor. It uploads a short-lived Actions artifact
+containing the two binaries, the renderer, the separately authorized activation
+executor, a content-safe `manifest.json`, and `SHA256SUMS`. The renderer emits a
+fail-closed read-only LaunchAgent plist but
 does not install or activate it; see the
 [launchd distribution profile](launchd-distribution.md).
+
+The workflow invokes the locked candidate builder twice into distinct scratch
+products and refuses upload unless their complete regular-file closures are
+byte-identical. It uploads a separate content-safe byte-equivalence record
+beside one candidate. This is evidence for those two materializations under one
+workflow environment; it is not a cross-run reproducible-build, signature, or
+attestation claim.
 
 `vellum-semantic-local`, `vellum-semantic-mcp`, and all TUI/GUI applications
 are explicitly outside this artifact set. In particular, semantic-local must
@@ -219,15 +229,14 @@ content and effective build inputs, re-runs smoke probes, and requires a
 distinct verified prior candidate before emitting readiness and rollback
 evidence. That evidence explicitly does not authorize or perform activation.
 
-The source workspace also contains the separate
-[`vellum-launchd-activate`](launchd-activation.md) package. It is deliberately
-absent from both the `vellum` Cargo-install binary closure and the uploaded
-candidate payload. An operator may build it from reviewed source, but its only
+The uploaded candidate also contains the separate
+[`vellum-launchd-activate`](launchd-activation.md) package. It remains
+deliberately absent from the `vellum` Cargo-install binary closure. Its only
 effectful CLI path requires an explicit execution switch, the exact
 qualification evidence, a separately affirmative private approval, exact
 candidate/prior daemon and plist identities, and an empty private transaction
-directory. Build and workflow qualification exercise only its injected fake
-effects; neither invokes `launchctl`. A real terminal receipt is local
+directory. Build and workflow qualification checksum it and exercise only its
+help path plus injected fake effects; neither invokes `launchctl`. A real terminal receipt is local
 activation/rollback evidence, not a GitHub Release, signature, attestation or
 multi-principal authorization claim.
 

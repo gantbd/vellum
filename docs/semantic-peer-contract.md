@@ -290,6 +290,18 @@ invalidation without replay. This composition is not installed in the binary
 by default, has no reset route, and does not weaken the production-promotion
 requirements above.
 
+The authenticated ordered actor now has the corresponding replacement seam
+without pretending that the embedded facade is its runtime. A command/control
+queue-quiescent worker can be suspended into its exact broker, timed port,
+snapshots, pending provider requests and deadline graph. Replacement replays
+retained snapshots, publishes one ordered provider epoch, terminalizes pending
+queries as stale without replay, clears their exact deadlines, and returns the
+displaced provider affinely. Resumption preserves accumulated actor usage and
+permanently fences every old sender. A physical-swap/broker-reconciliation
+failure yields a non-resumable fused owner. Fresh real-process candidate launch
+and both cleanup owners are not yet composed by the binary, so no CLI restart
+flag is advertised.
+
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority
 replacement can race the last observation. It does not close inherited handles,

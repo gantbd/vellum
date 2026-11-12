@@ -59,7 +59,7 @@ try {
   write(
     vellum,
     'Cargo.toml',
-    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/launchd-render"]\nresolver = "3"\n',
+    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/launchd-render", "distribution/launchd-activate"]\nresolver = "3"\n',
   );
   const profiles = [
     ['applications/vellum-daemon', 'vellum-daemon', 'keystone-observe'],
@@ -87,6 +87,17 @@ try {
     vellum,
     'distribution/launchd-render/src/main.rs',
     'fn main() { println!("vellum-launchd-render --help"); }\n',
+  );
+  write(
+    vellum,
+    'distribution/launchd-activate/Cargo.toml',
+    '[package]\nname = "vellum-launchd-activate"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n[[bin]]\nname = "vellum-launchd-activate"\npath = "src/main.rs"\n',
+  );
+  write(vellum, 'distribution/launchd-activate/src/lib.rs', 'pub const EXPLICIT: bool = true;\n');
+  write(
+    vellum,
+    'distribution/launchd-activate/src/main.rs',
+    'fn main() { println!("vellum-launchd-activate --execute-authorized-activation --help"); }\n',
   );
   write(
     vellum,
@@ -150,8 +161,8 @@ try {
   if (manifestText.includes(fixture)) throw new Error('manifest disclosed the fixture path');
   const manifest = JSON.parse(manifestText);
   if (
-    manifest.schema !== 3
-    || manifest.claims.at(-1) !== 'inert-launchd-renderer'
+    manifest.schema !== 4
+    || manifest.claims.at(-1) !== 'activation-executor-packaged'
     || !manifest.nonClaims.includes('activation')
   ) {
     throw new Error('builder omitted the lifecycle schema, configuration claim, or activation nonclaim');
@@ -166,7 +177,12 @@ try {
   if (manifest.artifacts.map((artifact) => artifact.binary).join(',') !== 'vellum-daemon,vellum-mcp') {
     throw new Error('candidate artifact scope drifted');
   }
-  if (manifest.deployment[0].file !== 'vellum-launchd-render' || manifest.deployment[0].role !== 'inert-launchd-plist-renderer') {
+  if (
+    manifest.deployment.map(({ file }) => file).join(',')
+      !== 'vellum-launchd-render,vellum-launchd-activate'
+    || manifest.deployment[0].role !== 'inert-launchd-plist-renderer'
+    || manifest.deployment[1].role !== 'explicitly-authorized-launchd-activation-executor'
+  ) {
     throw new Error('candidate omitted the launchd deployment payload');
   }
   const checksumLines = fs.readFileSync(path.join(output, 'SHA256SUMS'), 'utf8').trim().split('\n');

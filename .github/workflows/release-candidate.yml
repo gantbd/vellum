@@ -45,11 +45,23 @@ jobs:
           node scripts/build-release-candidate.mjs
           --vellum-revision=${{ github.sha }}
           --output-dir=../candidate
+      - name: Independently rebuild and compare candidate bytes
+        working-directory: vellum
+        run: |
+          node scripts/build-release-candidate.mjs \
+            --vellum-revision=${{ github.sha }} \
+            --output-dir=../candidate-rebuild
+          node scripts/compare-release-candidates.mjs \
+            --candidate-a=../candidate \
+            --candidate-b=../candidate-rebuild \
+            --evidence-file=../candidate-byte-equivalence.json
       - name: Upload unsigned candidate artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: vellum-daemon-mcp-${{ github.sha }}
-          path: candidate
+          name: vellum-daemon-mcp-launchd-${{ github.sha }}
+          path: |
+            candidate
+            candidate-byte-equivalence.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

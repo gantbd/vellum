@@ -252,7 +252,10 @@ The signal mapping is exact:
 - RED request/traffic evidence is daemon accepted/completed connections and
   service request/accepted/refused counters. Error evidence is the same closed
   failure/refusal set plus coalesced authentication refusals and handshake I/O
-  failures. Duration is the optional fixed-bucket distribution of
+  failures. Atomic workspace edits additionally project content-free request,
+  refusal, requested/changed/unchanged document, and changed/all-no-op
+  transaction counters through the service snapshot; exact request replay does
+  not increment them again. Duration is the optional fixed-bucket distribution of
   actual admitted request exchanges described below.
 - Golden-signal traffic is the RED traffic evidence; errors are the USE/RED
   error evidence; saturation is the explicit closed saturation projection.

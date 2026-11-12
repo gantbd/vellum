@@ -47,6 +47,9 @@ const requiredFiles = [
   'scripts/build-release-candidate.mjs',
   'scripts/build-release-candidate.test.mjs',
   'scripts/release-candidate-lib.mjs',
+  'scripts/release-reproducibility-lib.mjs',
+  'scripts/release-reproducibility-lib.test.mjs',
+  'scripts/compare-release-candidates.mjs',
   'scripts/qualify-release-candidate.mjs',
   'scripts/qualify-release-candidate.test.mjs',
   'scripts/activation-transaction-lib.mjs',
@@ -65,6 +68,7 @@ const requiredFiles = [
   'distribution/cargo-install/Cargo.toml',
   'distribution/cargo-install/src/bin/vellum-daemon.rs',
   'distribution/cargo-install/src/bin/vellum-mcp.rs',
+  'docs/release-reproducibility.md',
   'qualification/semantic-lsp-provider/profiles/rust-analyzer-v1.json',
   '.github/workflows/release-contract.yml',
   '.github/workflows/release-candidate.yml',
@@ -260,7 +264,9 @@ if (sourcePolicy !== undefined) {
     'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
     'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
     '--output-dir=../candidate',
-    'path: candidate',
+    '--output-dir=../candidate-rebuild',
+    'scripts/compare-release-candidates.mjs',
+    'candidate-byte-equivalence.json',
   ]) {
     if (!candidateWorkflow.includes(required)) {
       fail(`release-candidate workflow is missing pinned contract: ${required}`);

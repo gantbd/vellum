@@ -58,6 +58,7 @@ pub enum SemanticSessionActorPhaseV1 {
     Running,
     Draining,
     Stopping,
+    Suspended,
     Stopped,
     Failed,
 }
@@ -102,6 +103,8 @@ pub struct SemanticSessionActorUsageV1 {
     pub stop_outcome_unknown: u64,
     pub stop_refusals: u64,
     pub clean_stops: u64,
+    pub suspend_requests: u64,
+    pub suspensions: u64,
     pub queued_commands: usize,
     pub in_flight_commands: usize,
     pub command_high_water: usize,
@@ -351,7 +354,9 @@ impl SemanticSessionActorSenderV1 {
                 bump_usage(&mut shared.usage, Counter::CommandsDraining);
                 Some(SemanticSessionActorNotSentReasonV1::Draining)
             }
-            SemanticSessionActorPhaseV1::Stopped | SemanticSessionActorPhaseV1::Failed => {
+            SemanticSessionActorPhaseV1::Suspended
+            | SemanticSessionActorPhaseV1::Stopped
+            | SemanticSessionActorPhaseV1::Failed => {
                 bump_usage(&mut shared.usage, Counter::CommandsClosed);
                 Some(SemanticSessionActorNotSentReasonV1::Closed)
             }
@@ -395,6 +400,10 @@ impl SemanticSessionActorSenderV1 {
 
     pub fn phase(&self) -> SemanticSessionActorPhaseV1 {
         lock_shared(&self.shared).phase
+    }
+
+    pub const fn limits(&self) -> SemanticSessionActorLimitsV1 {
+        self.limits
     }
 }
 
@@ -711,6 +720,7 @@ impl fmt::Debug for SemanticSessionActorEventAdmissionV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticSessionActorTerminationV1 {
     Clean,
+    Suspended,
     Failed,
 }
 
@@ -855,6 +865,52 @@ impl SemanticSessionActorOwnerV1 {
             .map_err(|failure| failure.0)
     }
 
+    /// Atomically fences command admission and suspends a command/control-queue
+    /// quiescent worker without retiring broker, snapshot, deadline, or
+    /// provider state. Broker-pending provider requests may still exist; a
+    /// subsequent replacement must invalidate them and their deadline entries
+    /// rather than replay them. Recovery remains the sole authority for the
+    /// exact live runtime.
+    pub fn try_suspend(
+        &self,
+    ) -> Result<SemanticSessionActorControlTicketV1, SemanticSessionActorControlRefusalV1> {
+        let (ack, receiver) = mpsc::sync_channel(1);
+        let mut shared = lock_shared(&self.shared);
+        if shared.phase != SemanticSessionActorPhaseV1::Running {
+            return Err(SemanticSessionActorControlRefusalV1::Closed);
+        }
+        if shared.usage.queued_commands != 0
+            || shared.usage.in_flight_commands != 0
+            || shared.usage.queued_controls != 0
+        {
+            return Err(SemanticSessionActorControlRefusalV1::NotQuiescent);
+        }
+        shared.phase = SemanticSessionActorPhaseV1::Stopping;
+        shared.usage.queued_controls = 1;
+        shared.usage.control_high_water = shared.usage.control_high_water.max(1);
+        bump_usage(&mut shared.usage, Counter::SuspendRequests);
+        match self
+            .controls
+            .try_send(ControlEnvelope(Control::Suspend { ack }))
+        {
+            Ok(()) => {
+                bump_usage(&mut shared.usage, Counter::ControlsAdmitted);
+                Ok(SemanticSessionActorControlTicketV1 { receiver })
+            }
+            Err(TrySendError::Full(_)) => {
+                shared.phase = SemanticSessionActorPhaseV1::Running;
+                shared.usage.queued_controls = 0;
+                bump_usage(&mut shared.usage, Counter::ControlsFull);
+                Err(SemanticSessionActorControlRefusalV1::Full)
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                shared.phase = SemanticSessionActorPhaseV1::Failed;
+                shared.usage.queued_controls = 0;
+                Err(SemanticSessionActorControlRefusalV1::Closed)
+            }
+        }
+    }
+
     pub fn begin_drain(&self) -> bool {
         let mut shared = lock_shared(&self.shared);
         if shared.phase != SemanticSessionActorPhaseV1::Running {
@@ -948,6 +1004,10 @@ impl SemanticSessionActorOwnerV1 {
         lock_shared(&self.shared).phase
     }
 
+    pub const fn limits(&self) -> SemanticSessionActorLimitsV1 {
+        self.limits
+    }
+
     fn try_control(
         &self,
         control: Control,
@@ -960,6 +1020,7 @@ impl SemanticSessionActorOwnerV1 {
         if matches!(
             shared.phase,
             SemanticSessionActorPhaseV1::Stopping
+                | SemanticSessionActorPhaseV1::Suspended
                 | SemanticSessionActorPhaseV1::Stopped
                 | SemanticSessionActorPhaseV1::Failed
         ) {
@@ -1016,7 +1077,44 @@ pub fn spawn_semantic_session_actor_v1<P: SemanticBrokerEffectPortV1>(
     ),
     Box<SemanticSessionActorBuildFailureV1<P>>,
 > {
-    spawn_semantic_session_actor_with_v1(broker, port, limits, |worker| {
+    spawn_semantic_session_actor_with_v1(
+        broker,
+        port,
+        limits,
+        SemanticSessionActorUsageV1::default(),
+        |worker| {
+            thread::Builder::new()
+                .name("vellum-semantic-session-actor".into())
+                .spawn(worker)
+        },
+    )
+}
+
+/// Resumes an exactly recovered suspended runtime without resetting its
+/// content-safe operational evidence. Queue and in-flight gauges must already
+/// be empty; no abandoned work is relabeled as a fresh actor.
+pub fn resume_semantic_session_actor_v1<P: SemanticBrokerEffectPortV1>(
+    broker: SemanticSessionBrokerV1,
+    port: P,
+    limits: SemanticSessionActorLimitsV1,
+    usage: SemanticSessionActorUsageV1,
+) -> Result<
+    (
+        SemanticSessionActorOwnerV1,
+        SemanticSessionActorSenderV1,
+        SemanticSessionActorRecoveryV1<P>,
+    ),
+    Box<SemanticSessionActorBuildFailureV1<P>>,
+> {
+    if usage.queued_commands != 0 || usage.in_flight_commands != 0 || usage.queued_controls != 0 {
+        return Err(Box::new(SemanticSessionActorBuildFailureV1 {
+            reason: SemanticSessionActorBuildRefusalV1::InvalidLimits,
+            limits,
+            broker,
+            port,
+        }));
+    }
+    spawn_semantic_session_actor_with_v1(broker, port, limits, usage, |worker| {
         thread::Builder::new()
             .name("vellum-semantic-session-actor".into())
             .spawn(worker)
@@ -1029,6 +1127,7 @@ fn spawn_semantic_session_actor_with_v1<P, L>(
     broker: SemanticSessionBrokerV1,
     port: P,
     limits: SemanticSessionActorLimitsV1,
+    initial_usage: SemanticSessionActorUsageV1,
     launch: L,
 ) -> Result<
     (
@@ -1052,7 +1151,10 @@ where
     }
     let (commands, command_rx) = mpsc::sync_channel(limits.max_commands);
     let (controls, control_rx) = mpsc::sync_channel(limits.max_controls);
-    let shared = Arc::new(Mutex::new(Shared::default()));
+    let shared = Arc::new(Mutex::new(Shared {
+        phase: SemanticSessionActorPhaseV1::Running,
+        usage: initial_usage,
+    }));
     let worker_shared = Arc::clone(&shared);
     let runtime = Arc::new(Mutex::new(Some((broker, port))));
     let worker_runtime = Arc::clone(&runtime);
@@ -1077,12 +1179,11 @@ where
             bump_usage(&mut shared.usage, Counter::WorkerPanics);
             reconcile_abandoned_queues(&mut shared.usage);
         }
-        let termination =
-            if lock_shared(&worker_shared).phase == SemanticSessionActorPhaseV1::Stopped {
-                SemanticSessionActorTerminationV1::Clean
-            } else {
-                SemanticSessionActorTerminationV1::Failed
-            };
+        let termination = match lock_shared(&worker_shared).phase {
+            SemanticSessionActorPhaseV1::Stopped => SemanticSessionActorTerminationV1::Clean,
+            SemanticSessionActorPhaseV1::Suspended => SemanticSessionActorTerminationV1::Suspended,
+            _ => SemanticSessionActorTerminationV1::Failed,
+        };
         ActorWorkerRecoveredV1 {
             broker,
             port,
@@ -1150,6 +1251,9 @@ enum Control {
     },
     RotateIncarnation {
         next: SemanticSessionIncarnationV1,
+        ack: SyncSender<SemanticSessionActorControlCompletionV1>,
+    },
+    Suspend {
         ack: SyncSender<SemanticSessionActorControlCompletionV1>,
     },
     Stop(SyncSender<Result<(), SemanticSessionActorControlRefusalV1>>),
@@ -1393,6 +1497,15 @@ fn apply_control<P: SemanticBrokerEffectPortV1>(
                 }
             };
             let _ = ack.send(completion);
+        }
+        Control::Suspend { ack } => {
+            {
+                let mut state = lock_shared(shared);
+                state.phase = SemanticSessionActorPhaseV1::Suspended;
+                bump_usage(&mut state.usage, Counter::Suspensions);
+            }
+            let _ = ack.send(SemanticSessionActorControlCompletionV1::Applied);
+            return true;
         }
         Control::Stop(reply) => {
             let queued = lock_shared(shared).usage.queued_commands;
@@ -1699,6 +1812,8 @@ enum Counter {
     StopOutcomeUnknown,
     StopRefusals,
     CleanStops,
+    SuspendRequests,
+    Suspensions,
 }
 
 fn bump_usage(usage: &mut SemanticSessionActorUsageV1, counter: Counter) {
@@ -1736,6 +1851,8 @@ fn bump_usage(usage: &mut SemanticSessionActorUsageV1, counter: Counter) {
         Counter::StopOutcomeUnknown => &mut usage.stop_outcome_unknown,
         Counter::StopRefusals => &mut usage.stop_refusals,
         Counter::CleanStops => &mut usage.clean_stops,
+        Counter::SuspendRequests => &mut usage.suspend_requests,
+        Counter::Suspensions => &mut usage.suspensions,
     };
     let prior = *value;
     *value = value.saturating_add(1);
@@ -2937,6 +3054,7 @@ mod tests {
             broker,
             FailingPollPort(91),
             SemanticSessionActorLimitsV1::reference(),
+            SemanticSessionActorUsageV1::default(),
             |_worker| Err(std::io::Error::other("injected launch refusal")),
         );
         let Err(failure) = result else {

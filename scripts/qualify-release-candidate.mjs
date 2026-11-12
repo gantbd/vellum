@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import {
   canonicalJson,
   smokeCandidate,
+  smokeLaunchdActivationExecutor,
   smokeLaunchdDeployment,
   validateCandidate,
 } from './release-candidate-lib.mjs';
@@ -60,6 +61,8 @@ const candidateSmoke = smokeCandidate(candidate);
 const priorSmoke = smokeCandidate(prior);
 const candidateLaunchdSmoke = smokeLaunchdDeployment(candidate);
 const priorLaunchdSmoke = smokeLaunchdDeployment(prior);
+const candidateActivationExecutorSmoke = smokeLaunchdActivationExecutor(candidate);
+const priorActivationExecutorSmoke = smokeLaunchdActivationExecutor(prior);
 const evidence = {
   schema: 1,
   channel: 'local-release-candidate-qualification',
@@ -70,9 +73,11 @@ const evidence = {
     'candidate-policy-compatible',
     'candidate-help-smoke-passed',
     'candidate-launchd-render-smoke-passed',
+    'candidate-activation-executor-help-smoke-passed-without-effect',
     'prior-integrity-verified',
     'prior-help-smoke-passed',
     'prior-launchd-render-smoke-passed',
+    'prior-activation-executor-help-smoke-passed-without-effect',
     'rollback-version-selected',
   ],
   nonClaims: ['activation', 'installation', 'signature', 'attestation', 'github-release'],
@@ -83,6 +88,7 @@ const evidence = {
     deployment: candidate.manifest.deployment.map(({ file, sha256 }) => ({ file, sha256 })),
     smoke: candidateSmoke,
     launchdSmoke: candidateLaunchdSmoke,
+    activationExecutorSmoke: candidateActivationExecutorSmoke,
   },
   rollback: {
     selectedPriorManifestSha256: prior.manifestSha256,
@@ -91,6 +97,7 @@ const evidence = {
     deployment: prior.manifest.deployment.map(({ file, sha256 }) => ({ file, sha256 })),
     smoke: priorSmoke,
     launchdSmoke: priorLaunchdSmoke,
+    activationExecutorSmoke: priorActivationExecutorSmoke,
     trigger: 'post-activation readiness or health gate fails',
   },
   activationPlan: [

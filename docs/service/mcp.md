@@ -66,7 +66,10 @@ The implemented surface is deliberately closed:
   identities, expected source revisions, and ordered UTF-8 byte replacements
   as one native in-memory transaction. The whole request publishes or refuses;
   its receipt explicitly reports `persistence: not_attempted` and makes no
-  multi-file durability claim;
+  multi-file durability claim. Passive service evidence separately counts
+  requests, refusals, requested/changed/unchanged documents, and
+  changed/all-no-op transactions; those content-free counters never affect
+  admission or publication;
 - `vellum.poll_changes`, returning at most one content-free event, an opaque
   continuation, or an explicit retention gap;
 - `vellum.membership`, projecting add/remove operations only through the

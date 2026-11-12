@@ -9,6 +9,9 @@ check-artifact-lifecycle:
 	node --check scripts/release-candidate-lib.mjs
 	node --check scripts/qualify-release-candidate.mjs
 	node scripts/qualify-release-candidate.test.mjs
+	node --check scripts/release-reproducibility-lib.mjs
+	node --check scripts/compare-release-candidates.mjs
+	node scripts/release-reproducibility-lib.test.mjs
 
 check-activation-transaction:
 	node --check scripts/activation-transaction-lib.mjs

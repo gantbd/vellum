@@ -5,12 +5,14 @@ publishes, installs, activates, signs, attests, or mutates a remote service.
 
 ## States and evidence
 
-The candidate builder produces two binaries, the inert
-`vellum-launchd-render` deployment helper, and canonical `manifest.json` and
-`SHA256SUMS` files. Manifest schema 3 identifies the exact Vellum and Keystone
+The candidate builder produces two product binaries, the inert
+`vellum-launchd-render` helper, the explicitly authorized
+`vellum-launchd-activate` executor, and canonical `manifest.json` and
+`SHA256SUMS` files. Manifest schema 4 identifies the exact Vellum and Keystone
 commits, effective Cargo build selection, Rust/Cargo versions, target, profile,
 feature mode, path-remap environment, and hashes of the lock, compatibility,
-dependency, SBOM, source-policy, toolchain, and launchd-renderer inputs. The manifest is itself
+dependency, SBOM, source-policy, toolchain, renderer, and activation-executor
+inputs. The manifest is itself
 checksummed. This is deterministic content evidence; it is not a signature or
 attestation.
 
@@ -25,25 +27,37 @@ attestation.
 - an absent, identical, corrupt, incompatible, or unsmokable rollback candidate;
   and
 - a candidate or rollback renderer that cannot reproduce the exact inert plist
-  from a fresh private deployment record or whose output fails `plutil`.
+  from a fresh private deployment record or whose output fails `plutil`; or
+- a candidate or rollback activation executor whose checksum, executable mode,
+  identity, or explicit-authorization help contract differs.
 
-The deployment helper is checksum-closed and must remain executable. Its own
-adversarial qualification is `make check-launchd-distribution`. Candidate
+Both deployment tools are checksum-closed and must remain executable. Their
+adversarial qualifications are `make check-launchd-distribution` and `make
+check-launchd-activation`. Candidate
 qualification additionally executes the exact packaged helper for both
 selected versions against fresh same-owner private scratch state and validates
 the exact output with `plutil`; it does not install a plist, invoke `launchctl`
 or simulate launchd process supervision. The helper is a locked workspace-built
 Rust executable, so the distributed artifact requires no Node runtime. See the
 [launchd distribution profile](launchd-distribution.md).
-The candidate manifest explicitly denies launchd installation, launchd socket
+The activator qualification invokes only `--help`, records
+`launchdEffect: not-attempted`, and cannot reach the explicit effect switch. The candidate
+manifest explicitly denies launchd installation, launchd socket activation,
 activation, and authenticated-health claims.
 
 The emitted qualification record names both immutable manifest identities,
-artifact hashes, content-safe binary and renderer smoke dispositions, and the
+artifact hashes, content-safe binary, renderer, and activator-help smoke
+dispositions, and the
 selected prior Vellum revision. Renderer evidence contains no scratch path,
 configuration or plist. The record sets `activationAuthorized` to `false`.
 Readiness is therefore a gate input for a future separately authorized
 activation mechanism, not an activation side effect.
+
+The GitHub workflow materializes the complete candidate twice through separate
+builder invocations and uploads only after their regular-file closures are
+byte-identical. The separate equivalence record names file hashes and exact
+build/source identities. It deliberately does not claim independent build
+environments, a reproducible build across runs, signing, or attestation.
 
 ## Local qualification
 

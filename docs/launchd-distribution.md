@@ -58,9 +58,10 @@ and never invokes `launchctl`. The separate
 [authorized activation executor](launchd-activation.md) uses the same exact
 qualification and approval identities but adds durable pre/post launchctl
 brackets, exact running-program/PID checks, bounded daemon status, and
-exact-prior rollback after known candidate health failure. It is opt-in source
-tooling, not a Cargo-install or candidate-payload binary; its tests inject all
-effects and never invoke launchctl.
+exact-prior rollback after known candidate health failure. It is not a
+Cargo-install binary. The candidate checksum-closes it as a native deployment
+tool and qualification exercises only `--help`; its transaction tests inject
+all effects and never invoke launchctl.
 
 For an authorized first installation, create and verify the private directory,
 render and inspect the plist, place the exact qualified candidate and plist,

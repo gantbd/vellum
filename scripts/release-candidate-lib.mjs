@@ -7,7 +7,18 @@ import { spawnSync } from 'node:child_process';
 export const MANIFEST_FILE = 'manifest.json';
 export const CHECKSUM_FILE = 'SHA256SUMS';
 export const ARTIFACT_NAMES = ['vellum-daemon', 'vellum-mcp'];
-export const DEPLOYMENT_NAMES = ['vellum-launchd-render'];
+export const DEPLOYMENT_NAMES = ['vellum-launchd-render', 'vellum-launchd-activate'];
+
+const DEPLOYMENT_IDENTITIES = [
+  {
+    file: 'vellum-launchd-render',
+    role: 'inert-launchd-plist-renderer',
+  },
+  {
+    file: 'vellum-launchd-activate',
+    role: 'explicitly-authorized-launchd-activation-executor',
+  },
+];
 
 export const sha256Bytes = (bytes) =>
   crypto.createHash('sha256').update(bytes).digest('hex');
@@ -61,12 +72,12 @@ export function validateCandidate(directory, options = {}) {
     ['schema', 'channel', 'claims', 'nonClaims', 'source', 'build', 'inputs', 'artifacts', 'deployment'],
     'manifest',
   );
-  if (manifest.schema !== 3 || manifest.channel !== 'github-release-candidate-artifact') {
+  if (manifest.schema !== 4 || manifest.channel !== 'github-release-candidate-artifact') {
     fail('manifest schema or channel is incompatible');
   }
   if (
     manifest.claims.join(',')
-      !== 'locked-workspace-build,native-help-smoke,sha256-checksums,effective-build-configuration,inert-launchd-renderer'
+      !== 'locked-workspace-build,native-help-smoke,sha256-checksums,effective-build-configuration,inert-launchd-renderer,activation-executor-packaged'
     || manifest.nonClaims.join(',')
       !== 'signature,attestation,github-release,crates.io-publication,activation,launchd-installation,launchd-socket-activation,authenticated-health'
   ) {
@@ -117,6 +128,9 @@ export function validateCandidate(directory, options = {}) {
     'distribution/launchd-render/Cargo.toml',
     'distribution/launchd-render/src/lib.rs',
     'distribution/launchd-render/src/main.rs',
+    'distribution/launchd-activate/Cargo.toml',
+    'distribution/launchd-activate/src/lib.rs',
+    'distribution/launchd-activate/src/main.rs',
     'rust-toolchain.toml',
   ];
   if (Object.keys(manifest.inputs).sort().join(',') !== requiredInputs.sort().join(',')) {
@@ -151,23 +165,31 @@ export function validateCandidate(directory, options = {}) {
     artifactFiles.push(file);
   }
 
-  if (!Array.isArray(manifest.deployment) || manifest.deployment.length !== 1) {
+  if (!Array.isArray(manifest.deployment) || manifest.deployment.length !== DEPLOYMENT_IDENTITIES.length) {
     fail('deployment artifact closure is incompatible');
   }
-  const deployment = manifest.deployment[0];
-  exactKeys(deployment, ['file', 'bytes', 'sha256', 'role', 'runtime'], 'deployment[0]');
-  if (
-    deployment.file !== DEPLOYMENT_NAMES[0]
-    || deployment.role !== 'inert-launchd-plist-renderer'
-    || deployment.runtime !== 'native'
-    || !Number.isSafeInteger(deployment.bytes)
-    || deployment.bytes <= 0
-  ) fail('launchd deployment artifact identity is incompatible');
-  const deploymentFile = regularFile(root, deployment.file);
-  if ((fs.statSync(deploymentFile).mode & 0o111) === 0) fail('launchd renderer is not executable');
-  if (fs.statSync(deploymentFile).size !== deployment.bytes || sha256File(deploymentFile) !== deployment.sha256) {
-    fail('launchd renderer does not match its immutable manifest identity');
-  }
+  const deploymentFiles = manifest.deployment.map((deployment, index) => {
+    const expected = DEPLOYMENT_IDENTITIES[index];
+    exactKeys(deployment, ['file', 'bytes', 'sha256', 'role', 'runtime'], `deployment[${index}]`);
+    if (
+      deployment.file !== expected.file
+      || deployment.role !== expected.role
+      || deployment.runtime !== 'native'
+      || !Number.isSafeInteger(deployment.bytes)
+      || deployment.bytes <= 0
+    ) fail('launchd deployment artifact identity is incompatible');
+    const deploymentFile = regularFile(root, deployment.file);
+    if ((fs.statSync(deploymentFile).mode & 0o111) === 0) {
+      fail(`${deployment.file} is not executable`);
+    }
+    if (
+      fs.statSync(deploymentFile).size !== deployment.bytes
+      || sha256File(deploymentFile) !== deployment.sha256
+    ) {
+      fail(`${deployment.file} does not match its immutable manifest identity`);
+    }
+    return deploymentFile;
+  });
 
   const checksumText = fs.readFileSync(regularFile(root, CHECKSUM_FILE), 'utf8');
   const checksumLines = [
@@ -193,7 +215,7 @@ export function validateCandidate(directory, options = {}) {
     manifest,
     manifestSha256: sha256File(manifestFile),
     artifactFiles,
-    deploymentFile,
+    deploymentFiles,
   };
 }
 
@@ -261,7 +283,7 @@ export function smokeLaunchdDeployment(candidate) {
     fs.writeFileSync(configFile, canonicalJson(configuration), { flag: 'wx', mode: 0o600 });
     fs.chmodSync(configFile, 0o600);
     const result = spawnSync(
-      candidate.deploymentFile,
+      candidate.deploymentFiles[0],
       [`--config=${configFile}`],
       {
         encoding: 'utf8',
@@ -298,4 +320,33 @@ export function smokeLaunchdDeployment(candidate) {
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+export function smokeLaunchdActivationExecutor(candidate) {
+  const result = spawnSync(candidate.deploymentFiles[1], ['--help'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '' },
+    timeout: 10_000,
+    maxBuffer: 128 * 1024,
+  });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (
+    result.status !== 0
+    || result.signal !== null
+    || result.error !== undefined
+    || !stdout.includes('vellum-launchd-activate')
+    || !stdout.includes('--execute-authorized-activation')
+    || stderr !== ''
+  ) {
+    fail('launchd activation executor help smoke failed');
+  }
+  return {
+    artifact: DEPLOYMENT_NAMES[1],
+    runtime: 'native',
+    invocation: 'help-only',
+    exitCode: result.status,
+    explicitAuthorizationRequired: true,
+    launchdEffect: 'not-attempted',
+  };
 }

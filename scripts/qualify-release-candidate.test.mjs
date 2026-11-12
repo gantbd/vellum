@@ -17,6 +17,13 @@ const rendererBuild = spawnSync(
 );
 if (rendererBuild.status !== 0) throw new Error(rendererBuild.stderr || 'native renderer build failed');
 const rendererSource = fs.readFileSync(path.join(rendererTarget, 'debug', 'vellum-launchd-render'));
+const activatorBuild = spawnSync(
+  'cargo',
+  ['build', '--locked', '--offline', '--package', 'vellum-launchd-activate', '--target-dir', rendererTarget],
+  { cwd: path.resolve('.'), encoding: 'utf8' },
+);
+if (activatorBuild.status !== 0) throw new Error(activatorBuild.stderr || 'native activator build failed');
+const activatorSource = fs.readFileSync(path.join(rendererTarget, 'debug', 'vellum-launchd-activate'));
 const inputs = [
   'Cargo.lock',
   'release/compatibility-baseline.json',
@@ -26,6 +33,9 @@ const inputs = [
   'distribution/launchd-render/Cargo.toml',
   'distribution/launchd-render/src/lib.rs',
   'distribution/launchd-render/src/main.rs',
+  'distribution/launchd-activate/Cargo.toml',
+  'distribution/launchd-activate/src/lib.rs',
+  'distribution/launchd-activate/src/main.rs',
   'rust-toolchain.toml',
 ];
 
@@ -56,13 +66,18 @@ const makeCandidate = (directory, revision, marker) => {
     };
   });
   write(directory, 'vellum-launchd-render', rendererSource, 0o755);
+  write(directory, 'vellum-launchd-activate', activatorSource, 0o755);
   const deploymentFile = path.join(directory, 'vellum-launchd-render');
   const deployment = [{
     file: 'vellum-launchd-render', bytes: fs.statSync(deploymentFile).size,
     sha256: sha256File(deploymentFile), role: 'inert-launchd-plist-renderer', runtime: 'native',
+  }, {
+    file: 'vellum-launchd-activate', bytes: activatorSource.length,
+    sha256: sha256File(path.join(directory, 'vellum-launchd-activate')),
+    role: 'explicitly-authorized-launchd-activation-executor', runtime: 'native',
   }];
   const manifest = {
-    schema: 3,
+    schema: 4,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build',
@@ -70,6 +85,7 @@ const makeCandidate = (directory, revision, marker) => {
       'sha256-checksums',
       'effective-build-configuration',
       'inert-launchd-renderer',
+      'activation-executor-packaged',
     ],
     nonClaims: [
       'signature', 'attestation', 'github-release', 'crates.io-publication', 'activation',
@@ -87,7 +103,9 @@ const makeCandidate = (directory, revision, marker) => {
       locked: true,
       rustc: 'rustc 1.95.0',
       cargo: 'cargo 1.95.0',
-      packages: ['vellum-daemon', 'vellum-mcp', 'vellum-launchd-render'],
+      packages: [
+        'vellum-daemon', 'vellum-mcp', 'vellum-launchd-render', 'vellum-launchd-activate',
+      ],
       features: 'default',
       environment: {
         CARGO_BUILD_TARGET: 'unset',
@@ -137,12 +155,12 @@ const expectPriorRefusal = (label, mutate) => {
     throw new Error(`prior ${label} mutant was not refused before evidence creation`);
   }
 };
-const refreshCandidateIdentity = (root) => {
+const refreshDeploymentIdentity = (root, index) => {
   const manifestFile = path.join(root, 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
-  const deploymentFile = path.join(root, 'vellum-launchd-render');
-  manifest.deployment[0].bytes = fs.statSync(deploymentFile).size;
-  manifest.deployment[0].sha256 = sha256File(deploymentFile);
+  const deploymentFile = path.join(root, manifest.deployment[index].file);
+  manifest.deployment[index].bytes = fs.statSync(deploymentFile).size;
+  manifest.deployment[index].sha256 = sha256File(deploymentFile);
   fs.writeFileSync(manifestFile, canonicalJson(manifest));
   fs.writeFileSync(
     path.join(root, 'SHA256SUMS'),
@@ -183,6 +201,21 @@ try {
       throw new Error('launchd smoke evidence disclosed private fixture paths');
     }
   }
+  for (const product of [
+    report.candidate.activationExecutorSmoke,
+    report.rollback.activationExecutorSmoke,
+  ]) {
+    if (
+      product?.artifact !== 'vellum-launchd-activate'
+      || product.runtime !== 'native'
+      || product.invocation !== 'help-only'
+      || product.exitCode !== 0
+      || product.explicitAuthorizationRequired !== true
+      || product.launchdEffect !== 'not-attempted'
+    ) {
+      throw new Error('qualification omitted content-safe activation executor smoke evidence');
+    }
+  }
 
   expectRefusal('corrupt-artifact', (root) => fs.appendFileSync(path.join(root, 'vellum-daemon'), 'corruption'));
   expectRefusal('unknown-file', (root) => write(root, 'surprise', 'not closed\n'));
@@ -192,7 +225,7 @@ try {
     manifest.schema = 999;
     fs.writeFileSync(file, canonicalJson(manifest));
     const lines = fs.readFileSync(path.join(root, 'SHA256SUMS'), 'utf8').trim().split('\n');
-    lines[3] = `${sha256File(file)}  manifest.json`;
+    lines[lines.length - 1] = `${sha256File(file)}  manifest.json`;
     fs.writeFileSync(path.join(root, 'SHA256SUMS'), `${lines.join('\n')}\n`);
   });
   expectRefusal('symlink-artifact', (root) => {
@@ -206,13 +239,23 @@ try {
     fs.unlinkSync(path.join(root, 'vellum-launchd-render'));
     fs.symlinkSync(path.join(candidate, 'vellum-launchd-render'), path.join(root, 'vellum-launchd-render'));
   });
+  expectRefusal('corrupt-launchd-activator', (root) => {
+    fs.appendFileSync(path.join(root, 'vellum-launchd-activate'), 'corruption');
+  });
+  expectRefusal('symlink-launchd-activator', (root) => {
+    fs.unlinkSync(path.join(root, 'vellum-launchd-activate'));
+    fs.symlinkSync(
+      path.join(candidate, 'vellum-launchd-activate'),
+      path.join(root, 'vellum-launchd-activate'),
+    );
+  });
   expectRefusal('invalid-launchd-renderer-output', (root) => {
     fs.writeFileSync(
       path.join(root, 'vellum-launchd-render'),
       '#!/bin/sh\nprintf "not a plist\\n"\n',
       { mode: 0o755 },
     );
-    refreshCandidateIdentity(root);
+    refreshDeploymentIdentity(root, 0);
   });
   expectPriorRefusal('invalid-launchd-renderer-output', (root) => {
     fs.writeFileSync(
@@ -220,7 +263,15 @@ try {
       '#!/bin/sh\nprintf "not a plist\\n"\n',
       { mode: 0o755 },
     );
-    refreshCandidateIdentity(root);
+    refreshDeploymentIdentity(root, 0);
+  });
+  expectRefusal('invalid-launchd-activator-help', (root) => {
+    fs.writeFileSync(
+      path.join(root, 'vellum-launchd-activate'),
+      '#!/bin/sh\nprintf "vellum-launchd-activate unsafe help\\n"\n',
+      { mode: 0o755 },
+    );
+    refreshDeploymentIdentity(root, 1);
   });
   expectRefusal('failed-smoke', (root) => {
     const binary = path.join(root, 'vellum-daemon');

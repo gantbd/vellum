@@ -108,7 +108,7 @@ try {
     'build', '--locked', '--release', '--target', host, '--target-dir', target,
   ];
   for (const profile of profiles) cargoArguments.push('--package', profile.package);
-  cargoArguments.push('--package', 'vellum-launchd-render');
+  for (const name of DEPLOYMENT_NAMES) cargoArguments.push('--package', name);
   run('cargo', cargoArguments, { env: buildEnvironment });
 
   const artifacts = [];
@@ -131,7 +131,7 @@ try {
       ...(profile.role === undefined ? {} : { role: profile.role }),
     });
   }
-  const deployment = DEPLOYMENT_NAMES.map((name) => {
+  const deployment = DEPLOYMENT_NAMES.map((name, index) => {
     const source = path.join(target, host, 'release', name);
     const staged = path.join(output, name);
     fs.copyFileSync(source, staged);
@@ -142,13 +142,15 @@ try {
       file: name,
       bytes: fs.statSync(staged).size,
       sha256: sha256(staged),
-      role: 'inert-launchd-plist-renderer',
+      role: index === 0
+        ? 'inert-launchd-plist-renderer'
+        : 'explicitly-authorized-launchd-activation-executor',
       runtime: 'native',
     };
   });
 
   const manifest = {
-    schema: 3,
+    schema: 4,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build',
@@ -156,6 +158,7 @@ try {
       'sha256-checksums',
       'effective-build-configuration',
       'inert-launchd-renderer',
+      'activation-executor-packaged',
     ],
     nonClaims: [
       'signature', 'attestation', 'github-release', 'crates.io-publication', 'activation',
@@ -194,6 +197,9 @@ try {
         'distribution/launchd-render/Cargo.toml',
         'distribution/launchd-render/src/lib.rs',
         'distribution/launchd-render/src/main.rs',
+        'distribution/launchd-activate/Cargo.toml',
+        'distribution/launchd-activate/src/lib.rs',
+        'distribution/launchd-activate/src/main.rs',
         'rust-toolchain.toml',
       ].map((name) => [name, sha256(path.join(root, name))]),
     ),

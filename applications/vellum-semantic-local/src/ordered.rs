@@ -39,8 +39,9 @@ use vellum_semantic_service::{
     SemanticBridgeProviderExtractionBlockersV1, SemanticBridgeProviderPollV1,
     SemanticBridgeProviderTransitionV1, SemanticBridgeRetiringProviderV1, SemanticBridgeServiceV1,
     SemanticClientRefV1, SemanticClientRetirementReportV1, SemanticDeliveryOutcomeV1,
-    SemanticProviderPortV1, SemanticProviderReadinessV1, SemanticProviderStateV1,
-    SemanticServiceLimitsV1, SemanticServiceRefusalV1, SemanticSnapshotV1, SemanticSubmitOutcomeV1,
+    SemanticProviderPortV1, SemanticProviderReadinessV1, SemanticProviderReplacementFailureV1,
+    SemanticProviderRetirementV1, SemanticProviderStateV1, SemanticServiceLimitsV1,
+    SemanticServiceRefusalV1, SemanticSnapshotV1, SemanticSubmitOutcomeV1,
 };
 
 const MAX_LSP_OUTGOING_TEXT_BYTES_V1: usize =
@@ -61,21 +62,22 @@ const _: () = assert!(MAX_LSP_OUTGOING_BODY_REQUIRED_V1 + 64 <= MAX_LSP_BUFFER_B
 use vellum_semantic_session_actor::{
     SemanticBrokerEffectFailureV1, SemanticBrokerEffectObligationsV1, SemanticBrokerEffectPortV1,
     SemanticBrokerProviderDriveV1, SemanticSessionActorBuildFailureV1,
-    SemanticSessionActorBuildRefusalV1, SemanticSessionActorControlRefusalV1,
-    SemanticSessionActorControlTicketV1, SemanticSessionActorEventAdmissionV1,
-    SemanticSessionActorExternalEventV1, SemanticSessionActorLimitsV1, SemanticSessionActorOwnerV1,
-    SemanticSessionActorPhaseV1, SemanticSessionActorRecoveredV1, SemanticSessionActorRecoveryV1,
+    SemanticSessionActorBuildRefusalV1, SemanticSessionActorControlCompletionV1,
+    SemanticSessionActorControlRefusalV1, SemanticSessionActorControlTicketV1,
+    SemanticSessionActorEventAdmissionV1, SemanticSessionActorExternalEventV1,
+    SemanticSessionActorLimitsV1, SemanticSessionActorOwnerV1, SemanticSessionActorPhaseV1,
+    SemanticSessionActorPollV1, SemanticSessionActorRecoveredV1, SemanticSessionActorRecoveryV1,
     SemanticSessionActorSenderV1, SemanticSessionActorStopAbandonmentV1,
     SemanticSessionActorStopDispositionV1, SemanticSessionActorStopReceiptV1,
     SemanticSessionActorStopResolutionV1, SemanticSessionActorStopTicketV1,
     SemanticSessionActorTerminationV1, SemanticSessionActorUsageV1,
-    spawn_semantic_session_actor_v1,
+    resume_semantic_session_actor_v1, spawn_semantic_session_actor_v1,
 };
 use vellum_semantic_session_broker::{
     SemanticBrokerAdmissionOutcomeV1, SemanticBrokerCancellationOutcomeV1,
-    SemanticBrokerCancellationReportV1, SemanticBrokerDeliveryOutcomeV1,
-    SemanticBrokerExpiryDriveV1, SemanticBrokerExpiryOutcomeV1, SemanticBrokerExpiryReportV1,
-    SemanticBrokerOpenReportV1, SemanticBrokerProviderBindingV1,
+    SemanticBrokerCancellationReportV1, SemanticBrokerDecisionV1, SemanticBrokerDeliveryOutcomeV1,
+    SemanticBrokerEventV1, SemanticBrokerExpiryDriveV1, SemanticBrokerExpiryOutcomeV1,
+    SemanticBrokerExpiryReportV1, SemanticBrokerOpenReportV1, SemanticBrokerProviderBindingV1,
     SemanticBrokerProviderDriveDispositionV1, SemanticBrokerProviderDriveFailureClassV1,
     SemanticBrokerProviderDriveFailureReportV1, SemanticBrokerProviderDriveReportV1,
     SemanticBrokerProviderTransitionV1, SemanticBrokerSourceAdmissionOutcomeV1,
@@ -535,6 +537,57 @@ pub struct LocalOrderedSemanticPortV1<P> {
     client: SemanticClientRefV1,
     binding: SemanticBrokerProviderBindingV1,
     service_limits: SemanticServiceLimitsV1,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalOrderedProviderReplacementRefusalV1 {
+    EpochExhausted,
+    InvalidCandidateProjection,
+    SchedulerPoisoned,
+}
+
+#[must_use = "failed ordered replacement retains the exact candidate"]
+pub enum LocalOrderedProviderReplacementFailureV1<P> {
+    Preflight {
+        reason: LocalOrderedProviderReplacementRefusalV1,
+        candidate: P,
+    },
+    Service(SemanticProviderReplacementFailureV1<P>),
+}
+
+impl<P> LocalOrderedProviderReplacementFailureV1<P> {
+    pub const fn reason(&self) -> Option<LocalOrderedProviderReplacementRefusalV1> {
+        match self {
+            Self::Preflight { reason, .. } => Some(*reason),
+            Self::Service(_) => None,
+        }
+    }
+
+    pub fn into_candidate(self) -> P {
+        match self {
+            Self::Preflight { candidate, .. } => candidate,
+            Self::Service(failure) => failure.into_candidate(),
+        }
+    }
+}
+
+impl<P> fmt::Debug for LocalOrderedProviderReplacementFailureV1<P> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Preflight { reason, .. } => formatter
+                .debug_struct("Preflight")
+                .field("reason", reason)
+                .field("candidate", &"<owned>")
+                .finish(),
+            Self::Service(failure) => formatter.debug_tuple("Service").field(failure).finish(),
+        }
+    }
+}
+
+#[must_use = "replacement report and displaced-provider retirement must both be reconciled"]
+pub struct LocalOrderedProviderReplacementV1<P> {
+    pub retirement: SemanticProviderRetirementV1<P>,
+    pub report: SemanticBrokerProviderDriveReportV1,
 }
 
 /// Pre-exposure broker/port product created from one genesis provider binding.
@@ -1760,6 +1813,47 @@ impl<P: SemanticProviderPortV1> LocalOrderedSemanticPortV1<P> {
         })
     }
 
+    /// Replaces the physical provider as one ordered broker event. Candidate
+    /// projection and epoch headroom are proved before snapshot replay or swap,
+    /// so every accepted mutation has a representable exact transition. The
+    /// displaced provider remains affine in the returned retirement product.
+    pub fn try_replace_provider(
+        &mut self,
+        candidate: P,
+    ) -> Result<LocalOrderedProviderReplacementV1<P>, LocalOrderedProviderReplacementFailureV1<P>>
+    {
+        let Some(next_epoch) = self.binding.epoch.checked_add(1) else {
+            return Err(LocalOrderedProviderReplacementFailureV1::Preflight {
+                reason: LocalOrderedProviderReplacementRefusalV1::EpochExhausted,
+                candidate,
+            });
+        };
+        if project_state(candidate.state(), next_epoch).is_err() {
+            return Err(LocalOrderedProviderReplacementFailureV1::Preflight {
+                reason: LocalOrderedProviderReplacementRefusalV1::InvalidCandidateProjection,
+                candidate,
+            });
+        }
+        let (retirement, report) = self
+            .service
+            .try_replace_provider(candidate)
+            .map_err(LocalOrderedProviderReplacementFailureV1::Service)?;
+        let translated = self
+            .translate(&report)
+            .unwrap_or_else(|_| unreachable!("replacement projection was preflighted"));
+        let broker_report = SemanticBrokerProviderDriveReportV1 {
+            provider_before: translated.provider_before.clone(),
+            pre_provider: translated.pre_provider.clone(),
+            disposition: SemanticBrokerProviderDriveDispositionV1::NoEvent,
+            post_provider: translated.post_provider.clone(),
+        };
+        self.commit(&translated);
+        Ok(LocalOrderedProviderReplacementV1 {
+            retirement,
+            report: broker_report,
+        })
+    }
+
     fn translate<T>(
         &self,
         report: &SemanticBridgeOrderedReportV1<T>,
@@ -2092,6 +2186,238 @@ impl<P, C> LocalOrderedManagedTimedSemanticActorV1<P, C> {
             },
             recovery,
         })
+    }
+
+    /// Atomically fences new commands and preserves the complete live broker,
+    /// snapshot, deadline, and provider product for a composition-owned
+    /// replacement. The caller must discard every old sender before exposing a
+    /// resumed sender; old senders remain permanently fenced by actor phase.
+    pub fn try_begin_suspension(
+        self,
+    ) -> Result<LocalOrderedTimedSuspensionTicketV1<P, C>, Box<Self>> {
+        let Self {
+            owner,
+            recovery,
+            refusal_attempts,
+            last_refusal,
+            saturated,
+        } = self;
+        let limits = owner.limits();
+        match owner.try_suspend() {
+            Ok(control) => {
+                drop(owner);
+                Ok(LocalOrderedTimedSuspensionTicketV1 {
+                    control: Some(control),
+                    acknowledged: false,
+                    recovery,
+                    limits,
+                    refusal_attempts,
+                    last_refusal,
+                    saturated,
+                })
+            }
+            Err(_) => Err(Box::new(Self {
+                owner,
+                recovery,
+                refusal_attempts,
+                last_refusal,
+                saturated,
+            })),
+        }
+    }
+}
+
+#[must_use = "suspension must recover the exact live actor runtime"]
+pub struct LocalOrderedTimedSuspensionTicketV1<P, C> {
+    control: Option<SemanticSessionActorControlTicketV1>,
+    acknowledged: bool,
+    recovery: SemanticSessionActorRecoveryV1<LocalOrderedTimedSemanticPortV1<P, C>>,
+    limits: SemanticSessionActorLimitsV1,
+    refusal_attempts: u64,
+    last_refusal: Option<SemanticSessionActorStopReceiptV1>,
+    saturated: bool,
+}
+
+pub enum LocalOrderedTimedSuspensionAdvanceV1<P, C> {
+    Pending(Box<LocalOrderedTimedSuspensionTicketV1<P, C>>),
+    Ready(Box<LocalOrderedSuspendedTimedRuntimeV1<P, C>>),
+    Failed(Box<SemanticSessionActorRecoveredV1<LocalOrderedTimedSemanticPortV1<P, C>>>),
+}
+
+impl<P, C> LocalOrderedTimedSuspensionTicketV1<P, C> {
+    pub fn try_advance(mut self) -> LocalOrderedTimedSuspensionAdvanceV1<P, C> {
+        if !self.acknowledged {
+            let control = self
+                .control
+                .as_ref()
+                .expect("unacknowledged control exists");
+            match control.try_receive() {
+                Ok(SemanticSessionActorControlCompletionV1::Applied) => {
+                    self.acknowledged = true;
+                    self.control = None;
+                }
+                Ok(
+                    SemanticSessionActorControlCompletionV1::Quarantined
+                    | SemanticSessionActorControlCompletionV1::OutcomeUnknown,
+                ) => {
+                    // The recovery product, not the acknowledgement channel,
+                    // decides whether the exact runtime actually suspended.
+                    self.acknowledged = true;
+                    self.control = None;
+                }
+                Err(SemanticSessionActorPollV1::Pending) => {
+                    return LocalOrderedTimedSuspensionAdvanceV1::Pending(Box::new(self));
+                }
+                Err(SemanticSessionActorPollV1::OutcomeUnknown) => {
+                    self.acknowledged = true;
+                    self.control = None;
+                }
+            }
+        }
+        let recovered = match self.recovery.try_recover() {
+            Ok(recovered) => recovered,
+            Err(recovery) => {
+                self.recovery = recovery;
+                return LocalOrderedTimedSuspensionAdvanceV1::Pending(Box::new(self));
+            }
+        };
+        if recovered.termination() != SemanticSessionActorTerminationV1::Suspended {
+            return LocalOrderedTimedSuspensionAdvanceV1::Failed(Box::new(recovered));
+        }
+        let (_, usage, broker, port) = recovered.into_parts();
+        LocalOrderedTimedSuspensionAdvanceV1::Ready(Box::new(LocalOrderedSuspendedTimedRuntimeV1 {
+            broker,
+            port,
+            limits: self.limits,
+            prior_actor_usage: usage,
+            refusal_attempts: self.refusal_attempts,
+            last_refusal: self.last_refusal,
+            saturated: self.saturated,
+        }))
+    }
+}
+
+#[must_use = "suspended runtime must be replaced, resumed, or retired explicitly"]
+pub struct LocalOrderedSuspendedTimedRuntimeV1<P, C> {
+    broker: SemanticSessionBrokerV1,
+    port: LocalOrderedTimedSemanticPortV1<P, C>,
+    limits: SemanticSessionActorLimitsV1,
+    prior_actor_usage: SemanticSessionActorUsageV1,
+    refusal_attempts: u64,
+    last_refusal: Option<SemanticSessionActorStopReceiptV1>,
+    saturated: bool,
+}
+
+pub type LocalOrderedSuspendedReplacementResultV1<P, C> = Result<
+    (
+        LocalOrderedSuspendedTimedRuntimeV1<P, C>,
+        SemanticProviderRetirementV1<P>,
+    ),
+    Box<LocalOrderedSuspendedReplacementFailureV1<P, C>>,
+>;
+
+impl<P, C> LocalOrderedSuspendedTimedRuntimeV1<P, C>
+where
+    P: SemanticBridgeProviderPollV1 + Send + 'static,
+    C: LocalOrderedMonotonicClockV1,
+{
+    pub const fn prior_actor_usage(&self) -> SemanticSessionActorUsageV1 {
+        self.prior_actor_usage
+    }
+
+    pub fn try_replace_provider(
+        mut self,
+        candidate: P,
+    ) -> LocalOrderedSuspendedReplacementResultV1<P, C> {
+        let replacement = match self.port.try_replace_provider(candidate) {
+            Ok(replacement) => replacement,
+            Err(failure) => {
+                return Err(Box::new(
+                    LocalOrderedSuspendedReplacementFailureV1::Candidate {
+                        runtime: self,
+                        failure,
+                    },
+                ));
+            }
+        };
+        let decision = self
+            .broker
+            .event(SemanticBrokerEventV1::ProviderDriveCompleted {
+                report: Box::new(replacement.report),
+            });
+        if decision != SemanticBrokerDecisionV1::EventAccepted {
+            return Err(Box::new(
+                LocalOrderedSuspendedReplacementFailureV1::Reconciliation {
+                    runtime: LocalOrderedFusedSuspendedRuntimeV1 { inner: self },
+                    retirement: replacement.retirement,
+                },
+            ));
+        }
+        Ok((self, replacement.retirement))
+    }
+
+    pub fn resume(self) -> LocalOrderedManagedTimedSemanticSpawnResultV1<P, C> {
+        let (owner, sender, recovery) = resume_semantic_session_actor_v1(
+            self.broker,
+            self.port,
+            self.limits,
+            self.prior_actor_usage,
+        )?;
+        Ok((
+            LocalOrderedManagedTimedSemanticActorV1 {
+                owner,
+                recovery,
+                refusal_attempts: self.refusal_attempts,
+                last_refusal: self.last_refusal,
+                saturated: self.saturated,
+            },
+            sender,
+        ))
+    }
+}
+
+#[must_use = "replacement failure retains both runtime and cleanup authority"]
+pub enum LocalOrderedSuspendedReplacementFailureV1<P, C> {
+    Candidate {
+        runtime: LocalOrderedSuspendedTimedRuntimeV1<P, C>,
+        failure: LocalOrderedProviderReplacementFailureV1<P>,
+    },
+    Reconciliation {
+        runtime: LocalOrderedFusedSuspendedRuntimeV1<P, C>,
+        retirement: SemanticProviderRetirementV1<P>,
+    },
+}
+
+impl<P, C> fmt::Debug for LocalOrderedSuspendedReplacementFailureV1<P, C> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Candidate { failure, .. } => formatter
+                .debug_struct("Candidate")
+                .field("failure", failure)
+                .field("runtime", &"<owned>")
+                .finish(),
+            Self::Reconciliation { .. } => formatter
+                .debug_struct("Reconciliation")
+                .field("runtime", &"<fused-owned>")
+                .field("retirement", &"<owned>")
+                .finish(),
+        }
+    }
+}
+
+/// A physical provider swap whose broker reconciliation did not close. There
+/// is deliberately no resume operation: exposing this product would let the
+/// physical and logical provider epochs diverge. It is retained solely with
+/// the displaced-provider retirement owner for explicit cleanup.
+#[must_use = "fused suspended runtime retains current and displaced provider cleanup authority"]
+pub struct LocalOrderedFusedSuspendedRuntimeV1<P, C> {
+    inner: LocalOrderedSuspendedTimedRuntimeV1<P, C>,
+}
+
+impl<P, C> fmt::Debug for LocalOrderedFusedSuspendedRuntimeV1<P, C> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _owned = &self.inner;
+        formatter.write_str("LocalOrderedFusedSuspendedRuntimeV1(<owned>)")
     }
 }
 
@@ -3884,6 +4210,25 @@ where
         self.scheduler.usage
     }
 
+    pub fn try_replace_provider(
+        &mut self,
+        candidate: P,
+    ) -> Result<LocalOrderedProviderReplacementV1<P>, LocalOrderedProviderReplacementFailureV1<P>>
+    {
+        if self.scheduler.ensure_consistent().is_err() {
+            return Err(LocalOrderedProviderReplacementFailureV1::Preflight {
+                reason: LocalOrderedProviderReplacementRefusalV1::SchedulerPoisoned,
+                candidate,
+            });
+        }
+        let replacement = self.base.try_replace_provider(candidate)?;
+        self.clear_report_transitions(
+            replacement.report.pre_provider.as_ref(),
+            replacement.report.post_provider.as_ref(),
+        );
+        Ok(replacement)
+    }
+
     fn clear_transition(&mut self, transition: Option<&SemanticBrokerProviderTransitionV1>) {
         if let Some(transition) = transition {
             let requests: Vec<_> = transition.invalidations.iter().copied().collect();
@@ -4614,6 +4959,102 @@ mod tests {
             SemanticRequestRefV1::new([99; 16]),
         ));
         (timed, session)
+    }
+
+    #[test]
+    fn managed_timed_actor_suspends_replaces_and_resumes_one_ordered_epoch() {
+        let (prepared, _) = prepared(provider(ready(1, 1)), 2);
+        let timed = prepared
+            .try_with_deadlines(ScriptClock::ticks([0]), deadline_policy(2, 10))
+            .unwrap();
+        let (actor, old_sender) = timed
+            .spawn_managed(SemanticSessionActorLimitsV1::reference())
+            .unwrap();
+        let mut ticket = actor.try_begin_suspension().unwrap();
+        let mut suspended = loop {
+            match ticket.try_advance() {
+                LocalOrderedTimedSuspensionAdvanceV1::Pending(pending) => {
+                    ticket = *pending;
+                    std::thread::yield_now();
+                }
+                LocalOrderedTimedSuspensionAdvanceV1::Ready(runtime) => break *runtime,
+                LocalOrderedTimedSuspensionAdvanceV1::Failed(_) => {
+                    panic!("qualified suspension recovered a failed worker")
+                }
+            }
+        };
+        assert_eq!(suspended.prior_actor_usage().suspensions, 1);
+        let (next, retirement) = suspended
+            .try_replace_provider(provider(ready(2, 2)))
+            .unwrap();
+        suspended = next;
+        assert_eq!(suspended.port.base.binding.epoch, 1);
+        assert!(matches!(
+            suspended.port.base.binding.observation.readiness(),
+            SemanticProviderReadinessProjectionV1::Ready { generation }
+                if generation == SemanticIndexGenerationV1::new(2).unwrap()
+        ));
+        assert!(retirement.into_provider_if_drained().is_ok());
+        let (actor, sender) = suspended.resume().unwrap();
+        assert_eq!(actor.phase(), SemanticSessionActorPhaseV1::Running);
+        assert_eq!(actor.usage().suspensions, 1);
+        assert_eq!(old_sender.phase(), SemanticSessionActorPhaseV1::Suspended);
+        let old_admission = old_sender.try_exchange(
+            vellum_semantic_session_broker::SemanticBrokerContextV1 {
+                subject: vellum_host::authority::AuthoritySubjectRefV1::new([81; 16]),
+                session: vellum_host::authority::AuthoritySessionRefV1::new([82; 16]),
+                allowed_roles: vellum_semantic_protocol::SemanticSessionRolesV1::top(),
+                policy_epoch: 1,
+            },
+            vellum_semantic_protocol::SemanticSessionCommandV1::Describe {
+                exchange: vellum_semantic_protocol::SemanticExchangeRefV1::new([83; 16]).unwrap(),
+            },
+        );
+        assert!(matches!(
+            old_admission,
+            vellum_semantic_session_actor::SemanticSessionActorAdmissionV1::NotSent {
+                reason: vellum_semantic_session_actor::SemanticSessionActorNotSentReasonV1::Closed,
+                ..
+            }
+        ));
+        drop(old_sender);
+        drop(sender);
+        drop(actor);
+    }
+
+    #[test]
+    fn ordered_replacement_replays_snapshot_and_invalidates_pending_deadline_without_query_replay()
+    {
+        let (prepared, session) = prepared(provider(ready(1, 1)), 2);
+        let mut timed = prepared
+            .try_with_deadlines(ScriptClock::ticks([10]), deadline_policy(2, 5))
+            .unwrap();
+        assert!(matches!(
+            timed.port.open(&snapshot(1, session)).unwrap().outcome,
+            SemanticBrokerAdmissionOutcomeV1::Accepted
+        ));
+        let pending = request(1, 4);
+        assert_eq!(
+            timed.port.submit(&pending).unwrap().outcome,
+            SemanticBrokerSubmissionOutcomeV1::Accepted
+        );
+        assert_eq!(timed.port.scheduler.by_request.len(), 1);
+        let replacement = timed
+            .port
+            .try_replace_provider(provider(ready(2, 2)))
+            .unwrap();
+        assert!(timed.port.scheduler.by_request.is_empty());
+        assert!(timed.port.scheduler.by_due.is_empty());
+        let invalidations = &replacement.report.pre_provider.unwrap().invalidations;
+        assert_eq!(
+            invalidations.iter().copied().collect::<Vec<_>>(),
+            vec![pending.request]
+        );
+        assert!(replacement.retirement.into_provider_if_drained().is_ok());
+        let usage = timed.port.base.service.usage();
+        assert_eq!(usage.snapshots_replayed, 1);
+        assert_eq!(usage.requests_submitted, 1);
+        assert_eq!(usage.requests_invalidated, 1);
     }
 
     #[test]

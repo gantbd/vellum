@@ -972,6 +972,45 @@ impl<P: SemanticProviderPortV1> SemanticBridgeServiceV1<P> {
         self.inner.provider_state()
     }
 
+    /// Installs one independently ready provider after replaying every exact
+    /// retained snapshot. The ordered report is the single broker-visible
+    /// transition: all requests admitted under the displaced provider are
+    /// invalidated without replay, while the returned retirement product owns
+    /// that provider and its bounded close plan affinely.
+    pub fn try_replace_provider(
+        &mut self,
+        candidate: P,
+    ) -> Result<
+        (
+            SemanticProviderRetirementV1<P>,
+            SemanticBridgeOrderedReportV1<()>,
+        ),
+        SemanticProviderReplacementFailureV1<P>,
+    > {
+        let provider_before = self.inner.provider_state.clone();
+        let invalidated = self.inner.pending.keys().copied().collect::<Vec<_>>();
+        let retirement = self.inner.try_replace_provider(candidate)?;
+        let settled_state = self.inner.provider_state.clone();
+        let transition = SemanticBridgeProviderTransitionV1 {
+            observed_state: settled_state.clone(),
+            settled_state,
+            invalidations: semantic_invalidation_receipt(
+                SemanticInvalidationCauseV1::ProviderStateChanged,
+                invalidated,
+                self.inner.limits.max_pending,
+            ),
+        };
+        Ok((
+            retirement,
+            SemanticBridgeOrderedReportV1 {
+                provider_before,
+                pre_provider: Some(transition),
+                outcome: (),
+                post_provider: None,
+            },
+        ))
+    }
+
     /// Advances bounded client cleanup without exposing the legacy service or
     /// its delivery algebra. A retired client may leave exact quarantine
     /// residue behind; that residue remains coupled to this provider until
