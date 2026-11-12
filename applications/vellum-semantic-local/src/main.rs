@@ -47,10 +47,15 @@ mod unix {
         AuthenticatedSemanticConnectionLimitsV1, AuthenticatedSemanticDispatchLimitsV1,
         AuthenticatedSemanticRoleDecisionV1, AuthenticatedSemanticRolePortV1,
         LocalOrderedClockFailureV1, LocalOrderedDeadlinePolicyV1, LocalOrderedInstantV1,
-        LocalOrderedManagedTimedStopResolutionV1, LocalOrderedMonotonicClockV1,
-        LocalOrderedTimedStoppedRecoveryAdvanceV1, LocalSemanticRetirementStateV1,
-        SemanticLocalListenerV1, SemanticProcessDeadlinesV1, SemanticProcessLimitsV1,
-        SemanticProviderProfileV1, authenticate_semantic_stream_v1,
+        LocalOrderedManagedTimedSemanticActorV1, LocalOrderedManagedTimedStopResolutionV1,
+        LocalOrderedMonotonicClockV1, LocalOrderedTimedStoppedRecoveryAdvanceV1,
+        LocalOrderedTimedSuspensionAdvanceV1, LocalSemanticRetirementStateV1,
+        LocalSupervisedOrderedLspCandidateAdapterV1, LocalSupervisedOrderedLspCandidateDriveV1,
+        LocalSupervisedOrderedLspCandidateV1, SemanticLocalListenerV1, SemanticProcessDeadlinesV1,
+        SemanticProcessLimitsV1, SemanticProviderProfileV1, SemanticProviderRestartCauseV1,
+        SemanticProviderRestartControllerV1, SemanticProviderRestartDecisionV1,
+        SemanticProviderRestartPolicyV1, authenticate_semantic_stream_v1,
+        launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1,
         launch_supervised_ordered_lsp_with_deadlines_rust_analyzer_standalone_v1,
         qualify_provider_launch_v1, serve_one_authenticated_semantic_exchange_v1,
     };
@@ -62,31 +67,43 @@ mod unix {
     use vellum_semantic_session_actor::{
         SemanticSessionActorControlCompletionV1, SemanticSessionActorControlRefusalV1,
         SemanticSessionActorEventAdmissionV1, SemanticSessionActorLimitsV1,
+        SemanticSessionActorSenderV1,
     };
 
     struct SignalSupervisor {
         requested: Arc<AtomicBool>,
+        restart_requested: Arc<AtomicBool>,
         active_stream: Arc<Mutex<Option<UnixStream>>>,
         handle: signal_hook::iterator::Handle,
         thread: Option<JoinHandle<()>>,
     }
 
     impl SignalSupervisor {
-        fn install() -> Result<Self, CliError> {
-            let mut signals = signal_hook::iterator::Signals::new([
+        fn install(restart_on_sighup: bool) -> Result<Self, CliError> {
+            let mut selected = vec![
                 signal_hook::consts::signal::SIGINT,
                 signal_hook::consts::signal::SIGTERM,
-            ])
-            .map_err(|_| CliError("signal supervision refused"))?;
+            ];
+            if restart_on_sighup {
+                selected.push(signal_hook::consts::signal::SIGHUP);
+            }
+            let mut signals = signal_hook::iterator::Signals::new(selected)
+                .map_err(|_| CliError("signal supervision refused"))?;
             let handle = signals.handle();
             let requested = Arc::new(AtomicBool::new(false));
+            let restart_requested = Arc::new(AtomicBool::new(false));
             let active_stream = Arc::new(Mutex::new(None::<UnixStream>));
             let signal_requested = Arc::clone(&requested);
+            let signal_restart_requested = Arc::clone(&restart_requested);
             let signal_stream = Arc::clone(&active_stream);
             let thread = std::thread::Builder::new()
                 .name("vellum-semantic-signal".to_owned())
                 .spawn(move || {
-                    if signals.forever().next().is_some() {
+                    for signal in signals.forever() {
+                        if signal == signal_hook::consts::signal::SIGHUP {
+                            signal_restart_requested.store(true, Ordering::Release);
+                            continue;
+                        }
                         signal_requested.store(true, Ordering::Release);
                         if let Some(stream) = signal_stream
                             .lock()
@@ -95,11 +112,13 @@ mod unix {
                         {
                             let _ = stream.shutdown(Shutdown::Both);
                         }
+                        break;
                     }
                 })
                 .map_err(|_| CliError("signal supervision refused"))?;
             Ok(Self {
                 requested,
+                restart_requested,
                 active_stream,
                 handle,
                 thread: Some(thread),
@@ -108,6 +127,10 @@ mod unix {
 
         fn requested(&self) -> bool {
             self.requested.load(Ordering::Acquire)
+        }
+
+        fn take_restart_requested(&self) -> bool {
+            self.restart_requested.swap(false, Ordering::AcqRel)
         }
 
         fn track(&self, stream: &UnixStream) -> Result<(), CliError> {
@@ -160,10 +183,12 @@ mod unix {
         "    --provider ABSOLUTE_EXECUTABLE --provider-version EXACT_VERSION \\\n",
         "    --workspace-root ABSOLUTE_DIRECTORY ",
         "--private-cwd ABSOLUTE_PRIVATE_DIRECTORY \\\n",
-        "    [--provider-arg ARG]... [--provider-env NAME=VALUE]...\n\n",
+        "    [--provider-arg ARG]... [--provider-env NAME=VALUE]... ",
+        "[--restart-on-sighup]\n\n",
         "--serve-probe explicitly runs with observed launch evidence. It does not claim the\n",
         "closed production assurance lattice. The credential establishes attribution; this\n",
         "operator profile independently grants synchronize and query semantic roles.\n",
+        "--restart-on-sighup enables bounded OperatorRequested replacement only.\n",
     );
 
     #[derive(Debug)]
@@ -184,10 +209,15 @@ mod unix {
         private_cwd: PathBuf,
         provider_arguments: Vec<String>,
         provider_environment: BTreeMap<String, String>,
+        restart_on_sighup: bool,
     }
 
     fn parse() -> Result<Option<Arguments>, CliError> {
         let values = std::env::args_os().skip(1).collect::<Vec<OsString>>();
+        parse_values(values)
+    }
+
+    fn parse_values(values: Vec<OsString>) -> Result<Option<Arguments>, CliError> {
         if values.len() == 1 && values[0] == "--probe" {
             println!("vellum-semantic-local/0.1 unix-authenticated-session/1 probe-profile");
             return Ok(None);
@@ -207,11 +237,20 @@ mod unix {
         let mut private_cwd = None;
         let mut provider_arguments = Vec::new();
         let mut provider_environment = BTreeMap::new();
+        let mut restart_on_sighup = false;
         let mut cursor = 1;
         while cursor < values.len() {
             let flag = values[cursor]
                 .to_str()
                 .ok_or(CliError("non-UTF-8 option refused"))?;
+            if flag == "--restart-on-sighup" {
+                if restart_on_sighup {
+                    return Err(CliError("duplicate restart policy refused"));
+                }
+                restart_on_sighup = true;
+                cursor += 1;
+                continue;
+            }
             let value = values
                 .get(cursor + 1)
                 .ok_or(CliError("missing option value"))?;
@@ -266,6 +305,7 @@ mod unix {
             private_cwd: private_cwd.ok_or(CliError("missing private cwd"))?,
             provider_arguments,
             provider_environment,
+            restart_on_sighup,
         }))
     }
 
@@ -336,6 +376,182 @@ mod unix {
         }
     }
 
+    type StandaloneActor = LocalOrderedManagedTimedSemanticActorV1<
+        LocalSupervisedOrderedLspCandidateAdapterV1<
+            Generations,
+            RustAnalyzerReadiness,
+            StandaloneDocuments,
+        >,
+        MonotonicClock,
+    >;
+
+    fn retire_failed_candidate(
+        candidate: LocalSupervisedOrderedLspCandidateV1<
+            Generations,
+            RustAnalyzerReadiness,
+            StandaloneDocuments,
+        >,
+    ) -> bool {
+        let mut cleanup = candidate.into_cleanup();
+        let graceful_deadline = Instant::now() + Duration::from_secs(7);
+        let terminal_deadline = Instant::now() + Duration::from_secs(14);
+        loop {
+            let state = cleanup.drive_once();
+            if matches!(
+                state,
+                LocalSemanticRetirementStateV1::GracefulConfirmed
+                    | LocalSemanticRetirementStateV1::ForcedConfirmed
+                    | LocalSemanticRetirementStateV1::CleanupFailed
+            ) {
+                return cleanup.try_into_terminal_receipt().is_ok();
+            }
+            if Instant::now() >= graceful_deadline
+                && state != LocalSemanticRetirementStateV1::ForcedShutdownPending
+            {
+                cleanup.escalate();
+            }
+            if Instant::now() >= terminal_deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn replace_provider_after_operator_request(
+        actor: StandaloneActor,
+        profile: SemanticProviderProfileV1,
+        protocol: &LspProviderProtocolProfileV1,
+        session_limits: SemanticSessionLimitsV1,
+        service_limits: SemanticServiceLimitsV1,
+        controller: &mut SemanticProviderRestartControllerV1,
+    ) -> Result<(StandaloneActor, SemanticSessionActorSenderV1), CliError> {
+        let SemanticProviderRestartDecisionV1::Backoff(backoff) = controller
+            .request_replacement(SemanticProviderRestartCauseV1::OperatorRequested)
+            .map_err(|_| CliError("semantic replacement policy refused"))?
+        else {
+            return Err(CliError("semantic replacement policy fused"));
+        };
+        std::thread::sleep(backoff.delay());
+        let launch = controller
+            .backoff_elapsed(backoff)
+            .map_err(|_| CliError("semantic replacement backoff uncertain"))?;
+
+        let suspension_deadline = Instant::now() + Duration::from_secs(5);
+        let mut suspension = match actor.try_begin_suspension() {
+            Ok(suspension) => suspension,
+            Err(_actor) => {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic replacement suspension refused"));
+            }
+        };
+        let suspended = loop {
+            match suspension.try_advance() {
+                LocalOrderedTimedSuspensionAdvanceV1::Pending(pending) => suspension = *pending,
+                LocalOrderedTimedSuspensionAdvanceV1::Ready(runtime) => break *runtime,
+                LocalOrderedTimedSuspensionAdvanceV1::Failed(_) => {
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError("semantic replacement suspension uncertain"));
+                }
+            }
+            if Instant::now() >= suspension_deadline {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic replacement suspension exhausted"));
+            }
+            std::thread::yield_now();
+        };
+
+        let qualified = match qualify_provider_launch_v1(profile) {
+            Ok(qualified) => qualified,
+            Err(_failure) => {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic replacement qualification refused"));
+            }
+        };
+        let generation_seed = launch.generation().get().saturating_sub(1);
+        let mut candidate =
+            match launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1(
+                qualified,
+                Generations(generation_seed),
+                RustAnalyzerReadiness(LspIndexReadinessV1::Indexing),
+                StandaloneDocuments::default(),
+                LspLimitsV1::reference(),
+                SemanticLimitsV1::reference(),
+                session_limits,
+                service_limits,
+                protocol,
+            ) {
+                Ok(candidate) => candidate,
+                Err(_failure) => {
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError("semantic replacement launch refused"));
+                }
+            };
+        let readiness_deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            match candidate.drive_once() {
+                LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
+                LocalSupervisedOrderedLspCandidateDriveV1::Pending => {}
+                LocalSupervisedOrderedLspCandidateDriveV1::PollFailed(_)
+                | LocalSupervisedOrderedLspCandidateDriveV1::UnexpectedCompletion => {
+                    let _ = retire_failed_candidate(candidate);
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError("semantic replacement candidate contaminated"));
+                }
+            }
+            if Instant::now() >= readiness_deadline {
+                let _ = retire_failed_candidate(candidate);
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic replacement readiness exhausted"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let mut installed = match suspended.try_install_ready_candidate(candidate) {
+            Ok(installed) => installed,
+            Err(_failure) => {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic replacement installation refused"));
+            }
+        };
+        let cleanup_token = controller
+            .confirm_replacement_installed(launch)
+            .map_err(|_| CliError("semantic replacement installation uncertain"))?;
+        let graceful_deadline = Instant::now() + Duration::from_secs(7);
+        let terminal_deadline = Instant::now() + Duration::from_secs(14);
+        let (suspended, receipt, candidate_usage) = loop {
+            let state = installed.drive_displaced_once();
+            match installed.try_into_reconciled() {
+                Ok(reconciled) => break reconciled,
+                Err(returned) => installed = *returned,
+            }
+            if Instant::now() >= graceful_deadline
+                && state != LocalSemanticRetirementStateV1::ForcedShutdownPending
+            {
+                installed.escalate_displaced();
+            }
+            if Instant::now() >= terminal_deadline {
+                let _ = controller.fuse_cleanup_uncertain(cleanup_token);
+                return Err(CliError("semantic replacement cleanup exhausted"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        if !matches!(
+            controller.complete_cleanup(cleanup_token, &receipt),
+            Ok(SemanticProviderRestartDecisionV1::Running { .. })
+        ) {
+            return Err(CliError("semantic replacement cleanup uncertain"));
+        }
+        let (actor, sender) = suspended
+            .resume()
+            .map_err(|_| CliError("semantic replacement resume refused"))?;
+        eprintln!(
+            "vellum-semantic-local: provider_replaced restart={:?} candidate={candidate_usage:?}",
+            controller.usage()
+        );
+        Ok((actor, sender))
+    }
+
     struct OperatorRolePolicy;
     impl AuthenticatedSemanticRolePortV1 for OperatorRolePolicy {
         type Context = ();
@@ -403,6 +619,7 @@ mod unix {
             SemanticProcessLimitsV1::reference(),
         )
         .map_err(|_| CliError("provider profile refused"))?;
+        let restart_profile = profile.clone();
         let qualified = qualify_provider_launch_v1(profile)
             .map_err(|_| CliError("provider qualification refused"))?;
         let protocol = LspProviderProtocolProfileV1::try_new_with_readiness_schema(
@@ -439,18 +656,41 @@ mod unix {
             &protocol,
         )
         .map_err(|_| CliError("semantic provider launch refused"))?;
-        let (actor, sender) = prepared
+        let (mut actor, mut sender) = prepared
             .spawn_managed(SemanticSessionActorLimitsV1::reference())
             .map_err(|_| CliError("semantic actor launch refused"))?;
         let listener = SemanticLocalListenerV1::try_bind(arguments.socket)
             .map_err(|_| CliError("semantic socket bind refused"))?;
-        let shutdown = SignalSupervisor::install()?;
+        let shutdown = SignalSupervisor::install(arguments.restart_on_sighup)?;
+        let mut restart_controller = arguments.restart_on_sighup.then(|| {
+            SemanticProviderRestartControllerV1::new_running(
+                SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(250)])
+                    .expect("fixed standalone restart policy is valid"),
+                NonZeroU64::new(1).unwrap(),
+            )
+        });
         let mut rotation_candidate = None;
         eprintln!("vellum-semantic-local: endpoint_ready probe-profile provider_indexing");
         'serve: loop {
             let mut stream = loop {
                 if shutdown.requested() {
                     break 'serve;
+                }
+                if shutdown.take_restart_requested() {
+                    let controller = restart_controller
+                        .as_mut()
+                        .ok_or(CliError("semantic replacement policy absent"))?;
+                    let replacement = replace_provider_after_operator_request(
+                        actor,
+                        restart_profile.clone(),
+                        &protocol,
+                        session_limits,
+                        service_limits,
+                        controller,
+                    )?;
+                    actor = replacement.0;
+                    sender = replacement.1;
+                    continue;
                 }
                 if let Some(next) = rotation_candidate {
                     if let Ok(ticket) = actor.try_drive_provider() {
@@ -707,7 +947,9 @@ mod unix {
 
     #[cfg(test)]
     mod tests {
-        use super::{StandaloneDocuments, provider_version_token};
+        use std::ffi::OsString;
+
+        use super::{StandaloneDocuments, parse_values, provider_version_token};
         use vellum_adapter_semantic_lsp::{
             LspLimitsV1, LspVirtualDocumentIssuerV1, LspVirtualDocumentV1,
         };
@@ -737,6 +979,45 @@ mod unix {
             );
             assert_eq!(documents.issue(first), Some(first_locator.clone()));
             assert_ne!(documents.issue(second), Some(first_locator));
+        }
+
+        fn service_arguments() -> Vec<OsString> {
+            [
+                "--serve-probe",
+                "--socket",
+                "/private/tmp/vellum.sock",
+                "--credential",
+                "/private/tmp/vellum.credential",
+                "--provider",
+                "/private/tmp/rust-analyzer",
+                "--provider-version",
+                "1.0.0",
+                "--workspace-root",
+                "/private/tmp/workspace",
+                "--private-cwd",
+                "/private/tmp/provider",
+            ]
+            .into_iter()
+            .map(OsString::from)
+            .collect()
+        }
+
+        #[test]
+        fn restart_policy_is_absent_by_default_and_requires_one_explicit_flag() {
+            let default = parse_values(service_arguments()).unwrap().unwrap();
+            assert!(!default.restart_on_sighup);
+
+            let mut opted_in = service_arguments();
+            opted_in.push(OsString::from("--restart-on-sighup"));
+            assert!(
+                parse_values(opted_in.clone())
+                    .unwrap()
+                    .unwrap()
+                    .restart_on_sighup
+            );
+
+            opted_in.push(OsString::from("--restart-on-sighup"));
+            assert!(parse_values(opted_in).is_err());
         }
     }
 }

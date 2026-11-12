@@ -706,6 +706,10 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
     let (actor, old_sender) = prepared
         .spawn_managed(SemanticSessionActorLimitsV1::reference())
         .unwrap();
+    let mut restart = SemanticProviderRestartControllerV1::new_running(
+        SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(1)]).unwrap(),
+        NonZeroU64::new(1).unwrap(),
+    );
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut observation = 700_u64;
     loop {
@@ -728,6 +732,14 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
         std::thread::sleep(Duration::from_millis(2));
     }
 
+    let SemanticProviderRestartDecisionV1::Backoff(backoff) = restart
+        .request_replacement(SemanticProviderRestartCauseV1::OperatorRequested)
+        .unwrap()
+    else {
+        panic!("operator replacement did not issue its one bounded backoff")
+    };
+    assert_eq!(backoff.attempt(), 1);
+    let launch = restart.backoff_elapsed(backoff).unwrap();
     let mut suspension = actor.try_begin_suspension().unwrap();
     let mut suspended = loop {
         match suspension.try_advance() {
@@ -779,6 +791,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
     );
 
     let mut installed = suspended.try_install_ready_candidate(candidate).unwrap();
+    let cleanup_token = restart.confirm_replacement_installed(launch).unwrap();
     let (next, displaced_receipt, candidate_usage) = loop {
         let _ = installed.drive_displaced_once();
         match installed.try_into_reconciled() {
@@ -797,6 +810,16 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
     );
     assert!(candidate_usage.drives > 0);
     assert_eq!(candidate_usage.ready_observations, 1);
+    assert!(matches!(
+        restart
+            .complete_cleanup(cleanup_token, &displaced_receipt)
+            .unwrap(),
+        SemanticProviderRestartDecisionV1::Running { generation }
+            if generation == NonZeroU64::new(2).unwrap()
+    ));
+    assert_eq!(restart.usage().restart_requests, 1);
+    assert_eq!(restart.usage().launches_started, 1);
+    assert_eq!(restart.usage().cleanup_confirmed, 1);
 
     suspended = next;
     let (actor, sender) = suspended.resume().unwrap();

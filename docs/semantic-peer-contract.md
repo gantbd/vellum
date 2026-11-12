@@ -303,8 +303,12 @@ derives initialization from a separately qualified workspace and admits only a
 fresh-started, pinned-ready provider. The installed runtime remains hidden until
 the displaced provider has terminal cleanup evidence; candidate refusal retains
 the exact refusal and cleanup authority, while the resumed current provider has
-its own terminal cleanup path. This product is not yet composed by the binary,
-so no CLI restart flag is advertised.
+its own terminal cleanup path. The standalone probe binary exposes one explicit
+composition: `--restart-on-sighup` classifies only SIGHUP as
+`OperatorRequested`, waits until no authenticated stream is active, applies a
+finite backoff and readiness deadline, requires terminal displaced cleanup, and
+then resumes the same broker/session state with a fresh sender. It is disabled
+by default, never replays queries, and exits permanently on uncertain progress.
 
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority

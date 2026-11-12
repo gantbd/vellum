@@ -43,7 +43,10 @@ will follow Semantic Versioning once a public release contract is selected.
   initialization, proves pinned readiness before installation, and withholds
   resumption until displaced-provider retirement is terminal. Candidate,
   displaced, and current-provider cleanup remain affine. The standalone binary
-  remains unchanged until policy can own this complete product end to end.
+  now exposes this only through explicit `--restart-on-sighup`: one SIGHUP is
+  classified as `OperatorRequested`, deferred while an authenticated stream is
+  active, and admitted through a finite backoff/readiness/cleanup policy. The
+  default remains restart-disabled; uncertainty permanently exits the process.
 - Added a separate source-built `vellum-launchd-activate` executor. An explicit
   operator approval binds exact qualified candidate/prior artifacts; every
   launchctl mutation is durably bracketed, running identity and daemon status
