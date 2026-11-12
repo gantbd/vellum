@@ -14,6 +14,21 @@ if (
   || contract.targetSibling !== '../vellum-semantic-mcp'
   || contract.publication !== 'none'
 ) throw new Error('unsupported semantic MCP extraction contract');
+const expectedTools = [
+  'vellum.semantic.symbols',
+  'vellum.semantic.definition',
+  'vellum.semantic.references',
+  'vellum.semantic.implementations',
+  'vellum.semantic.incoming_calls',
+  'vellum.semantic.outgoing_calls',
+  'vellum.semantic.diagnostics',
+  'vellum.semantic.type_at_point',
+  'vellum.semantic.plan_rename',
+  'vellum.semantic.release_request',
+];
+if (JSON.stringify(contract.protocol?.tools) !== JSON.stringify(expectedTools)) {
+  throw new Error('semantic MCP extraction catalog drifted from the qualified ten-tool surface');
+}
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {

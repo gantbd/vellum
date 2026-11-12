@@ -2,7 +2,7 @@
 //! partition-bound semantic client.
 //!
 //! This crate owns no provider, process, workspace, authentication, clock, edit,
-//! or transport authority. Seven query tools submit revision/index-bound read
+//! or transport authority. Nine query tools submit revision/index-bound read
 //! or rename-plan requests through an already-bound client port; one lifecycle
 //! tool explicitly releases a retained terminal result. Rename application is
 //! deliberately absent. The library is prepared for a later

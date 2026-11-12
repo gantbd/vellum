@@ -433,7 +433,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-mcp/src",
         "fileCount": 3,
-        "sha256": "5f70628f9acae272428cfb286b19e004dc5680053151f8b55b3f54afd0e7d060"
+        "sha256": "3fb13dfaa4db1b1d90992ab0666cbc5c62a513657f14e2f5d96921c18462c025"
       }
     },
     {
@@ -635,7 +635,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-semantic-mcp/src",
         "fileCount": 4,
-        "sha256": "ba046426dcf77ec17c9aacfba2cc491fa57dbdc265e575dbab9602c1ea9e6760"
+        "sha256": "2e756331c225f8d563b8d4c3de286f19baf0e53f4c86e518ecd22cd24994ffea"
       }
     },
     {

@@ -67,6 +67,8 @@
       "vellum.semantic.definition",
       "vellum.semantic.references",
       "vellum.semantic.implementations",
+      "vellum.semantic.incoming_calls",
+      "vellum.semantic.outgoing_calls",
       "vellum.semantic.diagnostics",
       "vellum.semantic.type_at_point",
       "vellum.semantic.plan_rename",
