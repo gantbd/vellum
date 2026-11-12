@@ -11,6 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 const PROTOCOL_VERSION = '2026-07-28';
 const ORDINARY_TOOLS = [
   'vellum.snapshot',
+  'vellum.save',
   'vellum.replace',
   'vellum.replace_and_save',
   'vellum.workspace_edit',
@@ -73,7 +74,7 @@ const startDaemon = async (directory, credential) => {
   const control = path.join(directory, 'control.sock');
   const source = path.join(directory, 'source.txt');
   fs.writeFileSync(source, 'alpha', { mode: 0o600 });
-  const args = ['--socket', socket, '--control', control, '--allow-edit'];
+  const args = ['--socket', socket, '--control', control, '--allow-edit', '--allow-save'];
   if (credential !== undefined) args.push('--credential', credential);
   args.push('--', source);
   const child = spawn(daemonBinary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -172,12 +173,26 @@ const qualifyClient = async ({ socket, credential, negotiation, durable, locator
     assert.equal(edit.structuredContent?.persistence, 'not_attempted');
     assert.equal(edit.structuredContent?.documents?.[0]?.text, 'bravo');
 
+    const save = await withTimeout(client.callTool({
+      name: 'vellum.save',
+      arguments: {
+        workspace: Number(match[1]),
+        document: Number(match[2]),
+        expected_revision: edit.structuredContent?.documents?.[0]?.revision,
+      },
+    }), 'document save');
+    assert.equal(save.isError, false);
+    assert.equal(save.structuredContent?.kind, 'saved');
+    assert.equal(save.structuredContent?.persistence?.status, 'durable');
+    assert.equal(fs.readFileSync(locator, 'utf8'), 'bravo');
+
     const edited = await withTimeout(client.readResource({ uri: document.uri }), 'edited resources/read');
     assert.equal(edited.contents[0]?.text, 'bravo');
     return {
       toolCount: names.length,
       resourceCount: resources.resources.length,
       workspaceEdit: 'observed',
+      save: 'durable',
     };
   } finally {
     await withTimeout(client.close(), 'official client close');

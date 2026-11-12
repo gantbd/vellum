@@ -930,6 +930,29 @@ pub enum EditPersistenceV1 {
     NotAttempted(RefusalV1),
 }
 
+impl EditPersistenceV1 {
+    /// Classifies one completed save receipt into the closed persistence
+    /// evidence algebra shared by services and protocol projections.
+    pub fn classify(receipt: SaveReceiptV1) -> Self {
+        if receipt.outcome_unknown
+            || receipt.application == SaveApplicationV1::Unknown
+            || !receipt.no_future_effects
+            || !receipt.quiescent
+        {
+            Self::Unknown(receipt)
+        } else if receipt.application == SaveApplicationV1::Written
+            && receipt.synchronization == SaveSynchronizationV1::Succeeded
+            && !receipt.adapter_failure
+            && !receipt.cleanup_failed
+            && receipt.baseline_published
+        {
+            Self::Durable(receipt)
+        } else {
+            Self::NotDurable(receipt)
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct ReplaceAndSaveReceiptV1 {
     pub snapshot: SnapshotV1,

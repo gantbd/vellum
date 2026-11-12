@@ -29,6 +29,7 @@ use vellum_sdk_client::transport::{AuthenticatedUnixConnector, RemoteTransport};
 
 pub const PROTOCOL_VERSION: &str = "2026-07-28";
 pub const SNAPSHOT_TOOL: &str = "vellum.snapshot";
+pub const SAVE_TOOL: &str = "vellum.save";
 pub const REPLACE_TOOL: &str = "vellum.replace";
 pub const REPLACE_AND_SAVE_TOOL: &str = "vellum.replace_and_save";
 pub const WORKSPACE_EDIT_TOOL: &str = "vellum.workspace_edit";
@@ -113,6 +114,12 @@ pub struct McpUsage {
     pub tool_call_micros_max: u64,
     pub protocol_errors: u64,
     pub tool_errors: u64,
+    pub save_requests: u64,
+    pub save_replays: u64,
+    pub save_durable: u64,
+    pub save_not_durable: u64,
+    pub save_unknown: u64,
+    pub save_refused: u64,
     pub durable_executes: u64,
     pub durable_lookups: u64,
     pub durable_retirements: u64,
@@ -144,7 +151,7 @@ pub struct McpServer<T> {
     client: Client<T>,
     limits: McpLimits,
     usage: McpUsage,
-    pending_durable_edit: Option<PendingDurableEdit>,
+    pending_ordinary_effect: Option<PendingOrdinaryEffect>,
     next_operation: u64,
     durable_projection: bool,
 }
@@ -158,6 +165,29 @@ struct PendingDurableEdit {
     end: u64,
     inserted: String,
     stage: DurableEditStage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingSave {
+    operation: u64,
+    document: WorkspaceDocumentIdV1,
+    expected_revision: u64,
+    stage: DurableEditStage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PendingOrdinaryEffect {
+    Save(PendingSave),
+    ReplaceAndSave(PendingDurableEdit),
+}
+
+impl PendingOrdinaryEffect {
+    const fn operation(&self) -> u64 {
+        match self {
+            Self::Save(pending) => pending.operation,
+            Self::ReplaceAndSave(pending) => pending.operation,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,7 +217,7 @@ impl<T: ServicePort> McpServer<T> {
             client,
             limits,
             usage: McpUsage::default(),
-            pending_durable_edit: None,
+            pending_ordinary_effect: None,
             next_operation: 1,
             durable_projection,
         })
@@ -368,6 +398,16 @@ impl<T: ServicePort> McpServer<T> {
             SNAPSHOT_TOOL => {
                 return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
             }
+            SAVE_TOOL => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some((document, expected_revision, operation)) = save_arguments(arguments)
+                else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                return self.save_result(id, document, expected_revision, operation);
+            }
             REPLACE_TOOL => {
                 let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
                     return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
@@ -511,10 +551,10 @@ impl<T: ServicePort> McpServer<T> {
                     &mut self.usage.tool_errors,
                     &mut self.usage.counter_saturated,
                 );
-                if let Some(pending) = &self.pending_durable_edit {
+                if let Some(pending) = &self.pending_ordinary_effect {
                     success(
                         id,
-                        tool_error_with_operation(access_code(error), pending.operation),
+                        tool_error_with_operation(access_code(error), pending.operation()),
                     )
                 } else {
                     success(id, tool_error(access_code(error)))
@@ -736,6 +776,164 @@ impl<T: ServicePort> McpServer<T> {
         }
     }
 
+    fn save_result(
+        &mut self,
+        id: Value,
+        document: WorkspaceDocumentIdV1,
+        expected_revision: u64,
+        operation: Option<u64>,
+    ) -> Value {
+        bump(
+            &mut self.usage.save_requests,
+            &mut self.usage.counter_saturated,
+        );
+        match self.save_at_revision(document, expected_revision, operation) {
+            Ok(ReplyV1::Accepted(OutcomeV1::Saved(receipt))) => {
+                let persistence = EditPersistenceV1::classify(receipt);
+                let counter = match persistence {
+                    EditPersistenceV1::Durable(_) => &mut self.usage.save_durable,
+                    EditPersistenceV1::NotDurable(_) => &mut self.usage.save_not_durable,
+                    EditPersistenceV1::Unknown(_) => &mut self.usage.save_unknown,
+                    EditPersistenceV1::NotAttempted(_) => {
+                        unreachable!("ordinary save either returns a receipt or refuses")
+                    }
+                };
+                bump(counter, &mut self.usage.counter_saturated);
+                success(
+                    id,
+                    tool_complete(
+                        "saved",
+                        json!({
+                            "kind": "saved",
+                            "workspace": document.workspace().get(),
+                            "document": document.get(),
+                            "source_revision": expected_revision,
+                            "persistence": edit_persistence_json(persistence),
+                        }),
+                    ),
+                )
+            }
+            Ok(ReplyV1::Refused(refusal)) => {
+                bump(
+                    &mut self.usage.save_refused,
+                    &mut self.usage.counter_saturated,
+                );
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(refusal_code(refusal)))
+            }
+            Ok(ReplyV1::Accepted(_)) => {
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error("service_malformed"))
+            }
+            Err(error) => {
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                let result = self.pending_ordinary_effect.as_ref().map_or_else(
+                    || tool_error(access_code(error)),
+                    |pending| tool_error_with_operation(access_code(error), pending.operation()),
+                );
+                success(id, result)
+            }
+        }
+    }
+
+    fn save_at_revision(
+        &mut self,
+        document: WorkspaceDocumentIdV1,
+        expected_revision: u64,
+        operation: Option<u64>,
+    ) -> Result<ReplyV1, ServiceAccessErrorV1> {
+        let (operation_id, mut stage) = match self.pending_ordinary_effect.clone() {
+            Some(PendingOrdinaryEffect::Save(pending))
+                if operation == Some(pending.operation)
+                    && pending.document == document
+                    && pending.expected_revision == expected_revision =>
+            {
+                bump(
+                    &mut self.usage.save_replays,
+                    &mut self.usage.counter_saturated,
+                );
+                (pending.operation, pending.stage)
+            }
+            Some(_) => return Err(ServiceAccessErrorV1::OutcomeUnknown),
+            None => {
+                if operation.is_some() {
+                    return Err(ServiceAccessErrorV1::Malformed);
+                }
+                if self.client.pending_request().is_some() {
+                    return Err(ServiceAccessErrorV1::OutcomeUnknown);
+                }
+                if self.next_operation == 0 {
+                    return Ok(ReplyV1::Refused(RefusalV1::CounterExhausted));
+                }
+                (self.next_operation, DurableEditStage::Select)
+            }
+        };
+
+        loop {
+            let result = match stage.clone() {
+                DurableEditStage::Select => self.client.select_document(document),
+                DurableEditStage::Snapshot => self.client.snapshot(),
+                DurableEditStage::Apply(command) => self.client.send(command),
+            };
+            let reply = match result {
+                Ok(reply) => reply,
+                Err(error) => {
+                    if self.client.pending_request().is_some() {
+                        if operation_id == self.next_operation {
+                            self.next_operation = self.next_operation.checked_add(1).unwrap_or(0);
+                        }
+                        self.pending_ordinary_effect =
+                            Some(PendingOrdinaryEffect::Save(PendingSave {
+                                operation: operation_id,
+                                document,
+                                expected_revision,
+                                stage,
+                            }));
+                    } else if !matches!(
+                        self.pending_ordinary_effect,
+                        Some(PendingOrdinaryEffect::Save(_))
+                    ) {
+                        self.pending_ordinary_effect = None;
+                    }
+                    return Err(error);
+                }
+            };
+            self.pending_ordinary_effect = None;
+            match (stage, reply) {
+                (
+                    DurableEditStage::Select,
+                    ReplyV1::Accepted(OutcomeV1::DocumentSelected(selected)),
+                ) if selected == document => stage = DurableEditStage::Snapshot,
+                (DurableEditStage::Select, ReplyV1::Refused(refusal))
+                | (DurableEditStage::Snapshot, ReplyV1::Refused(refusal))
+                | (DurableEditStage::Apply(_), ReplyV1::Refused(refusal)) => {
+                    return Ok(ReplyV1::Refused(refusal));
+                }
+                (DurableEditStage::Snapshot, ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)))
+                    if snapshot.revision == expected_revision =>
+                {
+                    stage = DurableEditStage::Apply(CommandV1::Save {
+                        expected: snapshot.witness,
+                    });
+                }
+                (DurableEditStage::Snapshot, ReplyV1::Accepted(OutcomeV1::Snapshot(_))) => {
+                    return Ok(ReplyV1::Refused(RefusalV1::Stale));
+                }
+                (DurableEditStage::Apply(_), reply) => return Ok(reply),
+                _ => return Err(ServiceAccessErrorV1::Malformed),
+            }
+        }
+    }
+
     fn replace_at_revision(
         &mut self,
         document: WorkspaceDocumentIdV1,
@@ -788,25 +986,30 @@ impl<T: ServicePort> McpServer<T> {
         inserted: String,
         operation: Option<u64>,
     ) -> Result<ReplyV1, ServiceAccessErrorV1> {
-        let (operation_id, mut stage) = if let Some(pending) = self.pending_durable_edit.clone() {
-            if operation != Some(pending.operation)
-                || pending.document != document
-                || pending.expected_revision != expected_revision
-                || pending.start != start
-                || pending.end != end
-                || pending.inserted != inserted
+        let (operation_id, mut stage) = match self.pending_ordinary_effect.clone() {
+            Some(PendingOrdinaryEffect::ReplaceAndSave(pending))
+                if operation == Some(pending.operation)
+                    && pending.document == document
+                    && pending.expected_revision == expected_revision
+                    && pending.start == start
+                    && pending.end == end
+                    && pending.inserted == inserted =>
             {
-                return Err(ServiceAccessErrorV1::OutcomeUnknown);
+                (pending.operation, pending.stage)
             }
-            (pending.operation, pending.stage)
-        } else {
-            if operation.is_some() {
-                return Err(ServiceAccessErrorV1::Malformed);
+            Some(_) => return Err(ServiceAccessErrorV1::OutcomeUnknown),
+            None => {
+                if operation.is_some() {
+                    return Err(ServiceAccessErrorV1::Malformed);
+                }
+                if self.client.pending_request().is_some() {
+                    return Err(ServiceAccessErrorV1::OutcomeUnknown);
+                }
+                if self.next_operation == 0 {
+                    return Ok(ReplyV1::Refused(RefusalV1::CounterExhausted));
+                }
+                (self.next_operation, DurableEditStage::Select)
             }
-            if self.next_operation == 0 {
-                return Ok(ReplyV1::Refused(RefusalV1::CounterExhausted));
-            }
-            (self.next_operation, DurableEditStage::Select)
         };
 
         loop {
@@ -822,22 +1025,23 @@ impl<T: ServicePort> McpServer<T> {
                         if operation_id == self.next_operation {
                             self.next_operation = self.next_operation.checked_add(1).unwrap_or(0);
                         }
-                        self.pending_durable_edit = Some(PendingDurableEdit {
-                            operation: operation_id,
-                            document,
-                            expected_revision,
-                            start,
-                            end,
-                            inserted,
-                            stage,
-                        });
+                        self.pending_ordinary_effect =
+                            Some(PendingOrdinaryEffect::ReplaceAndSave(PendingDurableEdit {
+                                operation: operation_id,
+                                document,
+                                expected_revision,
+                                start,
+                                end,
+                                inserted,
+                                stage,
+                            }));
                     } else {
-                        self.pending_durable_edit = None;
+                        self.pending_ordinary_effect = None;
                     }
                     return Err(error);
                 }
             };
-            self.pending_durable_edit = None;
+            self.pending_ordinary_effect = None;
             match (stage, reply) {
                 (
                     DurableEditStage::Select,
@@ -1208,6 +1412,24 @@ fn tools_result(durable_projection: bool) -> Value {
             "inputSchema": document_input_schema(),
             "outputSchema": tool_output_schema("snapshot"),
             "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+        }),
+        json!({
+            "name": SAVE_TOOL,
+            "title": "Save an exact Vellum document revision",
+            "description": "Persist one current document revision and return explicit durable, non-durable, or unknown evidence. After an uncertain transport result, retry only with the returned operation and identical arguments on this stdio session.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace": {"type": "integer", "minimum": 1},
+                    "document": {"type": "integer", "minimum": 1},
+                    "expected_revision": {"type": "integer", "minimum": 0},
+                    "operation": {"type": "string", "maxLength": 32}
+                },
+                "required": ["workspace", "document", "expected_revision"],
+                "additionalProperties": false
+            },
+            "outputSchema": save_tool_output_schema(),
+            "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
         }),
         json!({
             "name": REPLACE_TOOL,
@@ -1758,23 +1980,7 @@ fn durable_tool_output_schema() -> Value {
                     "kind": {"type": "string", "enum": ["replaced_and_saved"]},
                     "revision": {"type": "integer", "minimum": 0},
                     "text": {"type": "string"},
-                    "persistence": {
-                        "type": "object",
-                        "properties": {
-                            "status": {"type": "string", "enum": ["durable", "not_durable", "unknown", "not_attempted"]},
-                            "application": {"type": ["string", "null"]},
-                            "synchronization": {"type": ["string", "null"]},
-                            "no_future_effects": {"type": ["boolean", "null"]},
-                            "quiescent": {"type": ["boolean", "null"]},
-                            "adapter_failure": {"type": ["boolean", "null"]},
-                            "cleanup_failed": {"type": ["boolean", "null"]},
-                            "baseline_published": {"type": ["boolean", "null"]},
-                            "outcome_unknown": {"type": ["boolean", "null"]},
-                            "refusal": {"type": ["string", "null"]}
-                        },
-                        "required": ["status", "application", "synchronization", "no_future_effects", "quiescent", "adapter_failure", "cleanup_failed", "baseline_published", "outcome_unknown", "refusal"],
-                        "additionalProperties": false
-                    }
+                    "persistence": edit_persistence_output_schema()
                 },
                 "required": ["kind", "revision", "text", "persistence"],
                 "additionalProperties": false
@@ -1792,12 +1998,78 @@ fn durable_tool_output_schema() -> Value {
     })
 }
 
+fn save_tool_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            closed_schema(
+                &["kind", "workspace", "document", "source_revision", "persistence"],
+                json!({
+                    "kind": {"const": "saved"},
+                    "workspace": nonzero_integer_schema(),
+                    "document": nonzero_integer_schema(),
+                    "source_revision": {"type": "integer", "minimum": 0},
+                    "persistence": edit_persistence_output_schema()
+                }),
+            ),
+            closed_schema(
+                &["code"],
+                json!({
+                    "code": {"type": "string", "enum": TOOL_ERROR_CODES},
+                    "operation": {"type": "string", "maxLength": 32}
+                }),
+            )
+        ]
+    })
+}
+
+fn edit_persistence_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "enum": ["durable", "not_durable", "unknown", "not_attempted"]},
+            "application": {"type": ["string", "null"]},
+            "synchronization": {"type": ["string", "null"]},
+            "no_future_effects": {"type": ["boolean", "null"]},
+            "quiescent": {"type": ["boolean", "null"]},
+            "adapter_failure": {"type": ["boolean", "null"]},
+            "cleanup_failed": {"type": ["boolean", "null"]},
+            "baseline_published": {"type": ["boolean", "null"]},
+            "outcome_unknown": {"type": ["boolean", "null"]},
+            "refusal": {"type": ["string", "null"]}
+        },
+        "required": ["status", "application", "synchronization", "no_future_effects", "quiescent", "adapter_failure", "cleanup_failed", "baseline_published", "outcome_unknown", "refusal"],
+        "additionalProperties": false
+    })
+}
+
 fn document_arguments(arguments: &Map<String, Value>) -> Option<WorkspaceDocumentIdV1> {
     if !only_keys(arguments, &["workspace", "document"]) {
         return None;
     }
     let workspace = WorkspaceIdV1::new(arguments.get("workspace")?.as_u64()?)?;
     WorkspaceDocumentIdV1::new(workspace, arguments.get("document")?.as_u64()?)
+}
+
+fn save_arguments(
+    arguments: &Map<String, Value>,
+) -> Option<(WorkspaceDocumentIdV1, u64, Option<u64>)> {
+    if !arguments.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "workspace" | "document" | "expected_revision" | "operation"
+        )
+    }) || !matches!(arguments.len(), 3 | 4)
+    {
+        return None;
+    }
+    let workspace = WorkspaceIdV1::new(arguments.get("workspace")?.as_u64()?)?;
+    let document = WorkspaceDocumentIdV1::new(workspace, arguments.get("document")?.as_u64()?)?;
+    let expected_revision = arguments.get("expected_revision")?.as_u64()?;
+    let operation = match arguments.get("operation") {
+        None => None,
+        Some(value) => Some(decode_operation(value.as_str()?)?),
+    };
+    Some((document, expected_revision, operation))
 }
 
 fn locator_argument(arguments: &Map<String, Value>) -> Option<String> {
@@ -3069,7 +3341,7 @@ mod durable_projection_tests {
         }))
         .unwrap();
         let reply: Value = serde_json::from_slice(&server.handle(&list).unwrap()).unwrap();
-        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 7);
+        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 8);
         for tool in [
             DURABLE_EXECUTE_TOOL,
             DURABLE_RECEIPT_TOOL,
@@ -3151,7 +3423,7 @@ mod durable_projection_tests {
     fn durable_discovery_describes_the_exact_closed_algebra() {
         let catalog = tools_result(true);
         let tools = catalog["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
         let execute = tools
             .iter()
             .find(|tool| tool["name"] == DURABLE_EXECUTE_TOOL)

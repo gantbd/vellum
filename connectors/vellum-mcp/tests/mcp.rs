@@ -2,8 +2,8 @@ use serde_json::{Value, json};
 use std::{collections::VecDeque, io::BufReader};
 use vellum_mcp::{
     BoundedLine, CHANGES_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
-    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
-    read_bounded_line,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SAVE_TOOL, SNAPSHOT_TOOL,
+    WORKSPACE_EDIT_TOOL, read_bounded_line,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -94,14 +94,237 @@ fn current_protocol_discovery_and_catalog_are_complete_deterministic_and_private
         json!({"jsonrpc":"2.0", "id":"list", "method":"tools/list", "params":{"_meta":meta()}}),
     );
     assert_eq!(list["result"]["tools"][0]["name"], SNAPSHOT_TOOL);
-    assert_eq!(list["result"]["tools"][1]["name"], REPLACE_TOOL);
-    assert_eq!(list["result"]["tools"][2]["name"], REPLACE_AND_SAVE_TOOL);
+    assert_eq!(list["result"]["tools"][1]["name"], SAVE_TOOL);
     assert_eq!(
-        list["result"]["tools"][1]["inputSchema"]["additionalProperties"],
+        list["result"]["tools"][1]["annotations"]["destructiveHint"],
+        true
+    );
+    assert_eq!(list["result"]["tools"][2]["name"], REPLACE_TOOL);
+    assert_eq!(list["result"]["tools"][3]["name"], REPLACE_AND_SAVE_TOOL);
+    assert_eq!(
+        list["result"]["tools"][2]["inputSchema"]["additionalProperties"],
         false
     );
     assert_eq!(server.usage().discoveries, 1);
     assert_eq!(server.usage().tool_lists, 1);
+}
+
+#[test]
+fn workspace_edit_revision_can_be_saved_with_closed_persistence_evidence() {
+    let edited = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "omega".into(),
+    };
+    let persistence = SaveReceiptV1 {
+        application: SaveApplicationV1::Written,
+        synchronization: SaveSynchronizationV1::Succeeded,
+        no_future_effects: true,
+        quiescent: true,
+        adapter_failure: false,
+        cleanup_failed: false,
+        baseline_published: true,
+        outcome_unknown: false,
+    };
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(
+            WorkspaceEditReceiptV1 {
+                workspace: WorkspaceIdV1::new(7).unwrap(),
+                generation: 9,
+                documents: vec![WorkspaceEditedDocumentV1 {
+                    document: document(),
+                    snapshot: edited.clone(),
+                }],
+            },
+        ))),
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(edited))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Saved(persistence))),
+    ]);
+
+    let edit = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"edit", "method":"tools/call", "params":{"_meta":meta(), "name":WORKSPACE_EDIT_TOOL, "arguments":{"documents":[{"workspace":7, "document":11, "expected_revision":4, "replacements":[{"start":0, "end":5, "inserted":"omega"}]}]}}}),
+    );
+    let revision = edit["result"]["structuredContent"]["documents"][0]["revision"]
+        .as_u64()
+        .unwrap();
+    let saved = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"save", "method":"tools/call", "params":{"_meta":meta(), "name":SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":revision}}}),
+    );
+
+    assert_eq!(saved["result"]["structuredContent"]["kind"], "saved");
+    assert_eq!(saved["result"]["structuredContent"]["source_revision"], 5);
+    assert_eq!(
+        saved["result"]["structuredContent"]["persistence"]["status"],
+        "durable"
+    );
+    assert_eq!(
+        saved["result"]["structuredContent"]["persistence"]["application"],
+        "written"
+    );
+
+    let transport = server.into_client().into_transport();
+    assert!(matches!(
+        transport.requests[3].command,
+        CommandV1::Save { expected } if expected == VersionWitness::new(8).unwrap()
+    ));
+}
+
+#[test]
+fn save_refuses_stale_before_effect_and_replays_only_the_exact_uncertain_request() {
+    let snapshot = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "omega".into(),
+    };
+    let durable = SaveReceiptV1 {
+        application: SaveApplicationV1::Written,
+        synchronization: SaveSynchronizationV1::Succeeded,
+        no_future_effects: true,
+        quiescent: true,
+        adapter_failure: false,
+        cleanup_failed: false,
+        baseline_published: true,
+        outcome_unknown: false,
+    };
+
+    let mut stale = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot.clone()))),
+    ]);
+    let refused = send(
+        &mut stale,
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":4}}}),
+    );
+    assert_eq!(refused["result"]["structuredContent"]["code"], "stale");
+    assert_eq!(stale.usage().save_requests, 1);
+    assert_eq!(stale.usage().save_refused, 1);
+    assert_eq!(stale.into_client().into_transport().requests.len(), 2);
+
+    let mut uncertain = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+        Err(ServiceAccessErrorV1::OutcomeUnknown),
+        Ok(ReplyV1::Accepted(OutcomeV1::Saved(durable))),
+    ]);
+    let mut request = json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":5}}});
+    let unknown = send(&mut uncertain, request.clone());
+    assert_eq!(
+        unknown["result"]["structuredContent"]["code"],
+        "service_outcome_unknown"
+    );
+    let operation = unknown["result"]["structuredContent"]["operation"].clone();
+
+    let mut changed = request.clone();
+    changed["id"] = json!(3);
+    changed["params"]["arguments"]["expected_revision"] = json!(6);
+    changed["params"]["arguments"]["operation"] = operation.clone();
+    let fenced = send(&mut uncertain, changed);
+    assert_eq!(
+        fenced["result"]["structuredContent"]["code"],
+        "service_outcome_unknown"
+    );
+
+    request["id"] = json!(4);
+    request["params"]["arguments"]["operation"] = operation;
+    let completed = send(&mut uncertain, request);
+    assert_eq!(
+        completed["result"]["structuredContent"]["persistence"]["status"],
+        "durable"
+    );
+    assert_eq!(uncertain.usage().save_requests, 3);
+    assert_eq!(uncertain.usage().save_replays, 1);
+    assert_eq!(uncertain.usage().save_durable, 1);
+    let transport = uncertain.into_client().into_transport();
+    assert_eq!(transport.requests[2], transport.requests[3]);
+}
+
+#[test]
+fn save_metrics_partition_definitive_non_durability_and_unknown_evidence() {
+    let snapshot = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "omega".into(),
+    };
+    let cases = [
+        (
+            SaveReceiptV1 {
+                application: SaveApplicationV1::NotWritten,
+                synchronization: SaveSynchronizationV1::NotRequested,
+                no_future_effects: true,
+                quiescent: true,
+                adapter_failure: false,
+                cleanup_failed: false,
+                baseline_published: false,
+                outcome_unknown: false,
+            },
+            "not_durable",
+        ),
+        (
+            SaveReceiptV1 {
+                application: SaveApplicationV1::Unknown,
+                synchronization: SaveSynchronizationV1::Unknown,
+                no_future_effects: false,
+                quiescent: false,
+                adapter_failure: true,
+                cleanup_failed: true,
+                baseline_published: false,
+                outcome_unknown: true,
+            },
+            "unknown",
+        ),
+    ];
+
+    for (receipt, status) in cases {
+        let mut server = server(vec![
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot.clone()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Saved(receipt))),
+        ]);
+        let reply = send(
+            &mut server,
+            json!({"jsonrpc":"2.0", "id":status, "method":"tools/call", "params":{"_meta":meta(), "name":SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":5}}}),
+        );
+        assert_eq!(
+            reply["result"]["structuredContent"]["persistence"]["status"],
+            status
+        );
+        assert_eq!(server.usage().save_requests, 1);
+        assert_eq!(server.usage().save_durable, 0);
+        assert_eq!(
+            server.usage().save_not_durable,
+            u64::from(status == "not_durable")
+        );
+        assert_eq!(server.usage().save_unknown, u64::from(status == "unknown"));
+        assert_eq!(server.usage().save_refused, 0);
+    }
+}
+
+#[test]
+fn save_never_mints_an_operation_for_an_unrelated_uncertain_request() {
+    let mut server = server(vec![Err(ServiceAccessErrorV1::OutcomeUnknown)]);
+    let first = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"snapshot", "method":"tools/call", "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":{"workspace":7, "document":11}}}),
+    );
+    assert_eq!(
+        first["result"]["structuredContent"]["code"],
+        "service_outcome_unknown"
+    );
+    assert!(first["result"]["structuredContent"]["operation"].is_null());
+
+    let save = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"save", "method":"tools/call", "params":{"_meta":meta(), "name":SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":5}}}),
+    );
+    assert_eq!(
+        save["result"]["structuredContent"]["code"],
+        "service_outcome_unknown"
+    );
+    assert!(save["result"]["structuredContent"]["operation"].is_null());
+    assert_eq!(server.into_client().into_transport().requests.len(), 1);
 }
 
 #[test]
@@ -566,6 +789,7 @@ fn modern_discovery_is_per_request_and_initialize_is_always_legacy() {
         names,
         vec![
             SNAPSHOT_TOOL,
+            SAVE_TOOL,
             REPLACE_TOOL,
             REPLACE_AND_SAVE_TOOL,
             WORKSPACE_EDIT_TOOL,

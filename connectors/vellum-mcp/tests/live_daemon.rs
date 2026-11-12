@@ -20,7 +20,8 @@ use vellum_host::authority::{AuthorityActionSetV1, AuthorityActionV1};
 use vellum_mcp::{
     CHANGES_TOOL, DURABLE_EXECUTE_TOOL, DURABLE_RECEIPT_TOOL, DURABLE_RETIRE_TOOL,
     DURABLE_STATUS_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
-    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SAVE_TOOL, SNAPSHOT_TOOL,
+    WORKSPACE_EDIT_TOOL,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -220,6 +221,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     let (ordinary_contract, authenticated_contract) = extraction_catalog();
     let ordinary_runtime = [
         SNAPSHOT_TOOL,
+        SAVE_TOOL,
         REPLACE_TOOL,
         REPLACE_AND_SAVE_TOOL,
         WORKSPACE_EDIT_TOOL,

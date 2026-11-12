@@ -39,10 +39,13 @@ per-request discovery advertises tools plus non-subscribable resources. Legacy
 `initialize` is rejected because MCP `2026-07-28` removed that handshake. Content-free
 `resources/list` pages expose only scoped workspace/document/root identities;
 `resources/read` accepts only canonical `vellum://workspace/...` identities and
-selects its scoped document within the same request. Seven ordinary tools cover
-snapshot, single-document replacement, durable replacement, atomic bounded
-multi-document workspace editing, change polling, and authority-mediated
-membership, plus exact private locator-to-identity resolution. An authenticated
+selects its scoped document within the same request. Eight ordinary tools cover
+snapshot, exact-revision save, single-document replacement, durable replacement,
+atomic bounded multi-document workspace editing, change polling, and
+authority-mediated membership, plus exact private locator-to-identity resolution.
+`vellum.save` lets a harness persist each revision returned by
+`vellum.workspace_edit`; each document save has its own persistence receipt and
+no atomic multi-document durability is implied. An authenticated
 composition adds exactly the four restart-stable
 tools named above. Prompts, tasks, HTTP transport, subscriptions,
 semantic-provider queries, and server-to-client requests are not implemented.

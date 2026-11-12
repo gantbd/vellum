@@ -79,7 +79,7 @@ available from immutable remote inputs.
 not a Vellum or extracted-peer runtime dependency. Its TypeScript dependency
 exists only to drive the built Rust daemon and MCP binaries through the
 official client API. `make check-mcp-official-client-profile` runs offline and
-adversarially qualifies the lock/SBOM policy plus the current seven ordinary
+adversarially qualifies the lock/SBOM policy plus the current eight ordinary
 and four authenticated tool expectations. It does not claim interoperability.
 
 The committed npm schema-3 lock and generated CycloneDX source SBOM close 13
@@ -93,7 +93,8 @@ the separate `npm ci --ignore-scripts` acquisition from the exact lock.
 
 The official `@modelcontextprotocol/client` 2.4.0 qualification passes against
 the shipped Rust surfaces: automatic and pinned negotiation remain on
-`2026-07-28`, the ordinary catalog contains seven tools, the authenticated
-catalog contains eleven, both workspace-edit paths complete, and both stdio
+`2026-07-28`, the ordinary catalog contains eight tools, the authenticated
+catalog contains twelve, workspace edit followed by exact-revision save
+completes durably, both workspace-edit paths complete, and both stdio
 children disconnect cleanly. This qualification exposed and closed missing
 modern cache metadata on resource reads and non-object durable input schemas.

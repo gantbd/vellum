@@ -374,6 +374,7 @@ if (mcpExtraction !== undefined) {
   }
   const expectedOrdinaryMcpTools = [
     'vellum.snapshot',
+    'vellum.save',
     'vellum.replace',
     'vellum.replace_and_save',
     'vellum.workspace_edit',
@@ -393,7 +394,7 @@ if (mcpExtraction !== undefined) {
     || JSON.stringify(mcpExtraction.protocol?.authenticatedAdditions)
       !== JSON.stringify(expectedAuthenticatedMcpAdditions)
   ) {
-    fail('MCP extraction catalog must retain seven ordinary tools plus four authenticated additions');
+    fail('MCP extraction catalog must retain eight ordinary tools plus four authenticated additions');
   }
   const blockers = mcpExtraction.immutableDependencyBlockers ?? [];
   const immutableDependencies = mcpExtraction.qualifiedImmutableDependencies ?? [];

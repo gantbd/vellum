@@ -9,8 +9,8 @@ One connection uses automatic discovery and must settle on the modern era;
 another pins the modern revision and therefore has no legacy fallback. Both
 must observe `server/discover`, exact protocol negotiation, tools, resources,
 one document read, one exact locator resolution, one snapshot call, one atomic
-workspace edit and clean stdio EOF/disconnect. The ordinary catalog is exactly
-seven tools and excludes every
+workspace edit, one exact-revision durable save and clean stdio EOF/disconnect.
+The ordinary catalog is exactly eight tools and excludes every
 restart-stable durable tool; the authenticated catalog adds exactly execute,
 receipt lookup, retirement and content-free status.
 
@@ -52,9 +52,10 @@ published client and core tarball identities and integrity values are frozen in
 `source-policy.json`.
 
 The reviewed lock and SBOM now retain 13 exact registry components. The
-qualification passes automatic and pinned modern negotiation, seven ordinary
-and eleven authenticated tools, locator resolution without path disclosure,
-resource read, snapshot, atomic workspace edit and clean EOF/disconnect.
+qualification passes automatic and pinned modern negotiation, eight ordinary
+and twelve authenticated tools, locator resolution without path disclosure,
+resource read, snapshot, atomic workspace edit, exact-revision durable save and
+clean EOF/disconnect.
 `make qualify-mcp-official-client` remains the sole interoperability gate and
 fails closed when any reviewed acquisition evidence or installed locked closure
 is absent.

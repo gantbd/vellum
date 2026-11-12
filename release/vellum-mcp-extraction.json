@@ -52,6 +52,7 @@
     "resourceMethods": ["resources/list", "resources/read"],
     "ordinaryTools": [
       "vellum.snapshot",
+      "vellum.save",
       "vellum.replace",
       "vellum.replace_and_save",
       "vellum.workspace_edit",

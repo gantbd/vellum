@@ -56,8 +56,13 @@ The implemented surface is deliberately closed:
 - `resources/read`, accepting only canonical scoped `vellum://workspace/...`
   URIs. Each document read selects its URI identity within that same request;
   root reads return only their file/directory kind, never their locator;
-- `tools/list`, returning a deterministic seven-tool ordinary catalog with no pagination;
+- `tools/list`, returning a deterministic eight-tool ordinary catalog with no pagination;
 - `vellum.snapshot`, returning text and a workspace revision;
+- `vellum.save`, persisting one exact current document revision and returning
+  closed durable, not-durable, or unknown evidence. An uncertain transport
+  result is replayable only with the returned operation and identical arguments
+  on the same supervised stdio lifetime. Saving each revision returned by a
+  workspace edit is explicitly per-document, not atomic multi-document durability;
 - `vellum.replace`, replacing an exact UTF-8 byte range only against that
   revision;
 - `vellum.replace_and_save`, preserving the native durable, not-durable,

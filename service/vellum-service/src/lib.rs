@@ -1575,7 +1575,7 @@ impl Service {
             source_revision: version.revision,
         });
         let persistence = match self.workspace.save_snapshot(&view, &version) {
-            Ok(receipt) => classify_edit_persistence(project_save_receipt(receipt)),
+            Ok(receipt) => EditPersistenceV1::classify(project_save_receipt(receipt)),
             Err(error) => EditPersistenceV1::NotAttempted(classify_workspace(error)),
         };
         Ok(DurableReplaceAndSaveReceiptV1 {
@@ -2351,7 +2351,7 @@ impl Service {
         // that erases the already-applied edit.
         let snapshot = self.replace(client, expected, start, end, inserted)?;
         let persistence = match self.save(client, snapshot.witness) {
-            Ok(receipt) => classify_edit_persistence(receipt),
+            Ok(receipt) => EditPersistenceV1::classify(receipt),
             Err(refusal) => EditPersistenceV1::NotAttempted(refusal),
         };
         match persistence {
@@ -3114,25 +3114,6 @@ fn project_save_receipt(receipt: WorkspaceSaveReceipt) -> SaveReceiptV1 {
     }
 }
 
-fn classify_edit_persistence(receipt: SaveReceiptV1) -> EditPersistenceV1 {
-    if receipt.outcome_unknown
-        || receipt.application == SaveApplicationV1::Unknown
-        || !receipt.no_future_effects
-        || !receipt.quiescent
-    {
-        EditPersistenceV1::Unknown(receipt)
-    } else if receipt.application == SaveApplicationV1::Written
-        && receipt.synchronization == SaveSynchronizationV1::Succeeded
-        && !receipt.adapter_failure
-        && !receipt.cleanup_failed
-        && receipt.baseline_published
-    {
-        EditPersistenceV1::Durable(receipt)
-    } else {
-        EditPersistenceV1::NotDurable(receipt)
-    }
-}
-
 fn can_issue(next: u64, count: usize) -> bool {
     if count == 0 {
         return true;
@@ -3374,7 +3355,7 @@ mod tests {
             outcome_unknown: false,
         };
         assert_eq!(
-            classify_edit_persistence(unknown),
+            EditPersistenceV1::classify(unknown),
             EditPersistenceV1::Unknown(unknown)
         );
 
@@ -3389,7 +3370,7 @@ mod tests {
             outcome_unknown: false,
         };
         assert_eq!(
-            classify_edit_persistence(external_change),
+            EditPersistenceV1::classify(external_change),
             EditPersistenceV1::NotDurable(external_change)
         );
     }
