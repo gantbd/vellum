@@ -18,6 +18,8 @@ will follow Semantic Versioning once a public release contract is selected.
   revisions before deciding remote availability. A failed first fetch no
   longer hides the second source owner; the failure reports one closed list of
   unavailable repositories without relaying raw Git transport diagnostics.
+  Release-candidate CI now runs the bounded remote-only form before building
+  artifacts, alongside rather than instead of its complete local gates.
 - Added a maintained exact clean-source candidate qualifier. It clones the
   selected Vellum and coordinated Keystone commits into private detached
   checkouts, keeps Cargo offline, builds the locked candidate twice, refuses

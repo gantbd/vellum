@@ -190,6 +190,20 @@ try {
   // diagnostics into the maintained content-safe result.
   const policyPath = path.join(vellum, 'release/github-source.json');
   const compatiblePolicy = fs.readFileSync(policyPath, 'utf8');
+  const reachablePolicy = JSON.parse(compatiblePolicy);
+  reachablePolicy.vellumRepository = pathToFileURL(vellum).href;
+  reachablePolicy.keystone.repository = pathToFileURL(keystone).href;
+  fs.writeFileSync(policyPath, `${JSON.stringify(reachablePolicy, null, 2)}\n`);
+  const reachable = run(
+    'node', [qualifier, `--vellum-ref=${vellumRevision}`, '--verify-remote-only'],
+    vellum, { ...process.env, KEYSTONE_SOURCE: keystone },
+  );
+  if (
+    !reachable.includes('Vellum and Keystone exact remote commits reachable')
+    || reachable.includes('workspace release build locked')
+  ) {
+    throw new Error('remote-only qualification did not stop after exact source reachability');
+  }
   const unavailableVellum = path.join(fixture, 'unavailable-vellum.git');
   const unavailableKeystone = path.join(fixture, 'unavailable-keystone.git');
   run('git', ['init', '--bare', '-q', unavailableVellum], fixture);
@@ -200,7 +214,7 @@ try {
   fs.writeFileSync(policyPath, `${JSON.stringify(unavailablePolicy, null, 2)}\n`);
   try {
     const unavailable = spawnSync(
-      'node', [qualifier, `--vellum-ref=${vellumRevision}`, '--verify-remote'],
+      'node', [qualifier, `--vellum-ref=${vellumRevision}`, '--verify-remote-only'],
       { cwd: vellum, env: { ...process.env, KEYSTONE_SOURCE: keystone }, encoding: 'utf8' },
     );
     const evidence = `${unavailable.stdout ?? ''}\n${unavailable.stderr ?? ''}`;

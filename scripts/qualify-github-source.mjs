@@ -17,7 +17,8 @@ process.on('uncaughtException', (error) => {
 
 const args = new Set(process.argv.slice(2));
 const unknown = [...args].filter(
-  (argument) => argument !== '--verify-remote' && !argument.startsWith('--vellum-ref='),
+  (argument) => !['--verify-remote', '--verify-remote-only'].includes(argument)
+    && !argument.startsWith('--vellum-ref='),
 );
 if (unknown.length !== 0) {
   process.stderr.write(`unknown argument: ${unknown[0]}\n`);
@@ -25,7 +26,12 @@ if (unknown.length !== 0) {
 }
 const vellumRef =
   [...args].find((argument) => argument.startsWith('--vellum-ref='))?.slice(13) ?? 'HEAD';
-const verifyRemote = args.has('--verify-remote');
+const verifyRemoteOnly = args.has('--verify-remote-only');
+if (verifyRemoteOnly && args.has('--verify-remote')) {
+  process.stderr.write('remote verification modes are mutually exclusive\n');
+  process.exit(2);
+}
+const verifyRemote = args.has('--verify-remote') || verifyRemoteOnly;
 
 const profileBinaries = (profile) => {
   const binaries = profile.binaries ?? (profile.binary === undefined ? [] : [profile.binary]);
@@ -185,6 +191,13 @@ try {
     }
   }
 
+  qualification: {
+    if (verifyRemoteOnly) {
+      process.stdout.write(
+        `Vellum and Keystone exact remote commits reachable: vellum ${vellumRevision}, keystone ${keystoneRevision}\n`,
+      );
+      break qualification;
+    }
   const bundle = path.join(temporary, 'bundle');
   fs.mkdirSync(bundle);
   const vellumArchive = path.join(temporary, 'vellum.tar');
@@ -353,6 +366,7 @@ try {
     process.stdout.write(
       'Vellum and Keystone GitHub reachability were not verified; rerun with --verify-remote before claiming a remotely reproducible bundle\n',
     );
+  }
   }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

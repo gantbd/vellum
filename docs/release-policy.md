@@ -125,6 +125,11 @@ content-safe result:
 node scripts/qualify-github-source.mjs --vellum-ref=RELEASE_COMMIT --verify-remote
 ```
 
+The release-candidate workflow combines its complete local source/build/install
+qualification with `--verify-remote-only`. That bounded mode performs the same
+local commit and Keystone API-closure checks plus both exact remote fetches,
+then stops before rebuilding; it is not a substitute for the full local gate.
+
 Current remote-distribution blocker: the local Vellum and Keystone checkouts
 have no configured remotes, so availability of both release objects at their
 declared GitHub URLs has not been established. Silently following a moving

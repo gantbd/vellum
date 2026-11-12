@@ -38,6 +38,12 @@ jobs:
         run: |
           printf '[url "file://${{ github.workspace }}/keystone"]\n\tinsteadOf = https://github.com/gantbd/keystone\n' > "$GIT_CONFIG_GLOBAL"
           cargo fetch --locked
+      - name: Verify exact GitHub source reachability
+        working-directory: vellum
+        run: >-
+          node scripts/qualify-github-source.mjs
+          --vellum-ref=${{ github.sha }}
+          --verify-remote-only
       - name: Verify release policy and candidate builder
         working-directory: vellum
         run: |
