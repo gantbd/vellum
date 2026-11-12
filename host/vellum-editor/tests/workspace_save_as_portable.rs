@@ -24,6 +24,13 @@ use vellum_host::{
         AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationObjectV1,
         SaveAsDestinationRequestV1,
     },
+    request_journal::{
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecoveryV1,
+        DurableOperationRetirementRecoveryV1, DurableOperationRetirementResultV1,
+        DurableOperationRetirementV1, RequestJournalCompletionV1, RequestJournalIntentV1,
+        RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalRecoveryV1,
+        RequestJournalRefusalV1, RequestJournalScopeV1,
+    },
     resource::{
         AdapterFailure, AnnotationReadCompletion as HostAnnotationReadCompletion,
         ErasedPathResourceAdapterFactory, ResourceAdapter, ResourceAdapterFactory, WriteCompletion,
@@ -31,6 +38,16 @@ use vellum_host::{
     save_as::{
         FixedSaveAsAuthorityV1, SaveAsAuthorityRequestV1, SaveAsFailureV1, SaveAsFenceReasonV1,
         SaveAsLifecycleV1, SaveAsNotActivatedReasonV1, SaveAsPhysicalUnknownReasonV1,
+    },
+    save_as_journal::{
+        DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
+        DurableSaveAsTransactionV1,
+    },
+    workspace::{
+        WorkspaceDocumentBindingV1, WorkspaceIdentityAllocationV1, WorkspaceIdentityLimitsV1,
+        WorkspaceIdentityMetadataPortV1, WorkspaceIdentityMetadataV1,
+        WorkspaceIdentityRecoveryRefusalV1, WorkspaceIdentityRecoveryV1,
+        WorkspaceRootBindingKindV1, WorkspaceRootBindingV1,
     },
 };
 
@@ -53,6 +70,151 @@ impl ResourceAdapterFactory for MemoryFactory {
 struct MemoryAdapter {
     resources: Resources,
     port: ProviderPort,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DurableEvent {
+    Intent,
+    BindingCheckpoint,
+    Completion,
+}
+
+#[derive(Default)]
+struct DurablePorts {
+    events: Vec<DurableEvent>,
+}
+
+impl RequestJournalPortV1 for DurablePorts {
+    fn recover(
+        &mut self,
+        _directory: &Path,
+        _scope: RequestJournalScopeV1,
+        _limits: RequestJournalLimitsV1,
+    ) -> RequestJournalRecoveryV1 {
+        RequestJournalRecoveryV1::Empty
+    }
+
+    fn begin(
+        &mut self,
+        _directory: &Path,
+        _intent: RequestJournalIntentV1<'_>,
+        _limits: RequestJournalLimitsV1,
+    ) -> Result<(), RequestJournalRefusalV1> {
+        Err(RequestJournalRefusalV1::UnsupportedResource)
+    }
+
+    fn complete(
+        &mut self,
+        _directory: &Path,
+        _completion: RequestJournalCompletionV1<'_>,
+        _limits: RequestJournalLimitsV1,
+    ) -> Result<(), RequestJournalRefusalV1> {
+        Err(RequestJournalRefusalV1::UnsupportedResource)
+    }
+
+    fn recover_operations(
+        &mut self,
+        _directory: &Path,
+        _scope: RequestJournalScopeV1,
+        _limits: RequestJournalLimitsV1,
+    ) -> DurableOperationRecoveryV1 {
+        DurableOperationRecoveryV1::Empty
+    }
+
+    fn begin_operation(
+        &mut self,
+        _directory: &Path,
+        _intent: DurableOperationIntentV1<'_>,
+        _limits: RequestJournalLimitsV1,
+    ) -> Result<(), RequestJournalRefusalV1> {
+        self.events.push(DurableEvent::Intent);
+        Ok(())
+    }
+
+    fn complete_operation(
+        &mut self,
+        _directory: &Path,
+        _completion: DurableOperationCompletionV1<'_>,
+        _limits: RequestJournalLimitsV1,
+    ) -> Result<(), RequestJournalRefusalV1> {
+        self.events.push(DurableEvent::Completion);
+        Ok(())
+    }
+
+    fn recover_operation_retirements(
+        &mut self,
+        _directory: &Path,
+        _scope: RequestJournalScopeV1,
+        _limits: RequestJournalLimitsV1,
+    ) -> DurableOperationRetirementRecoveryV1 {
+        DurableOperationRetirementRecoveryV1::Empty
+    }
+
+    fn retire_operation(
+        &mut self,
+        _directory: &Path,
+        _retirement: DurableOperationRetirementV1<'_>,
+        _limits: RequestJournalLimitsV1,
+    ) -> Result<DurableOperationRetirementResultV1, RequestJournalRefusalV1> {
+        Err(RequestJournalRefusalV1::UnsupportedResource)
+    }
+}
+
+impl WorkspaceIdentityMetadataPortV1 for DurablePorts {
+    fn load(
+        &mut self,
+        _directory: &Path,
+        _limits: WorkspaceIdentityLimitsV1,
+    ) -> WorkspaceIdentityRecoveryV1 {
+        WorkspaceIdentityRecoveryV1::Refused(WorkspaceIdentityRecoveryRefusalV1::Missing)
+    }
+
+    fn store(
+        &mut self,
+        _directory: &Path,
+        _metadata: &WorkspaceIdentityMetadataV1,
+        _limits: WorkspaceIdentityLimitsV1,
+    ) -> Result<(), WorkspaceIdentityRecoveryRefusalV1> {
+        self.events.push(DurableEvent::BindingCheckpoint);
+        Ok(())
+    }
+}
+
+fn journal_limits() -> RequestJournalLimitsV1 {
+    RequestJournalLimitsV1 {
+        max_entries: 4,
+        max_retired_operations: 4,
+        max_request_bytes: 128,
+        max_reply_bytes: 128,
+        max_encoded_bytes: 1024,
+    }
+}
+
+fn identity_limits() -> WorkspaceIdentityLimitsV1 {
+    WorkspaceIdentityLimitsV1 {
+        max_documents: 4,
+        max_roots: 4,
+        max_encoded_bytes: 1024,
+    }
+}
+
+fn identity(generation: u64, document: &Path, root: &Path) -> WorkspaceIdentityMetadataV1 {
+    WorkspaceIdentityMetadataV1::try_new_with_bindings(
+        1,
+        generation,
+        WorkspaceIdentityAllocationV1::try_new(1, 4, 1, 4).unwrap(),
+        vec![WorkspaceDocumentBindingV1::try_new(1, document.to_path_buf()).unwrap()],
+        vec![
+            WorkspaceRootBindingV1::try_new(
+                1,
+                WorkspaceRootBindingKindV1::File,
+                root.to_path_buf(),
+            )
+            .unwrap(),
+        ],
+        identity_limits(),
+    )
+    .unwrap()
 }
 
 impl MemoryAdapter {
@@ -313,6 +475,20 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
     let document = before_inventory.documents[0].clone();
     let before_generation = workspace.inventory_generation();
     let source_version = workspace.document_version(&document).unwrap();
+    let mut durable_ports = DurablePorts::default();
+    let mut durable = DurableSaveAsTransactionV1::begin(
+        &mut durable_ports,
+        Path::new("journal"),
+        journal_limits(),
+        RequestJournalScopeV1::new(1, 1).unwrap(),
+        DurableOperationRefV1::new([4; 16]).unwrap(),
+        [5; 16],
+        b"canonical save as request",
+        1,
+        &identity(1, &source, &source),
+    )
+    .unwrap();
+    assert_eq!(durable.stage(), DurableSaveAsStageV1::IntentDurable);
 
     let (persist, rebind, destination_request, mut authority) =
         authority_for(&source_version, destination.clone());
@@ -372,6 +548,36 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         SaveAsLifecycleV1::Fenced(fence)
             if fence.contains(SaveAsFenceReasonV1::RetainedTask)
     ));
+    assert_eq!(
+        durable.checkpoint_binding(
+            &mut durable_ports,
+            Path::new("metadata"),
+            identity_limits(),
+            &identity(2, &source, &source),
+        ),
+        Err(DurableSaveAsErrorV1::IdentityConflict)
+    );
+    assert_eq!(durable.stage(), DurableSaveAsStageV1::IntentDurable);
+    assert_eq!(durable_ports.events, vec![DurableEvent::Intent]);
+    durable
+        .checkpoint_binding(
+            &mut durable_ports,
+            Path::new("metadata"),
+            identity_limits(),
+            &identity(2, &destination, &source),
+        )
+        .unwrap();
+    assert_eq!(durable.stage(), DurableSaveAsStageV1::BindingCheckpointed);
+    assert_eq!(
+        durable.complete(
+            &mut durable_ports,
+            Path::new("journal"),
+            journal_limits(),
+            &activated,
+            b"canonical save as receipt",
+        ),
+        Err(DurableSaveAsErrorV1::ReceiptNotTerminal)
+    );
     assert_eq!(workspace.inventory_generation(), before_generation);
     assert_eq!(workspace.inventory().unwrap(), before_inventory);
     assert_eq!(view.active_document_id(), &document);
@@ -417,6 +623,24 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         .unwrap();
     assert!(complete.changes_stable_binding());
     assert_eq!(complete.lifecycle(), SaveAsLifecycleV1::TerminalReplayable);
+    durable
+        .complete(
+            &mut durable_ports,
+            Path::new("journal"),
+            journal_limits(),
+            &complete,
+            b"canonical save as receipt",
+        )
+        .unwrap();
+    assert_eq!(durable.stage(), DurableSaveAsStageV1::Complete);
+    assert_eq!(
+        durable_ports.events,
+        vec![
+            DurableEvent::Intent,
+            DurableEvent::BindingCheckpoint,
+            DurableEvent::Completion,
+        ]
+    );
     let usage = workspace.save_as_usage();
     assert_eq!(usage.issued_lifetime, 1);
     assert_eq!(usage.retained, 1);

@@ -92,13 +92,15 @@ The following gaps are release-blocking for that public surface:
 5. The durable request journal must encode the eventual command and receipt before
    wire publication. A crash after the external write but before a completed journal
    record must replay/fence as unknown; it must never repeat the overwrite under a
-   new request identity. The in-process service now resolves Save As through the
-   stable protocol document projection and advances the existing workspace-identity
-   metadata generation exactly once when the private binding commits. Consequently,
-   a composition can detect and durably checkpoint the changed locator association
-   before considering a receipt publishable. Release and retirement fences have
-   explicit reconciliation calls. The durable operation intent/completion join and
-   crash-recovery policy are still not connected, so no public command is admitted.
+   new request identity. `DurableSaveAsTransactionV1` now joins the existing journal
+   and workspace-identity ports in exactly that order: it synchronizes the frozen
+   intent before returning authority to execute, accepts only the exact successor
+   identity in which the target document locator alone changed, checkpoints that
+   identity, and completes the journal only from a terminal replayable receipt that
+   proves the stable binding changed. Intermediate crash cuts remain pending and the
+   type exposes no retry or effect-execution method. Release and retirement fences
+   retain explicit reconciliation calls. This coordinator is not yet installed in
+   daemon composition, so no public command is admitted.
 
 Until all five laws are implemented together, no command tag, client convenience
 method, wire fixture, daemon flag, or MCP tool is advertised. In particular,
