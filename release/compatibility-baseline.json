@@ -19,6 +19,7 @@
       "client/vellum-client",
       "client/vellum-semantic-client",
       "client/vellum-semantic-session-client",
+      "client/vellum-workspace-client",
       "connectors/vellum-mcp",
       "connectors/vellum-semantic-mcp",
       "distribution/cargo-install",
@@ -481,7 +482,7 @@
       "sourceTree": {
         "directory": "sdk/client/src",
         "fileCount": 1,
-        "sha256": "860977ddc91ed4432bf88386820116afd54341fec8104ba7e8779529d812ec80"
+        "sha256": "74ec4f2b3dbdce3cca4aaf38bc26c5bf6d9ee3b53da27157359f595003f33d03"
       }
     },
     {
@@ -900,6 +901,30 @@
         "directory": "protocol/vellum-wire/src",
         "fileCount": 1,
         "sha256": "50003f555df28165b804bc8dde6fc345bd677d1f729e55e15e7b3c146beb59d9"
+      }
+    },
+    {
+      "manifest": "client/vellum-workspace-client/Cargo.toml",
+      "name": "vellum-workspace-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_workspace_client",
+          "path": "client/vellum-workspace-client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "client/vellum-workspace-client/src",
+        "fileCount": 1,
+        "sha256": "8e92251b49a19a4a42eda1cc45e58ae4d747a49c22acea5db604d02d1ee6b24f"
       }
     }
   ],

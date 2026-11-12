@@ -10,6 +10,7 @@ description = "Transport-neutral remote Vellum client SDK distribution facade"
 
 [dependencies]
 vellum-client = { version = "=0.1.0", path = "../../client/vellum-client" }
+vellum-workspace-client = { version = "=0.1.0", path = "../../client/vellum-workspace-client" }
 vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
 vellum-wire = { version = "=0.1.0", path = "../../protocol/vellum-wire" }
 vellum-transport = { version = "=0.1.0", path = "../../transport/vellum-transport" }

@@ -29,6 +29,7 @@ const locations = new Map([
   ['vellum-semantic-session-actor', '/service/'],
   ['vellum-semantic-apply-service', '/service/'],
   ['vellum-client', '/client/'],
+  ['vellum-workspace-client', '/client/'],
   ['vellum-semantic-client', '/client/'],
   ['vellum-semantic-session-client', '/client/'],
   ['vellum-transport', '/transport/'],
@@ -93,6 +94,19 @@ if (dependencies('vellum-protocol').size !== 0) {
 forbidEdges(
   'vellum-client',
   ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service'],
+);
+requireEdges('vellum-workspace-client', ['vellum-client', 'vellum-protocol']);
+forbidEdges(
+  'vellum-workspace-client',
+  [
+    'vellum-engine',
+    'vellum-host',
+    'vellum-session',
+    'vellum-editor',
+    'vellum-service',
+    'vellum-wire',
+    'vellum-transport',
+  ],
 );
 requireEdges('vellum-semantic-service', ['vellum-host']);
 requireEdges('vellum-semantic-session-broker', ['vellum-host', 'vellum-semantic-protocol']);
@@ -286,7 +300,13 @@ forbidEdges(
 requireEdges('vellum-sdk-embedded', ['vellum-host', 'vellum-session', 'vellum-editor']);
 requireEdges(
   'vellum-sdk-client',
-  ['vellum-client', 'vellum-protocol', 'vellum-wire', 'vellum-transport'],
+  [
+    'vellum-client',
+    'vellum-workspace-client',
+    'vellum-protocol',
+    'vellum-wire',
+    'vellum-transport',
+  ],
 );
 requireEdges(
   'vellum-sdk-semantic-client',

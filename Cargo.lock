@@ -883,6 +883,7 @@ dependencies = [
  "vellum-protocol",
  "vellum-transport",
  "vellum-wire",
+ "vellum-workspace-client",
 ]
 
 [[package]]
@@ -1062,6 +1063,14 @@ name = "vellum-wire"
 version = "0.1.0"
 dependencies = [
  "keystone-codec",
+ "vellum-protocol",
+]
+
+[[package]]
+name = "vellum-workspace-client"
+version = "0.1.0"
+dependencies = [
+ "vellum-client",
  "vellum-protocol",
 ]
 

@@ -14,6 +14,7 @@ members = [
     "service/vellum-semantic-session-actor",
     "service/vellum-semantic-apply",
     "client/vellum-client",
+    "client/vellum-workspace-client",
     "client/vellum-semantic-client",
     "client/vellum-semantic-session-client",
     "transport/vellum-transport",
