@@ -11,7 +11,7 @@ use std::{
     os::{fd::OwnedFd, unix::ffi::OsStrExt},
     path::{Path, PathBuf},
 };
-use vellum_host::workspace::{
+pub use vellum_host::workspace::{
     DirectoryDiscoveryLimits, DirectoryDiscoveryOutcome, DirectoryDiscoveryPort,
     DirectoryDiscoveryRefusal, DirectoryDiscoveryUsage, DiscoveredLocatorStatus,
 };
@@ -26,6 +26,220 @@ impl DirectoryDiscoveryPort for LocalDirectoryDiscovery {
         limits: DirectoryDiscoveryLimits,
     ) -> DirectoryDiscoveryOutcome {
         discover_workspace_files(root, limits)
+    }
+}
+
+/// Product bound for planning a finite set of application-selected roots.
+/// The discovery limits apply to the complete plan, not independently to each
+/// root, so a caller cannot multiply work or retained locator bytes by adding
+/// more roots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorkspaceRootPlanLimitsV1 {
+    pub max_roots: usize,
+    pub discovery: DirectoryDiscoveryLimits,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceRootPlanRefusalV1 {
+    InvalidLimits,
+    RootLimit,
+    Discovery(DirectoryDiscoveryRefusal),
+    Capacity,
+}
+
+/// Closed multi-root plan. Refusal exposes only content-free cumulative usage;
+/// no successfully discovered prefix escapes. Complete locators still require
+/// independent revalidation when an editor or workspace opens them.
+#[derive(PartialEq, Eq)]
+pub enum WorkspaceRootPlanOutcomeV1 {
+    Complete {
+        files: Vec<PathBuf>,
+        roots_examined: usize,
+        usage: DirectoryDiscoveryUsage,
+        locator_status: DiscoveredLocatorStatus,
+    },
+    Refused {
+        reason: WorkspaceRootPlanRefusalV1,
+        roots_examined: usize,
+        usage: DirectoryDiscoveryUsage,
+    },
+}
+
+impl std::fmt::Debug for WorkspaceRootPlanOutcomeV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Complete {
+                files,
+                roots_examined,
+                usage,
+                locator_status,
+            } => formatter
+                .debug_struct("WorkspaceRootPlanOutcomeV1::Complete")
+                .field("files", &files.len())
+                .field("roots_examined", roots_examined)
+                .field("usage", usage)
+                .field("locator_status", locator_status)
+                .finish(),
+            Self::Refused {
+                reason,
+                roots_examined,
+                usage,
+            } => formatter
+                .debug_struct("WorkspaceRootPlanOutcomeV1::Refused")
+                .field("reason", reason)
+                .field("roots_examined", roots_examined)
+                .field("usage", usage)
+                .finish(),
+        }
+    }
+}
+
+/// Plans several regular-file or directory roots as one bounded effect-free
+/// admission proposal. The empty iterator is the lawful identity and returns
+/// an empty complete plan. Duplicate locators are removed only after all
+/// physical discovery work has remained within the aggregate bounds.
+pub fn plan_workspace_roots_v1<P>(
+    roots: impl IntoIterator<Item = P>,
+    limits: WorkspaceRootPlanLimitsV1,
+) -> WorkspaceRootPlanOutcomeV1
+where
+    P: AsRef<Path>,
+{
+    let discovery = limits.discovery;
+    if limits.max_roots == 0
+        || discovery.max_entries == 0
+        || discovery.max_files == 0
+        || discovery.max_path_bytes == 0
+        || discovery.max_total_path_bytes == 0
+    {
+        return root_plan_refused(
+            WorkspaceRootPlanRefusalV1::InvalidLimits,
+            0,
+            DirectoryDiscoveryUsage::default(),
+        );
+    }
+    let mut files = Vec::new();
+    if files
+        .try_reserve_exact(discovery.max_files.min(16))
+        .is_err()
+    {
+        return root_plan_refused(
+            WorkspaceRootPlanRefusalV1::Capacity,
+            0,
+            DirectoryDiscoveryUsage::default(),
+        );
+    }
+    let mut usage = DirectoryDiscoveryUsage::default();
+    let mut roots_examined = 0usize;
+    for root in roots {
+        if roots_examined == limits.max_roots {
+            return root_plan_refused(WorkspaceRootPlanRefusalV1::RootLimit, roots_examined, usage);
+        }
+        let Some(remaining_entries) = discovery
+            .max_entries
+            .checked_sub(usage.examined_entries)
+            .filter(|remaining| *remaining > 0)
+        else {
+            return root_plan_refused(
+                WorkspaceRootPlanRefusalV1::Discovery(DirectoryDiscoveryRefusal::Limit),
+                roots_examined,
+                usage,
+            );
+        };
+        let Some(remaining_files) = discovery
+            .max_files
+            .checked_sub(usage.regular_files)
+            .filter(|remaining| *remaining > 0)
+        else {
+            return root_plan_refused(
+                WorkspaceRootPlanRefusalV1::Discovery(DirectoryDiscoveryRefusal::Limit),
+                roots_examined,
+                usage,
+            );
+        };
+        let Some(remaining_path_bytes) = discovery
+            .max_total_path_bytes
+            .checked_sub(usage.retained_path_bytes)
+            .filter(|remaining| *remaining > 0)
+        else {
+            return root_plan_refused(
+                WorkspaceRootPlanRefusalV1::Discovery(DirectoryDiscoveryRefusal::Limit),
+                roots_examined,
+                usage,
+            );
+        };
+        let root_limits = DirectoryDiscoveryLimits {
+            max_entries: remaining_entries,
+            max_files: remaining_files,
+            max_depth: discovery.max_depth,
+            max_path_bytes: discovery.max_path_bytes,
+            max_total_path_bytes: remaining_path_bytes,
+        };
+        roots_examined += 1;
+        let (discovered, root_usage) = match discover_workspace_files(root.as_ref(), root_limits) {
+            DirectoryDiscoveryOutcome::Complete { files, usage, .. } => (files, usage),
+            DirectoryDiscoveryOutcome::Refused {
+                reason,
+                usage: root,
+            } => {
+                let aggregate = aggregate_usage(usage, root).unwrap_or(usage);
+                return root_plan_refused(
+                    WorkspaceRootPlanRefusalV1::Discovery(reason),
+                    roots_examined,
+                    aggregate,
+                );
+            }
+        };
+        let Some(aggregate) = aggregate_usage(usage, root_usage) else {
+            return root_plan_refused(WorkspaceRootPlanRefusalV1::Capacity, roots_examined, usage);
+        };
+        usage = aggregate;
+        for file in discovered {
+            if files.contains(&file) {
+                continue;
+            }
+            if files.try_reserve(1).is_err() {
+                return root_plan_refused(
+                    WorkspaceRootPlanRefusalV1::Capacity,
+                    roots_examined,
+                    usage,
+                );
+            }
+            files.push(file);
+        }
+    }
+    files.sort();
+    WorkspaceRootPlanOutcomeV1::Complete {
+        files,
+        roots_examined,
+        usage,
+        locator_status: DiscoveredLocatorStatus::RevalidationRequired,
+    }
+}
+
+fn aggregate_usage(
+    left: DirectoryDiscoveryUsage,
+    right: DirectoryDiscoveryUsage,
+) -> Option<DirectoryDiscoveryUsage> {
+    Some(DirectoryDiscoveryUsage {
+        examined_entries: left.examined_entries.checked_add(right.examined_entries)?,
+        directories: left.directories.checked_add(right.directories)?,
+        regular_files: left.regular_files.checked_add(right.regular_files)?,
+        retained_path_bytes: left
+            .retained_path_bytes
+            .checked_add(right.retained_path_bytes)?,
+    })
+}
+
+fn root_plan_refused(
+    reason: WorkspaceRootPlanRefusalV1,
+    roots_examined: usize,
+    usage: DirectoryDiscoveryUsage,
+) -> WorkspaceRootPlanOutcomeV1 {
+    WorkspaceRootPlanOutcomeV1::Refused {
+        reason,
+        roots_examined,
+        usage,
     }
 }
 
@@ -242,6 +456,116 @@ mod tests {
             max_path_bytes: 4096,
             max_total_path_bytes: 16384,
         }
+    }
+
+    fn plan_limits() -> WorkspaceRootPlanLimitsV1 {
+        WorkspaceRootPlanLimitsV1 {
+            max_roots: 4,
+            discovery: limits(),
+        }
+    }
+
+    #[test]
+    fn multi_root_plan_has_a_lawful_empty_identity_and_deterministic_union() {
+        let WorkspaceRootPlanOutcomeV1::Complete {
+            files,
+            roots_examined,
+            usage,
+            ..
+        } = plan_workspace_roots_v1(std::iter::empty::<&Path>(), plan_limits())
+        else {
+            panic!("empty plan refused")
+        };
+        assert!(files.is_empty());
+        assert_eq!(roots_examined, 0);
+        assert_eq!(usage, DirectoryDiscoveryUsage::default());
+
+        let fixture = Fixture::new();
+        let nested = fixture.0.join("nested");
+        fs::create_dir(&nested).unwrap();
+        let a = fixture.0.join("a");
+        let b = nested.join("b");
+        fs::write(&b, "b").unwrap();
+        fs::write(&a, "a").unwrap();
+        let WorkspaceRootPlanOutcomeV1::Complete {
+            files,
+            roots_examined,
+            usage,
+            ..
+        } = plan_workspace_roots_v1([fixture.0.as_path(), a.as_path()], plan_limits())
+        else {
+            panic!("multi-root plan refused")
+        };
+        assert_eq!(files, vec![a, b]);
+        assert_eq!(roots_examined, 2);
+        // The repeated file root remains physical discovery work even though
+        // its locator appears only once in the extensional result.
+        assert_eq!(usage.regular_files, 3);
+    }
+
+    #[test]
+    fn multi_root_plan_enforces_global_root_and_discovery_bounds_without_prefix_paths() {
+        let fixture = Fixture::new();
+        let a = fixture.0.join("a");
+        let b = fixture.0.join("b");
+        fs::write(&a, "a").unwrap();
+        fs::write(&b, "b").unwrap();
+
+        let mut bounded = plan_limits();
+        bounded.max_roots = 1;
+        let refusal = plan_workspace_roots_v1([a.as_path(), b.as_path()], bounded);
+        assert!(matches!(
+            refusal,
+            WorkspaceRootPlanOutcomeV1::Refused {
+                reason: WorkspaceRootPlanRefusalV1::RootLimit,
+                roots_examined: 1,
+                ..
+            }
+        ));
+        let evidence = format!("{refusal:?}");
+        assert!(!evidence.contains(a.to_string_lossy().as_ref()));
+        assert!(!evidence.contains(b.to_string_lossy().as_ref()));
+
+        bounded = plan_limits();
+        bounded.discovery.max_files = 1;
+        assert!(matches!(
+            plan_workspace_roots_v1([a.as_path(), b.as_path()], bounded),
+            WorkspaceRootPlanOutcomeV1::Refused {
+                reason: WorkspaceRootPlanRefusalV1::Discovery(DirectoryDiscoveryRefusal::Limit),
+                roots_examined: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn multi_root_plan_refuses_invalid_bounds_and_symlinks_without_partial_files() {
+        let fixture = Fixture::new();
+        let file = fixture.0.join("file");
+        fs::write(&file, "a").unwrap();
+        let mut invalid = plan_limits();
+        invalid.max_roots = 0;
+        assert!(matches!(
+            plan_workspace_roots_v1([file.as_path()], invalid),
+            WorkspaceRootPlanOutcomeV1::Refused {
+                reason: WorkspaceRootPlanRefusalV1::InvalidLimits,
+                roots_examined: 0,
+                ..
+            }
+        ));
+
+        let outside = Fixture::new();
+        symlink(&outside.0, fixture.0.join("escape")).unwrap();
+        assert!(matches!(
+            plan_workspace_roots_v1([fixture.0.as_path()], plan_limits()),
+            WorkspaceRootPlanOutcomeV1::Refused {
+                reason: WorkspaceRootPlanRefusalV1::Discovery(
+                    DirectoryDiscoveryRefusal::UnsupportedResource
+                ),
+                roots_examined: 1,
+                ..
+            }
+        ));
     }
 
     #[test]
