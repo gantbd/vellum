@@ -19,7 +19,7 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/client/vellum-semantic-session-client` | Transport-neutral phase truth, exact mutation uncertainty, compact synchronization witnesses and witness-backed reply revalidation | Sockets, authentication, grants, broker replay storage, provider selection or automatic retry |
 | `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Sockets, authentication, reconnect, retry, server dispatch, broker/provider ownership or MCP policy |
 | `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
-| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots | Hidden engine or adapter authority |
+| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; `vellum-semantic-mcp` owns bounded stdio framing and an explicit unavailable qualification composition | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
 | `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
 | `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |

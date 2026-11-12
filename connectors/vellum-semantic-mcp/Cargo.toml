@@ -6,12 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "Bounded in-process MCP projection library for Vellum semantic queries"
+description = "Bounded stdio MCP peer and projection library for Vellum semantic queries"
 
 [dependencies]
 serde = "=1.0.229"
 serde_json = "=1.0.151"
+tokio = { version = "1", features = ["io-util", "io-std", "rt"] }
 vellum-semantic-client = { version = "=0.1.0", path = "../../client/vellum-semantic-client" }
+vellum-semantic-service = { version = "=0.1.0", path = "../../service/vellum-semantic-service" }
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "vellum-semantic-mcp"
+path = "src/main.rs"

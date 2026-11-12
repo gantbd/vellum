@@ -38,6 +38,7 @@ const requiredFiles = [
   'scripts/supply-chain-lib.mjs',
   'release/vellum-mcp-extraction.json',
   'scripts/verify-mcp-extraction.mjs',
+  'scripts/emit-mcp-peer-source.mjs',
   'scripts/build-release-candidate.mjs',
   'scripts/build-release-candidate.test.mjs',
   'scripts/release-candidate-lib.mjs',

@@ -1,4 +1,4 @@
-//! Bounded in-process MCP projection of a sovereign-validated,
+//! Bounded MCP projection and stdio driver for a sovereign-validated,
 //! partition-bound semantic client.
 //!
 //! This crate owns no provider, process, workspace, authentication, clock, edit,
@@ -27,6 +27,11 @@ use vellum_semantic_client::{
     SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSourceRevisionV1,
     SemanticSubmitOutcomeV1, SemanticSymbolKindV1, SemanticTargetV1, SemanticTextV1,
     SovereignValidatedSemanticServicePortV1,
+};
+
+mod stdio;
+pub use stdio::{
+    SemanticMcpStdioFailureV1, SemanticMcpStdioLimitsV1, SemanticMcpStdioUsageV1, serve_stdio_v1,
 };
 
 struct StrictJsonValue(Value);
@@ -233,6 +238,10 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
         self.usage
     }
 
+    pub const fn limits(&self) -> SemanticMcpLimitsV1 {
+        self.limits
+    }
+
     pub fn into_client(self) -> SemanticClientV1<P> {
         self.client
     }
@@ -330,6 +339,26 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
             _ => self.protocol_error(id, -32601, "method not found"),
         };
         Some(self.encode(response))
+    }
+
+    fn reject_truncated_frame(&mut self, bytes: usize) -> Vec<u8> {
+        bump(&mut self.usage.requests, &mut self.usage.saturated);
+        add(
+            &mut self.usage.request_bytes,
+            bytes,
+            &mut self.usage.saturated,
+        );
+        self.protocol_error_bytes(Value::Null, -32700, "truncated request")
+    }
+
+    fn reject_oversized_frame(&mut self, bytes: usize) -> Vec<u8> {
+        bump(&mut self.usage.requests, &mut self.usage.saturated);
+        add(
+            &mut self.usage.request_bytes,
+            bytes,
+            &mut self.usage.saturated,
+        );
+        self.protocol_error_bytes(Value::Null, -32600, "request exceeds limit")
     }
 
     async fn call_tool(&mut self, id: Value, params: &Map<String, Value>) -> Value {
@@ -1222,7 +1251,7 @@ fn with_server_meta(mut result: Value) -> Value {
         json!({"io.modelcontextprotocol/serverInfo":{
             "name":"vellum-semantic-mcp",
             "version":env!("CARGO_PKG_VERSION"),
-            "description":"Bounded in-process MCP projection of Vellum semantic queries"
+            "description":"Bounded MCP projection of Vellum semantic queries"
         }}),
     );
     result

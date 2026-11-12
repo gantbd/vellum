@@ -4,3 +4,4 @@
 # evidence archives referenced by historical records remain visible to Git.
 /.verification-candidate.*/
 /.verification-tools-*/
+/.peer-staging/

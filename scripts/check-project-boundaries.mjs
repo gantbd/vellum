@@ -235,13 +235,12 @@ requireEdges(
 );
 requireEdges(
   'vellum-semantic-mcp',
-  ['vellum-semantic-client'],
+  ['vellum-semantic-client', 'vellum-semantic-service'],
   false,
 );
 forbidEdges(
   'vellum-semantic-mcp',
   [
-    'vellum-semantic-service',
     'vellum-host',
     'vellum-semantic-apply-service',
     'vellum-adapter-semantic-lsp',

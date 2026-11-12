@@ -1,7 +1,7 @@
 # Vellum MCP repository extraction
 
-Status: boundary prepared and archive fixture qualified; sibling repository not
-created.
+Status: deterministic peer repository payload materialized and qualified;
+sibling Git repository not created.
 
 `vellum-mcp` can be extracted as an independently versioned peer once the
 current Vellum work is committed and remotely addressable. Its production
@@ -19,6 +19,14 @@ archive, compile and test it against only the public SDK facade, source-install
 the binary, and exercise `--help`. This fixture uses a local SDK path solely to
 qualify the boundary; it does not claim that an uncommitted Vellum revision is
 available through Git.
+
+Run `node scripts/emit-mcp-peer-source.mjs --output=.peer-staging/vellum-mcp`
+to materialize the independent repository tree from committed Vellum bytes.
+The emitter writes exact Vellum and Keystone Git revisions, generates a
+lockfile, runs the peer tests, initializes a disposable Git stand-in, and
+qualifies the documented `cargo install --locked --git ... --rev ...` shape.
+Git URL rewrites point qualification at the local Vellum, Keystone, and staged
+peer repositories; they do not weaken the emitted public Git identities.
 
 ## Current coupling audit
 
@@ -55,7 +63,8 @@ second exact peer binary from the Vellum source archive because the declared
 extraction still depends on the Vellum public SDK. Its isolated install/root checks do not collapse MCP back into the
 daemon or claim that the future sibling repository is independently installable.
 
-Creating `/Users/brian/Workspace/github.com/gantbd/vellum-mcp` is outside this
-repository's current write authority. Extraction therefore stops at the
-verified archive contract. No sibling directory, Git repository, remote, or
-history rewrite has been created.
+The ignored `.peer-staging/vellum-mcp` tree is ready to copy into the eventual
+sibling repository. Creating that sibling now requires only choosing its local
+path, copying these bytes, initializing Git, reviewing and committing them,
+then rerunning the locked tests. No remote, publication, or sibling Git history
+has been created.

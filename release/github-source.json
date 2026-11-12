@@ -90,6 +90,7 @@
     "scripts/check-supply-chain.test.mjs",
     "scripts/supply-chain-lib.mjs",
     "scripts/verify-mcp-extraction.mjs",
+    "scripts/emit-mcp-peer-source.mjs",
     "scripts/build-release-candidate.mjs",
     "scripts/build-release-candidate.test.mjs",
     "scripts/release-candidate-lib.mjs",

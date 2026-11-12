@@ -3,10 +3,11 @@
 Status: bounded host contract, provider-neutral synchronization/routing,
 partition-bound asynchronous client facade, no-process-authority LSP adapter,
 qualified local process supervisor, embedded local composition facade, exact
-deadline scheduler, staged provider replacement and bounded in-process MCP
-projection library and background-session protocol/client/broker/actor substrate
-are implemented. No remote semantic transport, runnable semantic daemon or MCP
-peer, PSI, nREPL or automatic restart
+deadline scheduler, staged provider replacement, bounded MCP projection and
+stdio driver, and background-session protocol/client/broker/actor substrate are
+implemented. The semantic MCP executable has an explicit unavailable
+qualification composition; no production semantic transport, runnable semantic
+daemon, useful query-serving standalone composition, PSI, nREPL or automatic restart
 policy is claimed.
 
 Vellum's useful semantic surface is a peer capability, not an editor wrapper.
@@ -216,6 +217,18 @@ whole-group hard kill from confirmed finish/reap of the supervised leader; they
 do not claim that Vellum reaps descendants or that macOS abrupt parent death
 cleans up the provider.
 
+Production entry is a separate affine promotion, not a caller-selected launch
+flag. Its closed requirement product contains executable and working-directory
+identity, ambient-environment clearing, core-dump suppression, filesystem,
+network and subprocess confinement, abrupt-parent cleanup, and whole-tree
+memory, process-count and CPU enforcement. Every member must be `Enforced` to
+mint the token accepted by the production launch entry points. Refusal retains
+the exact ordinary qualified launch for explicit probe use and exposes only the
+typed support disposition for each fixed axis. The current macOS profile cannot
+be promoted: observed identity is not immutable launch, and ProcessKit does not
+provide the required confinement, abrupt-parent cleanup or whole-tree ceilings
+there.
+
 Launch admission is serialized. If the bounded launch wait expires or cleanup
 cannot be confirmed, the worker join handle remains owned behind a permanent
 process-local fence. The call returns within the launch bound, no later
@@ -315,16 +328,48 @@ authentication, broker storage or automatic query retry.
 ## Agent-facing MCP projection
 
 `vellum-semantic-mcp` is a sibling of the native-daemon `vellum-mcp`, not an
-extension of it. It is currently a bounded in-process protocol projection
-library over an already partition-bound `vellum-semantic-client`; it is prepared
-for later transport and repository extraction, but is not itself a transport,
-remote peer or authentication boundary. Its stable surface mirrors the seven
+extension of it. It is a bounded protocol projection over an already
+partition-bound `vellum-semantic-client`, plus a sequential newline-delimited
+stdio driver. It is not a remote transport or authentication boundary. Its stable surface mirrors the seven
 closed query forms and one content-safe capability resource; transient indexing
 changes outcomes, not the catalog. It never depends directly on the editor,
-service, apply crate or LSP adapter. Cancellation and composition-owned deadline
+apply crate or LSP adapter. The library projection and stdio driver remain
+service-neutral; the binary alone depends on the sovereign semantic service to
+construct its explicit unavailable qualification backend. Cancellation and composition-owned deadline
 expiry retain their distinct outcomes. Rename application stays unadvertised
 until a server-side durable plan handle and outcome-unknown-safe operation
 receipt exist.
+
+The workspace binary refuses a default invocation because no lawful persistent
+semantic-session server/transport currently exists. The explicit
+`--unavailable` mode admits one process-local partition to a real sovereign
+service whose provider is permanently unavailable. It is useful for MCP host,
+catalog, framing and failure-path qualification only: capability discovery says
+`unavailable`, no snapshot can be admitted through MCP, and queries fail closed.
+It must not be presented as a production semantic backend.
+
+For an MCP-host framing or catalog qualification run:
+
+```sh
+cargo run --locked --offline -p vellum-semantic-mcp -- --unavailable
+```
+
+The host owns the child lifetime and sends one JSON-RPC object per newline on
+stdin. `--metrics-stderr` adds exactly one content-safe JSON record after clean
+EOF. `--probe` and `--help` do not enter MCP mode.
+
+The stdio loop retains at most the configured request ceiling plus one byte,
+drains an oversized frame before continuing, flushes every response, does not
+respond to notifications, and treats a nonempty EOF fragment as truncated even
+if the fragment is otherwise valid JSON. Clean EOF is the current graceful stop
+boundary. Optional exit metrics are fixed-cardinality and content-free.
+
+The next concrete bridge is an application-owned persistent semantic-session
+listener/dispatcher that authenticates once, derives the synchronization/query
+role product, owns the actor and provider runtime, and exposes a transport
+client that independently revalidates the committed witness store before
+entering the sealed MCP client boundary. The connector must not mint that seal,
+open snapshots from MCP query arguments, or infer membership from document ids.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

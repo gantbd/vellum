@@ -946,6 +946,89 @@ fn resource_policy_constructor_rejects_values_outside_the_closed_ceiling() {
 }
 
 #[test]
+fn production_promotion_is_closed_affine_and_preserves_typed_nonclaims() {
+    let scratch = Scratch::new("production-promotion");
+    let qualified = qualify_provider_launch_v1(profile("echo", &scratch)).unwrap();
+    let artifact = qualified.artifact_identity();
+    let profile = qualified.profile_identity();
+    let failure = qualify_provider_launch_for_production_v1(qualified).unwrap_err();
+
+    assert_eq!(
+        failure.support_for(SemanticProviderProductionRequirementV1::ExecutableIdentity),
+        SemanticProviderSupportV1::ObservedOnly
+    );
+    assert_eq!(
+        failure.support_for(SemanticProviderProductionRequirementV1::WorkingDirectoryIdentity),
+        SemanticProviderSupportV1::ObservedOnly
+    );
+    assert_eq!(
+        failure.support_for(SemanticProviderProductionRequirementV1::AmbientEnvironmentCleared),
+        SemanticProviderSupportV1::Enforced
+    );
+    assert_eq!(
+        failure.support_for(SemanticProviderProductionRequirementV1::CoreDumpsDisabled),
+        SemanticProviderSupportV1::Enforced
+    );
+    for requirement in [
+        SemanticProviderProductionRequirementV1::FilesystemConfinement,
+        SemanticProviderProductionRequirementV1::NetworkConfinement,
+        SemanticProviderProductionRequirementV1::SubprocessConfinement,
+        SemanticProviderProductionRequirementV1::WholeTreeMemoryLimit,
+        SemanticProviderProductionRequirementV1::WholeTreeProcessLimit,
+        SemanticProviderProductionRequirementV1::WholeTreeCpuLimit,
+    ] {
+        assert_eq!(
+            failure.support_for(requirement),
+            SemanticProviderSupportV1::Unsupported
+        );
+    }
+    assert_eq!(
+        failure.support_for(SemanticProviderProductionRequirementV1::AbruptParentCleanup),
+        SemanticProviderLaunchAssuranceV1::current().abrupt_parent_cleanup
+    );
+
+    let debug = format!("{failure:?}");
+    assert!(debug.contains("filesystem_confinement: Unsupported"));
+    assert!(!debug.contains(scratch.0.to_str().unwrap()));
+    let recovered = failure.into_probe_qualified_launch();
+    assert_eq!(recovered.artifact_identity(), artifact);
+    assert_eq!(recovered.profile_identity(), profile);
+}
+
+#[test]
+fn production_promotion_requires_the_meet_of_every_fixed_assurance_axis() {
+    let scratch = Scratch::new("production-meet");
+    let mut qualified = qualify_provider_launch_v1(profile("echo", &scratch)).unwrap();
+    qualified.assurance = SemanticProviderLaunchAssuranceV1 {
+        executable_identity: SemanticProviderSupportV1::Enforced,
+        working_directory_identity: SemanticProviderSupportV1::Enforced,
+        ambient_environment_cleared: SemanticProviderSupportV1::Enforced,
+        core_dumps_disabled: SemanticProviderSupportV1::Enforced,
+        filesystem_confinement: SemanticProviderSupportV1::Enforced,
+        network_confinement: SemanticProviderSupportV1::Enforced,
+        subprocess_confinement: SemanticProviderSupportV1::Enforced,
+        abrupt_parent_cleanup: SemanticProviderSupportV1::Enforced,
+        whole_tree_memory_limit: SemanticProviderSupportV1::Enforced,
+        whole_tree_process_limit: SemanticProviderSupportV1::Enforced,
+        whole_tree_cpu_limit: SemanticProviderSupportV1::Enforced,
+    };
+    let artifact = qualified.artifact_identity();
+    let profile = qualified.profile_identity();
+
+    let production = qualify_provider_launch_for_production_v1(qualified).unwrap();
+    assert_eq!(production.artifact_identity(), artifact);
+    assert_eq!(production.profile_identity(), profile);
+    assert!(
+        SemanticProviderProductionRequirementV1::ALL
+            .into_iter()
+            .all(
+                |requirement| production.assurance().support_for(requirement)
+                    == SemanticProviderSupportV1::Enforced
+            )
+    );
+}
+
+#[test]
 fn launch_timeout_fence_is_qualified_in_an_isolated_process() {
     let status = std::process::Command::new(env::current_exe().unwrap())
         .args([

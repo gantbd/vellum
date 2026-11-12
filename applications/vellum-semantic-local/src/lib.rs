@@ -302,6 +302,80 @@ impl SemanticProviderLaunchAssuranceV1 {
             },
         }
     }
+
+    /// Projects one axis of the fixed production launch requirement product.
+    ///
+    /// This is a support disposition, not evidence that launch occurred. A
+    /// production promotion requires every axis to be `Enforced`; neither
+    /// `ObservedOnly` nor `Unsupported` is silently weakened.
+    pub const fn support_for(
+        self,
+        requirement: SemanticProviderProductionRequirementV1,
+    ) -> SemanticProviderSupportV1 {
+        match requirement {
+            SemanticProviderProductionRequirementV1::ExecutableIdentity => self.executable_identity,
+            SemanticProviderProductionRequirementV1::WorkingDirectoryIdentity => {
+                self.working_directory_identity
+            }
+            SemanticProviderProductionRequirementV1::AmbientEnvironmentCleared => {
+                self.ambient_environment_cleared
+            }
+            SemanticProviderProductionRequirementV1::CoreDumpsDisabled => self.core_dumps_disabled,
+            SemanticProviderProductionRequirementV1::FilesystemConfinement => {
+                self.filesystem_confinement
+            }
+            SemanticProviderProductionRequirementV1::NetworkConfinement => self.network_confinement,
+            SemanticProviderProductionRequirementV1::SubprocessConfinement => {
+                self.subprocess_confinement
+            }
+            SemanticProviderProductionRequirementV1::AbruptParentCleanup => {
+                self.abrupt_parent_cleanup
+            }
+            SemanticProviderProductionRequirementV1::WholeTreeMemoryLimit => {
+                self.whole_tree_memory_limit
+            }
+            SemanticProviderProductionRequirementV1::WholeTreeProcessLimit => {
+                self.whole_tree_process_limit
+            }
+            SemanticProviderProductionRequirementV1::WholeTreeCpuLimit => self.whole_tree_cpu_limit,
+        }
+    }
+}
+
+/// Closed production requirement lattice for one background provider launch.
+///
+/// Adding an assurance axis requires adding it to `ALL`, to `support_for`, and
+/// therefore to production promotion. This prevents a new physical nonclaim
+/// from being omitted by an open-ended checklist or caller-selected policy.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SemanticProviderProductionRequirementV1 {
+    ExecutableIdentity,
+    WorkingDirectoryIdentity,
+    AmbientEnvironmentCleared,
+    CoreDumpsDisabled,
+    FilesystemConfinement,
+    NetworkConfinement,
+    SubprocessConfinement,
+    AbruptParentCleanup,
+    WholeTreeMemoryLimit,
+    WholeTreeProcessLimit,
+    WholeTreeCpuLimit,
+}
+
+impl SemanticProviderProductionRequirementV1 {
+    pub const ALL: [Self; 11] = [
+        Self::ExecutableIdentity,
+        Self::WorkingDirectoryIdentity,
+        Self::AmbientEnvironmentCleared,
+        Self::CoreDumpsDisabled,
+        Self::FilesystemConfinement,
+        Self::NetworkConfinement,
+        Self::SubprocessConfinement,
+        Self::AbruptParentCleanup,
+        Self::WholeTreeMemoryLimit,
+        Self::WholeTreeProcessLimit,
+        Self::WholeTreeCpuLimit,
+    ];
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -386,6 +460,130 @@ impl QualifiedProviderLaunchV1 {
 
     pub const fn assurance(&self) -> SemanticProviderLaunchAssuranceV1 {
         self.assurance
+    }
+}
+
+/// Affine provider launch that satisfies every fixed background-service
+/// requirement. It remains conditional launch evidence: ProcessKit must still
+/// create the requested container and start the process successfully.
+#[must_use = "production-qualified provider launch evidence is single-use"]
+pub struct ProductionQualifiedProviderLaunchV1 {
+    qualified: QualifiedProviderLaunchV1,
+}
+
+impl ProductionQualifiedProviderLaunchV1 {
+    pub const fn artifact_identity(&self) -> SemanticProviderArtifactIdentityV1 {
+        self.qualified.artifact_identity()
+    }
+
+    pub const fn profile_identity(&self) -> SemanticProviderProfileIdentityV1 {
+        self.qualified.profile_identity()
+    }
+
+    pub const fn assurance(&self) -> SemanticProviderLaunchAssuranceV1 {
+        self.qualified.assurance()
+    }
+}
+
+impl fmt::Debug for ProductionQualifiedProviderLaunchV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("ProductionQualifiedProviderLaunchV1")
+            .field(&self.qualified)
+            .finish()
+    }
+}
+
+/// Failed production promotion retains the exact affine launch evidence. A
+/// caller may inspect every closed support disposition and may explicitly
+/// recover the token for a probe launch; refusal never destroys ownership or
+/// upgrades an observation into enforcement.
+#[must_use = "production qualification refusal retains launch ownership"]
+pub struct SemanticProviderProductionQualificationFailureV1 {
+    qualified: QualifiedProviderLaunchV1,
+}
+
+impl SemanticProviderProductionQualificationFailureV1 {
+    pub const fn support_for(
+        &self,
+        requirement: SemanticProviderProductionRequirementV1,
+    ) -> SemanticProviderSupportV1 {
+        self.qualified.assurance().support_for(requirement)
+    }
+
+    pub fn into_probe_qualified_launch(self: Box<Self>) -> QualifiedProviderLaunchV1 {
+        self.qualified
+    }
+}
+
+impl fmt::Debug for SemanticProviderProductionQualificationFailureV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("SemanticProviderProductionQualificationFailureV1");
+        for requirement in SemanticProviderProductionRequirementV1::ALL {
+            debug.field(
+                match requirement {
+                    SemanticProviderProductionRequirementV1::ExecutableIdentity => {
+                        "executable_identity"
+                    }
+                    SemanticProviderProductionRequirementV1::WorkingDirectoryIdentity => {
+                        "working_directory_identity"
+                    }
+                    SemanticProviderProductionRequirementV1::AmbientEnvironmentCleared => {
+                        "ambient_environment_cleared"
+                    }
+                    SemanticProviderProductionRequirementV1::CoreDumpsDisabled => {
+                        "core_dumps_disabled"
+                    }
+                    SemanticProviderProductionRequirementV1::FilesystemConfinement => {
+                        "filesystem_confinement"
+                    }
+                    SemanticProviderProductionRequirementV1::NetworkConfinement => {
+                        "network_confinement"
+                    }
+                    SemanticProviderProductionRequirementV1::SubprocessConfinement => {
+                        "subprocess_confinement"
+                    }
+                    SemanticProviderProductionRequirementV1::AbruptParentCleanup => {
+                        "abrupt_parent_cleanup"
+                    }
+                    SemanticProviderProductionRequirementV1::WholeTreeMemoryLimit => {
+                        "whole_tree_memory_limit"
+                    }
+                    SemanticProviderProductionRequirementV1::WholeTreeProcessLimit => {
+                        "whole_tree_process_limit"
+                    }
+                    SemanticProviderProductionRequirementV1::WholeTreeCpuLimit => {
+                        "whole_tree_cpu_limit"
+                    }
+                },
+                &self.support_for(requirement),
+            );
+        }
+        debug.finish()
+    }
+}
+
+/// Promotes exact affine launch evidence into the only token accepted by the
+/// production launch entry points. The meet of the fixed requirement lattice
+/// must be `Enforced`; any weaker member returns the original owned evidence.
+pub fn qualify_provider_launch_for_production_v1(
+    qualified: QualifiedProviderLaunchV1,
+) -> Result<
+    ProductionQualifiedProviderLaunchV1,
+    Box<SemanticProviderProductionQualificationFailureV1>,
+> {
+    let assurance = qualified.assurance();
+    if SemanticProviderProductionRequirementV1::ALL
+        .into_iter()
+        .all(|requirement| {
+            assurance.support_for(requirement) == SemanticProviderSupportV1::Enforced
+        })
+    {
+        Ok(ProductionQualifiedProviderLaunchV1 { qualified })
+    } else {
+        Err(Box::new(SemanticProviderProductionQualificationFailureV1 {
+            qualified,
+        }))
     }
 }
 
@@ -1495,6 +1693,23 @@ pub fn launch_qualified_local_lsp_v1(
             Err(reason)
         }
     }
+}
+
+/// Production-only launch boundary. Callers cannot reach it with an ordinary
+/// qualified profile; the complete fixed assurance product must first be
+/// promoted by [`qualify_provider_launch_for_production_v1`].
+pub fn launch_production_local_lsp_v1(
+    qualified: ProductionQualifiedProviderLaunchV1,
+) -> Result<LocalLspTransportV1, SemanticProcessLaunchRefusalV1> {
+    launch_qualified_local_lsp_v1(qualified.qualified)
+}
+
+/// Ownership-preserving production launch boundary. Uncertain launch and
+/// cleanup retain the same affine failure product as the probe boundary.
+pub fn launch_production_local_lsp_owned_v1(
+    qualified: ProductionQualifiedProviderLaunchV1,
+) -> Result<LocalLspTransportV1, SemanticProcessOwnedLaunchFailureV1> {
+    launch_qualified_local_lsp_owned_v1(qualified.qualified)
 }
 
 pub fn recover_unresolved_local_lsp_launch_v1() -> Option<SemanticUnresolvedLaunchOwnerV1> {

@@ -136,7 +136,7 @@ fn server_meta() -> Value {
     json!({"io.modelcontextprotocol/serverInfo":{
         "name":"vellum-semantic-mcp",
         "version":env!("CARGO_PKG_VERSION"),
-        "description":"Bounded in-process MCP projection of Vellum semantic queries"
+        "description":"Bounded MCP projection of Vellum semantic queries"
     }})
 }
 
