@@ -374,6 +374,7 @@ impl AuthorizedSaveAsV1 {
 }
 
 /// Locator- and content-free evidence for later durable receipts.
+#[derive(Clone, Eq, PartialEq)]
 pub struct SaveAsEvidenceV1 {
     source_witness: SaveAsSourceWitnessV1,
     source: DocumentVersion,
@@ -409,6 +410,291 @@ impl SaveAsEvidenceV1 {
 
     pub const fn serialization(&self) -> SourceSerializationStateV1 {
         self.serialization
+    }
+
+    pub const fn disposition(&self) -> SaveAsDispositionV1 {
+        SaveAsDispositionV1::OverwriteExisting
+    }
+}
+
+/// The only physical disposition admitted by this Save As profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsDispositionV1 {
+    OverwriteExisting,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsPersistenceV1 {
+    Durable,
+    NotDurable,
+    Unknown,
+    NotAttempted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsBindingV1 {
+    Activated,
+    NotActivated,
+    Unknown,
+}
+
+/// Fixed reasons why a retained operation cannot be treated as terminal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum SaveAsFenceReasonV1 {
+    PhysicalUncertainty = 0,
+    BindingUncertainty = 1,
+    RetainedTask = 2,
+    ReleaseUncertainty = 3,
+    Fault = 4,
+}
+
+/// Non-empty bounded join-semilattice used only by `Fenced` lifecycle states.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SaveAsFenceSetV1(u8);
+
+impl SaveAsFenceSetV1 {
+    const KNOWN: u8 = (1 << 5) - 1;
+
+    pub const fn singleton(reason: SaveAsFenceReasonV1) -> Self {
+        Self(1 << reason as u8)
+    }
+
+    pub const fn try_from_bits(bits: u8) -> Option<Self> {
+        if bits == 0 || bits & !Self::KNOWN != 0 {
+            None
+        } else {
+            Some(Self(bits))
+        }
+    }
+
+    pub const fn join(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn contains(self, reason: SaveAsFenceReasonV1) -> bool {
+        self.0 & (1 << reason as u8) != 0
+    }
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsLifecycleV1 {
+    TerminalReplayable,
+    Fenced(SaveAsFenceSetV1),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsNotAttemptedReasonV1 {
+    AuthorityDenied,
+    AuthorityUnavailable,
+    StaleSource,
+    DestinationRefused,
+    Capacity,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsNotDurableReasonV1 {
+    Conflict,
+    Unsupported,
+    Limit,
+    Capacity,
+    Io,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsPhysicalUnknownReasonV1 {
+    Io,
+    Cleanup,
+    TaskStateUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsNotActivatedReasonV1 {
+    Refused,
+    Unavailable,
+    DestinationChanged,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsBindingUnknownReasonV1 {
+    Faulted,
+    TaskStateUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SaveAsFailureV1 {
+    NotAttempted(SaveAsNotAttemptedReasonV1),
+    NotDurable(SaveAsNotDurableReasonV1),
+    PhysicalUnknown(SaveAsPhysicalUnknownReasonV1),
+    NotActivated(SaveAsNotActivatedReasonV1),
+    BindingUnknown(SaveAsBindingUnknownReasonV1),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SaveAsReceiptStateV1 {
+    DurableActivated,
+    DurableNotActivated(SaveAsNotActivatedReasonV1),
+    DurableBindingUnknown(SaveAsBindingUnknownReasonV1),
+    NotDurable(SaveAsNotDurableReasonV1),
+    PhysicalUnknown(SaveAsPhysicalUnknownReasonV1),
+    NotAttempted(SaveAsNotAttemptedReasonV1),
+}
+
+/// Locator- and content-free terminal or reconciliation evidence.
+///
+/// The private state sum makes invalid physical/binding products
+/// unrepresentable. In particular, activation requires durable publication and
+/// every unknown result requires a corresponding explicit fence.
+#[derive(Clone, Eq, PartialEq)]
+pub struct SaveAsReceiptV1 {
+    evidence: SaveAsEvidenceV1,
+    state: SaveAsReceiptStateV1,
+    lifecycle: SaveAsLifecycleV1,
+}
+
+impl SaveAsReceiptV1 {
+    pub fn durable_activated(evidence: SaveAsEvidenceV1, lifecycle: SaveAsLifecycleV1) -> Self {
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::DurableActivated,
+            lifecycle,
+        }
+    }
+
+    pub fn durable_not_activated(
+        evidence: SaveAsEvidenceV1,
+        reason: SaveAsNotActivatedReasonV1,
+        lifecycle: SaveAsLifecycleV1,
+    ) -> Self {
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::DurableNotActivated(reason),
+            lifecycle,
+        }
+    }
+
+    pub fn durable_binding_unknown(
+        evidence: SaveAsEvidenceV1,
+        reason: SaveAsBindingUnknownReasonV1,
+        fence: SaveAsFenceSetV1,
+    ) -> Self {
+        let fence = fence.join(SaveAsFenceSetV1::singleton(
+            SaveAsFenceReasonV1::BindingUncertainty,
+        ));
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::DurableBindingUnknown(reason),
+            lifecycle: SaveAsLifecycleV1::Fenced(fence),
+        }
+    }
+
+    pub fn not_durable(
+        evidence: SaveAsEvidenceV1,
+        reason: SaveAsNotDurableReasonV1,
+        lifecycle: SaveAsLifecycleV1,
+    ) -> Self {
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::NotDurable(reason),
+            lifecycle,
+        }
+    }
+
+    pub fn physical_unknown(
+        evidence: SaveAsEvidenceV1,
+        reason: SaveAsPhysicalUnknownReasonV1,
+        fence: SaveAsFenceSetV1,
+    ) -> Self {
+        let fence = fence.join(SaveAsFenceSetV1::singleton(
+            SaveAsFenceReasonV1::PhysicalUncertainty,
+        ));
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::PhysicalUnknown(reason),
+            lifecycle: SaveAsLifecycleV1::Fenced(fence),
+        }
+    }
+
+    pub fn not_attempted(
+        evidence: SaveAsEvidenceV1,
+        reason: SaveAsNotAttemptedReasonV1,
+        lifecycle: SaveAsLifecycleV1,
+    ) -> Self {
+        Self {
+            evidence,
+            state: SaveAsReceiptStateV1::NotAttempted(reason),
+            lifecycle,
+        }
+    }
+
+    pub const fn evidence(&self) -> &SaveAsEvidenceV1 {
+        &self.evidence
+    }
+
+    pub const fn persistence(&self) -> SaveAsPersistenceV1 {
+        match self.state {
+            SaveAsReceiptStateV1::DurableActivated
+            | SaveAsReceiptStateV1::DurableNotActivated(_)
+            | SaveAsReceiptStateV1::DurableBindingUnknown(_) => SaveAsPersistenceV1::Durable,
+            SaveAsReceiptStateV1::NotDurable(_) => SaveAsPersistenceV1::NotDurable,
+            SaveAsReceiptStateV1::PhysicalUnknown(_) => SaveAsPersistenceV1::Unknown,
+            SaveAsReceiptStateV1::NotAttempted(_) => SaveAsPersistenceV1::NotAttempted,
+        }
+    }
+
+    pub const fn binding(&self) -> SaveAsBindingV1 {
+        match self.state {
+            SaveAsReceiptStateV1::DurableActivated => SaveAsBindingV1::Activated,
+            SaveAsReceiptStateV1::DurableBindingUnknown(_) => SaveAsBindingV1::Unknown,
+            SaveAsReceiptStateV1::DurableNotActivated(_)
+            | SaveAsReceiptStateV1::NotDurable(_)
+            | SaveAsReceiptStateV1::PhysicalUnknown(_)
+            | SaveAsReceiptStateV1::NotAttempted(_) => SaveAsBindingV1::NotActivated,
+        }
+    }
+
+    pub const fn lifecycle(&self) -> SaveAsLifecycleV1 {
+        self.lifecycle
+    }
+
+    pub const fn failure(&self) -> Option<SaveAsFailureV1> {
+        match self.state {
+            SaveAsReceiptStateV1::DurableActivated => None,
+            SaveAsReceiptStateV1::DurableNotActivated(reason) => {
+                Some(SaveAsFailureV1::NotActivated(reason))
+            }
+            SaveAsReceiptStateV1::DurableBindingUnknown(reason) => {
+                Some(SaveAsFailureV1::BindingUnknown(reason))
+            }
+            SaveAsReceiptStateV1::NotDurable(reason) => Some(SaveAsFailureV1::NotDurable(reason)),
+            SaveAsReceiptStateV1::PhysicalUnknown(reason) => {
+                Some(SaveAsFailureV1::PhysicalUnknown(reason))
+            }
+            SaveAsReceiptStateV1::NotAttempted(reason) => {
+                Some(SaveAsFailureV1::NotAttempted(reason))
+            }
+        }
+    }
+
+    pub const fn changes_stable_binding(&self) -> bool {
+        matches!(self.state, SaveAsReceiptStateV1::DurableActivated)
+    }
+}
+
+impl fmt::Debug for SaveAsReceiptV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SaveAsReceiptV1")
+            .field("evidence", &self.evidence)
+            .field("persistence", &self.persistence())
+            .field("binding", &self.binding())
+            .field("lifecycle", &self.lifecycle)
+            .finish()
     }
 }
 
@@ -608,5 +894,199 @@ mod tests {
             ),
             Err(SaveAsAuthorizationRefusalV1::Denied)
         ));
+    }
+
+    fn receipt_evidence() -> SaveAsEvidenceV1 {
+        let (source, serialization) = source_version();
+        SaveAsEvidenceV1 {
+            source_witness: SaveAsSourceWitnessV1([7; 16]),
+            source,
+            serialization,
+            resource: AuthorityResourceRefV1::new([8; 16]),
+            persist_decision: AuthorityDecisionRefV1::new([9; 16]),
+            rebind_decision: AuthorityDecisionRefV1::new([10; 16]),
+            destination_decision: SaveAsDestinationDecisionRefV1::new([11; 16]),
+        }
+    }
+
+    fn fenced() -> SaveAsLifecycleV1 {
+        SaveAsLifecycleV1::Fenced(SaveAsFenceSetV1::singleton(
+            SaveAsFenceReasonV1::RetainedTask,
+        ))
+    }
+
+    #[test]
+    fn receipt_constructors_close_exactly_the_valid_product_rows() {
+        let receipts = [
+            SaveAsReceiptV1::durable_activated(
+                receipt_evidence(),
+                SaveAsLifecycleV1::TerminalReplayable,
+            ),
+            SaveAsReceiptV1::durable_activated(receipt_evidence(), fenced()),
+            SaveAsReceiptV1::durable_not_activated(
+                receipt_evidence(),
+                SaveAsNotActivatedReasonV1::Refused,
+                SaveAsLifecycleV1::TerminalReplayable,
+            ),
+            SaveAsReceiptV1::durable_not_activated(
+                receipt_evidence(),
+                SaveAsNotActivatedReasonV1::Unavailable,
+                fenced(),
+            ),
+            SaveAsReceiptV1::durable_binding_unknown(
+                receipt_evidence(),
+                SaveAsBindingUnknownReasonV1::Faulted,
+                SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::Fault),
+            ),
+            SaveAsReceiptV1::not_durable(
+                receipt_evidence(),
+                SaveAsNotDurableReasonV1::Conflict,
+                SaveAsLifecycleV1::TerminalReplayable,
+            ),
+            SaveAsReceiptV1::not_durable(
+                receipt_evidence(),
+                SaveAsNotDurableReasonV1::Io,
+                fenced(),
+            ),
+            SaveAsReceiptV1::physical_unknown(
+                receipt_evidence(),
+                SaveAsPhysicalUnknownReasonV1::Io,
+                SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::RetainedTask),
+            ),
+            SaveAsReceiptV1::not_attempted(
+                receipt_evidence(),
+                SaveAsNotAttemptedReasonV1::AuthorityDenied,
+                SaveAsLifecycleV1::TerminalReplayable,
+            ),
+            SaveAsReceiptV1::not_attempted(
+                receipt_evidence(),
+                SaveAsNotAttemptedReasonV1::Capacity,
+                fenced(),
+            ),
+        ];
+        let projections: Vec<_> = receipts
+            .iter()
+            .map(|receipt| {
+                (
+                    receipt.persistence(),
+                    receipt.binding(),
+                    matches!(receipt.lifecycle(), SaveAsLifecycleV1::Fenced(_)),
+                )
+            })
+            .collect();
+
+        for persistence in [
+            SaveAsPersistenceV1::Durable,
+            SaveAsPersistenceV1::NotDurable,
+            SaveAsPersistenceV1::Unknown,
+            SaveAsPersistenceV1::NotAttempted,
+        ] {
+            for binding in [
+                SaveAsBindingV1::Activated,
+                SaveAsBindingV1::NotActivated,
+                SaveAsBindingV1::Unknown,
+            ] {
+                for is_fenced in [false, true] {
+                    let expected = matches!(
+                        (persistence, binding, is_fenced),
+                        (SaveAsPersistenceV1::Durable, SaveAsBindingV1::Activated, _)
+                            | (
+                                SaveAsPersistenceV1::Durable,
+                                SaveAsBindingV1::NotActivated,
+                                _
+                            )
+                            | (SaveAsPersistenceV1::Durable, SaveAsBindingV1::Unknown, true)
+                            | (
+                                SaveAsPersistenceV1::NotDurable,
+                                SaveAsBindingV1::NotActivated,
+                                _
+                            )
+                            | (
+                                SaveAsPersistenceV1::Unknown,
+                                SaveAsBindingV1::NotActivated,
+                                true
+                            )
+                            | (
+                                SaveAsPersistenceV1::NotAttempted,
+                                SaveAsBindingV1::NotActivated,
+                                _
+                            )
+                    );
+                    assert_eq!(
+                        projections.contains(&(persistence, binding, is_fenced)),
+                        expected,
+                        "unexpected receipt product: {persistence:?} {binding:?} fenced={is_fenced}",
+                    );
+                }
+            }
+        }
+        assert_eq!(projections.len(), 10);
+        assert_eq!(
+            receipts
+                .iter()
+                .filter(|receipt| receipt.changes_stable_binding())
+                .count(),
+            2
+        );
+        assert!(
+            receipts
+                .iter()
+                .filter(|receipt| receipt.changes_stable_binding())
+                .all(
+                    |receipt| receipt.persistence() == SaveAsPersistenceV1::Durable
+                        && receipt.binding() == SaveAsBindingV1::Activated
+                )
+        );
+    }
+
+    #[test]
+    fn unknown_receipts_install_the_required_fence_reason() {
+        let physical = SaveAsReceiptV1::physical_unknown(
+            receipt_evidence(),
+            SaveAsPhysicalUnknownReasonV1::Cleanup,
+            SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::RetainedTask),
+        );
+        let binding = SaveAsReceiptV1::durable_binding_unknown(
+            receipt_evidence(),
+            SaveAsBindingUnknownReasonV1::TaskStateUnavailable,
+            SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::ReleaseUncertainty),
+        );
+        let SaveAsLifecycleV1::Fenced(physical_fence) = physical.lifecycle() else {
+            panic!("unknown physical outcome must be fenced")
+        };
+        let SaveAsLifecycleV1::Fenced(binding_fence) = binding.lifecycle() else {
+            panic!("unknown binding outcome must be fenced")
+        };
+        assert!(physical_fence.contains(SaveAsFenceReasonV1::PhysicalUncertainty));
+        assert!(physical_fence.contains(SaveAsFenceReasonV1::RetainedTask));
+        assert!(binding_fence.contains(SaveAsFenceReasonV1::BindingUncertainty));
+        assert!(binding_fence.contains(SaveAsFenceReasonV1::ReleaseUncertainty));
+        assert_eq!(SaveAsFenceSetV1::try_from_bits(0), None);
+        assert_eq!(SaveAsFenceSetV1::try_from_bits(1 << 7), None);
+    }
+
+    #[test]
+    fn receipt_debug_is_locator_content_and_identity_safe() {
+        let receipt = SaveAsReceiptV1::durable_not_activated(
+            receipt_evidence(),
+            SaveAsNotActivatedReasonV1::DestinationChanged,
+            SaveAsLifecycleV1::TerminalReplayable,
+        );
+        let debug = format!("{receipt:?}");
+        assert!(debug.contains("<opaque>"));
+        assert!(!debug.contains("secret"));
+        assert!(!debug.contains("source.rs"));
+        assert!(!debug.contains("7, 7"));
+        assert!(!debug.contains("8, 8"));
+        assert_eq!(
+            receipt.evidence().disposition(),
+            SaveAsDispositionV1::OverwriteExisting
+        );
+        assert_eq!(
+            receipt.failure(),
+            Some(SaveAsFailureV1::NotActivated(
+                SaveAsNotActivatedReasonV1::DestinationChanged
+            ))
+        );
     }
 }

@@ -65,12 +65,13 @@ The following gaps are release-blocking for that public surface:
    `NotDurable`, an `Unknown` physical effect, a durable write with activation
    refused, and an indeterminate activation. It must not discard a possibly live
    task merely to construct a reply.
-4. Save As activation is a fault-fenced engine publication. A returned success can
-   truthfully activate the workspace locator and stable protocol document binding;
-   an activation error cannot generally prove that no binding publication occurred.
-   The future receipt therefore needs a separate binding sum such as
-   `Activated | NotActivated | Unknown`, in addition to the physical
-   `Durable | NotDurable | Unknown | NotAttempted` sum.
+4. Save As activation is a fault-fenced engine publication. `vellum-host` now owns
+   the closed native receipt sum with separate `Durable | NotDurable | Unknown |
+   NotAttempted` physical and `Activated | NotActivated | Unknown` binding
+   projections. Invalid products are unrepresentable, every unknown installs an
+   explicit fence, and only `Durable + Activated` permits a stable binding change.
+   The retained session/workspace coordinator must still construct this receipt from
+   actual native outcomes and retain recovery obligations across activation errors.
 5. The durable request journal must encode the eventual command and receipt before
    wire publication. A crash after the external write but before a completed journal
    record must replay/fence as unknown; it must never repeat the overwrite under a
