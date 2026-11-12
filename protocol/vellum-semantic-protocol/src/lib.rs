@@ -26,6 +26,10 @@ pub const MAX_SEMANTIC_SESSION_OPERATIONS_PER_MEMBERSHIP_V1: u32 = 65_536;
 pub const MAX_SEMANTIC_SESSION_MEMBERSHIPS_V1: u32 = 64;
 pub const MAX_SEMANTIC_SESSION_REPLAY_INTENT_BYTES_V1: usize = 128 * 1024 * 1024;
 pub const MAX_SEMANTIC_SESSION_RETAINED_RESULT_BYTES_V1: usize = 64 * 1024 * 1024;
+/// Logical replay bytes retained by one fresh `JoinSession` operation.
+pub const SEMANTIC_SESSION_JOIN_INTENT_BYTES_V1: usize = 1 + 16 + 16 + 1;
+/// Logical replay bytes retained by one fresh `LeaveSession` operation.
+pub const SEMANTIC_SESSION_LEAVE_INTENT_BYTES_V1: usize = 1 + 16 + 16 + 16;
 
 macro_rules! opaque_ref {
     ($name:ident) => {
@@ -163,10 +167,53 @@ impl SemanticSessionLimitsV1 {
             && self.max_retained_result_bytes <= MAX_SEMANTIC_SESSION_RETAINED_RESULT_BYTES_V1
             && self.max_requests_per_membership > 0
             && self.max_requests_per_membership <= MAX_SEMANTIC_SESSION_OPERATIONS_PER_MEMBERSHIP_V1
-            && self.max_operations_per_membership > 0
+            && self.ordinary_operation_budget().is_some()
             && self.max_operations_per_membership
                 <= MAX_SEMANTIC_SESSION_OPERATIONS_PER_MEMBERSHIP_V1
+            && self.has_minimum_membership_replay_bytes()
             && self.semantic.is_valid()
+    }
+
+    /// Fresh leave operations reserved for cancelling every pending request
+    /// and closing every synchronized document without reusing correlations.
+    pub const fn retirement_operation_reserve(self) -> Option<u32> {
+        self.max_documents.checked_add(self.max_pending)
+    }
+
+    /// Operation headroom advertised for synchronization and query work. The
+    /// retirement tail is never offered as ordinary capacity.
+    pub const fn ordinary_operation_budget(self) -> Option<u32> {
+        match self.retirement_operation_reserve() {
+            Some(reserve) => match self.max_operations_per_membership.checked_sub(reserve) {
+                Some(0) | None => None,
+                budget => budget,
+            },
+            None => None,
+        }
+    }
+
+    /// Minimum replay space for every declared concurrent membership to join
+    /// and then consume its complete retirement tail.
+    pub const fn minimum_membership_replay_bytes(self) -> Option<usize> {
+        let reserve = match self.retirement_operation_reserve() {
+            Some(value) => value as usize,
+            None => return None,
+        };
+        let retirement = match reserve.checked_mul(SEMANTIC_SESSION_LEAVE_INTENT_BYTES_V1) {
+            Some(value) => value,
+            None => return None,
+        };
+        match retirement.checked_add(SEMANTIC_SESSION_JOIN_INTENT_BYTES_V1) {
+            Some(value) => value.checked_mul(self.max_memberships as usize),
+            None => None,
+        }
+    }
+
+    const fn has_minimum_membership_replay_bytes(self) -> bool {
+        match self.minimum_membership_replay_bytes() {
+            Some(bytes) => bytes <= self.max_replay_intent_bytes,
+            None => false,
+        }
     }
 }
 
@@ -515,7 +562,7 @@ impl SemanticSessionCommandV1 {
         };
         match self {
             Self::Describe { .. } | Self::Collect { .. } => Some(0),
-            Self::JoinSession { .. } => TAG.checked_add(REF)?.checked_add(REF)?.checked_add(1),
+            Self::JoinSession { .. } => Some(SEMANTIC_SESSION_JOIN_INTENT_BYTES_V1),
             Self::BeginSynchronization { .. } | Self::CompleteSynchronization { .. } => {
                 BOUND_MUTATION.checked_add(REF)?.checked_add(MANIFEST)
             }
@@ -532,7 +579,7 @@ impl SemanticSessionCommandV1 {
                 .checked_add(text(request.language.as_str())?)?
                 .checked_add(query(&request.query)?),
             Self::Cancel { .. } | Self::ReleaseRequest { .. } => BOUND_MUTATION.checked_add(REF),
-            Self::LeaveSession { .. } => Some(BOUND_MUTATION),
+            Self::LeaveSession { .. } => Some(SEMANTIC_SESSION_LEAVE_INTENT_BYTES_V1),
         }
     }
 
@@ -1278,6 +1325,29 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn session_limits_preserve_ordinary_and_retirement_capacity() {
+        let limits = SemanticSessionLimitsV1::reference();
+        let reserve = limits.retirement_operation_reserve().unwrap();
+        assert_eq!(reserve, limits.max_documents + limits.max_pending);
+        assert_eq!(
+            limits.ordinary_operation_budget(),
+            Some(limits.max_operations_per_membership - reserve)
+        );
+        assert!(
+            limits.minimum_membership_replay_bytes().unwrap() <= limits.max_replay_intent_bytes
+        );
+
+        let mut no_ordinary_headroom = limits;
+        no_ordinary_headroom.max_operations_per_membership = reserve;
+        assert!(!no_ordinary_headroom.is_valid());
+
+        let mut no_retirement_replay = limits;
+        no_retirement_replay.max_replay_intent_bytes =
+            limits.minimum_membership_replay_bytes().unwrap() - 1;
+        assert!(!no_retirement_replay.is_valid());
     }
 
     #[test]

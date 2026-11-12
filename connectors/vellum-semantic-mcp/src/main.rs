@@ -377,6 +377,20 @@ fn join_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV1
 }
 
 #[cfg(unix)]
+fn retirement_progress_is_bounded(
+    prior: Option<(u32, u32)>,
+    current: (u32, u32),
+    budget: u32,
+) -> bool {
+    current
+        .0
+        .checked_add(current.1)
+        .is_some_and(|total| total <= budget)
+        && prior
+            .is_none_or(|prior| current.0 <= prior.0 && current.1 <= prior.1 && current != prior)
+}
+
+#[cfg(unix)]
 fn leave_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV1>(
     session: &mut vellum_semantic_session_client::SemanticSessionClientV1<P>,
     mut exchange: u128,
@@ -384,9 +398,14 @@ fn leave_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV
 ) -> Result<(), RemoteStage> {
     use vellum_semantic_protocol::{
         SemanticExchangeDispositionV1, SemanticExchangeRefV1, SemanticSessionCommandV1,
-        SemanticSessionOperationRefV1, SemanticSessionOutcomeV1,
+        SemanticSessionOperationRefV1, SemanticSessionOutcomeV1, SemanticSessionPendingV1,
     };
-    for _ in 0..1_024 {
+    let retirement_budget = session
+        .description()
+        .and_then(|description| description.limits().retirement_operation_reserve())
+        .ok_or(RemoteStage::Cleanup)?;
+    let mut prior_obligations = None;
+    for _ in 0..retirement_budget {
         let binding = session.binding().ok_or(RemoteStage::Cleanup)?;
         let command = SemanticSessionCommandV1::LeaveSession {
             exchange: SemanticExchangeRefV1::new(exchange.to_be_bytes())
@@ -402,19 +421,27 @@ fn leave_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV
             {
                 return Ok(());
             }
-            SemanticExchangeDispositionV1::Reply(reply)
-                if matches!(
-                    reply.outcome(),
-                    SemanticSessionOutcomeV1::Pending(
-                        vellum_semantic_protocol::SemanticSessionPendingV1::Retirement { .. }
-                    )
-                ) =>
-            {
+            SemanticExchangeDispositionV1::Reply(reply) => {
+                let SemanticSessionOutcomeV1::Pending(SemanticSessionPendingV1::Retirement {
+                    remaining_documents,
+                    quarantined_requests,
+                }) = reply.outcome()
+                else {
+                    return Err(RemoteStage::Cleanup);
+                };
+                let obligations = (*remaining_documents, *quarantined_requests);
+                if !retirement_progress_is_bounded(
+                    prior_obligations,
+                    obligations,
+                    retirement_budget,
+                ) {
+                    return Err(RemoteStage::Cleanup);
+                }
+                prior_obligations = Some(obligations);
                 exchange = exchange.checked_add(1).ok_or(RemoteStage::Cleanup)?;
                 operation = operation.checked_add(1).ok_or(RemoteStage::Cleanup)?;
             }
-            SemanticExchangeDispositionV1::Reply(_)
-            | SemanticExchangeDispositionV1::NotSent
+            SemanticExchangeDispositionV1::NotSent
             | SemanticExchangeDispositionV1::OutcomeUnknown => {
                 return Err(RemoteStage::Cleanup);
             }
@@ -927,5 +954,15 @@ mod tests {
         assert_ne!(first, 0);
         assert!(first < (1_u128 << 127));
         assert_eq!(second, first + 1);
+    }
+
+    #[test]
+    fn retirement_progress_must_decrease_within_the_declared_tail() {
+        assert!(retirement_progress_is_bounded(None, (2, 1), 3));
+        assert!(retirement_progress_is_bounded(Some((2, 1)), (1, 1), 3));
+        assert!(retirement_progress_is_bounded(Some((1, 1)), (1, 0), 3));
+        assert!(!retirement_progress_is_bounded(Some((1, 1)), (1, 1), 3));
+        assert!(!retirement_progress_is_bounded(Some((1, 1)), (2, 0), 3));
+        assert!(!retirement_progress_is_bounded(None, (3, 1), 3));
     }
 }

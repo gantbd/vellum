@@ -108,6 +108,7 @@ pub struct SemanticSessionClientUsageV1 {
     pub witness_bytes: u64,
     pub replay_intent_bytes: u64,
     pub remaining_operations: u64,
+    pub remaining_retirement_operations: u64,
     pub counter_saturated: bool,
 }
 
@@ -221,6 +222,7 @@ struct MembershipProjectionV1 {
     requests: BTreeMap<SemanticRequestRefV1, SemanticRequestV1>,
     result_reservation: u64,
     remaining_operations: u32,
+    remaining_retirement_operations: u32,
     definitive_operations: BTreeSet<SemanticSessionOperationRefV1>,
 }
 
@@ -391,6 +393,10 @@ impl<P> SemanticSessionClientV1<P> {
             .membership
             .as_ref()
             .map_or(0, |state| u64::from(state.remaining_operations));
+        self.usage.remaining_retirement_operations = self
+            .membership
+            .as_ref()
+            .map_or(0, |state| u64::from(state.remaining_retirement_operations));
     }
 }
 
@@ -563,9 +569,15 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionClientV1<P> {
         let state = self.membership.as_ref().expect("binding checked");
         if let Some(operation) = command.operation()
             && !state.definitive_operations.contains(&operation)
-            && state.remaining_operations == 0
         {
-            return Err(SemanticSessionClientRefusalV1::Capacity);
+            let remaining = if matches!(command, SemanticSessionCommandV1::LeaveSession { .. }) {
+                state.remaining_retirement_operations
+            } else {
+                state.remaining_operations
+            };
+            if remaining == 0 {
+                return Err(SemanticSessionClientRefusalV1::Capacity);
+            }
         }
         match command {
             SemanticSessionCommandV1::BeginSynchronization {
@@ -828,7 +840,10 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionClientV1<P> {
                     && requested_roles.contains(*granted_roles)
                     && description.role_ceiling().contains(*granted_roles)
                     && *remaining_operations > 0
-                    && *remaining_operations <= description.limits().max_operations_per_membership
+                    && description
+                        .limits()
+                        .ordinary_operation_budget()
+                        .is_some_and(|budget| *remaining_operations <= budget)
             }),
             (
                 SemanticSessionCommandV1::Submit { request, .. },
@@ -933,6 +948,10 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionClientV1<P> {
                     requests: BTreeMap::new(),
                     result_reservation: 0,
                     remaining_operations: *remaining_operations,
+                    remaining_retirement_operations: self
+                        .description
+                        .and_then(|description| description.limits().retirement_operation_reserve())
+                        .expect("joined reply was validated against described limits"),
                     definitive_operations: BTreeSet::new(),
                 });
             }
@@ -1136,15 +1155,18 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionClientV1<P> {
             return;
         };
         if state.definitive_operations.insert(operation) {
-            state.remaining_operations =
-                if matches!(reply.outcome(), SemanticSessionOutcomeV1::ReplayCapacity) {
-                    0
-                } else {
-                    state
-                        .remaining_operations
-                        .checked_sub(1)
-                        .expect("fresh definitive operation was preflighted")
-                };
+            let remaining = if matches!(command, SemanticSessionCommandV1::LeaveSession { .. }) {
+                &mut state.remaining_retirement_operations
+            } else {
+                &mut state.remaining_operations
+            };
+            *remaining = if matches!(reply.outcome(), SemanticSessionOutcomeV1::ReplayCapacity) {
+                0
+            } else {
+                remaining
+                    .checked_sub(1)
+                    .expect("fresh definitive operation was preflighted")
+            };
         }
     }
 

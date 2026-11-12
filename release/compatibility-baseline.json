@@ -550,7 +550,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-semantic-mcp/src",
         "fileCount": 4,
-        "sha256": "2eee833243572bb60f8f84ae48a52715c237dc5dd32e742b5f0f38f0afcee2df"
+        "sha256": "56ad1a88c80dcfb6ec5d00975f5e2771a1884dc10871f202ad5b282cbd45654c"
       }
     },
     {
@@ -574,7 +574,7 @@
       "sourceTree": {
         "directory": "protocol/vellum-semantic-protocol/src",
         "fileCount": 1,
-        "sha256": "c09a49d4fde602fb08b635c70a93f4be7c6cc20bd558cc18369abf1ab5b3bca2"
+        "sha256": "eec601f2d270b0aa71b6eb7d197989b20b20f7d3d66d0b15e5f11b61a7a54f34"
       }
     },
     {
@@ -646,7 +646,7 @@
       "sourceTree": {
         "directory": "service/vellum-semantic-session-broker/src",
         "fileCount": 1,
-        "sha256": "b7a02505f3b2ff05f834f3351cadb34ecc3d6c628bc599c599258481a9f7fab4"
+        "sha256": "4e348aaa960f18b539f9eb83c30c07da576ef22781441e64e1f8fa4115798bde"
       }
     },
     {
@@ -670,7 +670,7 @@
       "sourceTree": {
         "directory": "client/vellum-semantic-session-client/src",
         "fileCount": 3,
-        "sha256": "a3146cd292b171aae462e7731ff719fcc656f48413ba061a1cd5bf5212bf9b6d"
+        "sha256": "3504100a0dcc02a72696672527e73c7235d6aa8aa0db67b38ce2bef512c0dcfc"
       }
     },
     {

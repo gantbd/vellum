@@ -412,9 +412,11 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes post-start multi-document resynchronization and file watching, membership rollover after
-tombstone exhaustion, and extraction of the MCP peer into its sibling
-repository.
+work includes post-start multi-document resynchronization and file watching,
+seamless membership rollover after tombstone exhaustion, and extraction of the
+MCP peer into its sibling repository. Ordinary operation headroom can no longer
+consume the broker/client retirement tail, but the MCP runtime does not yet
+leave, rejoin, fully resynchronize and rebind while stdio remains live.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

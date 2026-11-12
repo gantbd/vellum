@@ -38,6 +38,13 @@ Cancel Accepted means admission only: the caller must still Collect the terminal
 and Complete request identities must equal the collected request, and Unsupported must match the
 submitted request kind. Membership operation and request budgets are explicit; exhaustion requires
 orderly Leave and rejoin (plus full resynchronization for a synchronizer).
+The advertised operation count is ordinary-work headroom only. Each accepted membership retains a
+closed retirement tail equal to the maximum synchronized-document plus pending-request ceilings,
+and replay-byte admission preserves the corresponding fixed Leave intents across the concurrent
+membership ceiling. Ordinary exhaustion therefore cannot consume the ability to cancel and close
+the membership. Each fresh Leave step must reduce its bounded retirement obligations; exact replay
+remains inert. Retired replay records are not silently compacted, so incarnation-global replay-byte
+exhaustion still requires an explicit service restart/rotation rather than an invented rollover.
 
 The manifest uses domain-separated SHA-256 document leaves over document identity, exact revision,
 language length/bytes and source length/bytes. Its root covers sorted fixed-width document/leaf

@@ -802,7 +802,7 @@ impl SemanticSessionBrokerV1 {
             unreachable!()
         };
         let bytes = intent_bytes(&command);
-        if !self.can_charge(bytes) {
+        if !self.can_charge_preserving_retirement(bytes, 1) {
             return self.make_reply(
                 command.kind(),
                 exchange,
@@ -861,7 +861,10 @@ impl SemanticSessionBrokerV1 {
         let outcome = SemanticSessionOutcomeV1::Joined {
             membership,
             granted_roles: roles,
-            remaining_operations: self.limits.max_operations_per_membership,
+            remaining_operations: self
+                .limits
+                .ordinary_operation_budget()
+                .expect("validated limits retain ordinary headroom"),
         };
         self.memberships.insert(
             membership,
@@ -1034,9 +1037,29 @@ impl SemanticSessionBrokerV1 {
                 );
             }
             let bytes = intent_bytes(&command);
-            if member.operations.len() >= self.limits.max_operations_per_membership as usize
-                || !self.can_charge(bytes)
-            {
+            let leave = matches!(command, SemanticSessionCommandV1::LeaveSession { .. });
+            let ordinary_operations = member
+                .operations
+                .values()
+                .filter(|record| {
+                    !matches!(record.intent, SemanticSessionCommandV1::LeaveSession { .. })
+                })
+                .count();
+            let operation_capacity = member.operations.len()
+                < self.limits.max_operations_per_membership as usize
+                && (leave
+                    || ordinary_operations
+                        < self
+                            .limits
+                            .ordinary_operation_budget()
+                            .expect("validated limits retain ordinary headroom")
+                            as usize);
+            let replay_capacity = if leave {
+                self.can_charge(bytes)
+            } else {
+                self.can_charge_preserving_retirement(bytes, 0)
+            };
+            if !operation_capacity || !replay_capacity {
                 return self.bound_reply(&command, SemanticSessionOutcomeV1::ReplayCapacity);
             }
         }
@@ -2971,6 +2994,30 @@ impl SemanticSessionBrokerV1 {
             .checked_add(bytes)
             .is_some_and(|total| total <= self.limits.max_replay_intent_bytes)
     }
+    fn can_charge_preserving_retirement(&self, bytes: usize, additional_memberships: u32) -> bool {
+        let memberships = self
+            .usage
+            .current_memberships
+            .checked_add(additional_memberships);
+        let reserve = self
+            .limits
+            .retirement_operation_reserve()
+            .and_then(|operations| {
+                usize::try_from(operations)
+                    .ok()?
+                    .checked_mul(vellum_semantic_protocol::SEMANTIC_SESSION_LEAVE_INTENT_BYTES_V1)
+            });
+        memberships
+            .and_then(|count| usize::try_from(count).ok())
+            .and_then(|count| reserve?.checked_mul(count))
+            .and_then(|reserve| {
+                self.usage
+                    .replay_intent_bytes
+                    .checked_add(bytes)?
+                    .checked_add(reserve)
+            })
+            .is_some_and(|total| total <= self.limits.max_replay_intent_bytes)
+    }
     fn charge(&mut self, bytes: usize) {
         self.usage.replay_intent_bytes = self.usage.replay_intent_bytes.saturating_add(bytes);
         self.usage.replay_intent_bytes_high_water = self
@@ -4041,9 +4088,78 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_operation_exhaustion_preserves_leave_and_fresh_rejoin() {
+        let mut limits = SemanticSessionLimitsV1::reference();
+        limits.max_documents = 1;
+        limits.max_pending = 1;
+        limits.max_memberships = 1;
+        limits.max_operations_per_membership = 3;
+        limits.max_replay_intent_bytes = 1_024;
+        let mut broker = SemanticSessionBrokerV1::try_new(
+            id(|v| SemanticSessionIncarnationV1::new(v).unwrap(), 3),
+            limits,
+        )
+        .unwrap();
+        let ctx = context(SemanticSessionRolesV1::top());
+        let membership = joined(broker.command(ctx, join(6)));
+        let epoch = id(|v| SemanticSynchronizationEpochV1::new(v).unwrap(), 7);
+        let manifest =
+            SemanticSynchronizationManifestV1::try_from_seals(&[], broker.limits()).unwrap();
+        let begin = SemanticSessionCommandV1::BeginSynchronization {
+            exchange: id(|v| SemanticExchangeRefV1::new(v).unwrap(), 8),
+            operation: id(|v| SemanticSessionOperationRefV1::new(v).unwrap(), 8),
+            incarnation: broker.incarnation(),
+            membership,
+            epoch,
+            manifest,
+        };
+        let SemanticBrokerDecisionV1::Reply(accepted) = broker.command(ctx, begin) else {
+            panic!()
+        };
+        assert_eq!(accepted.outcome(), &SemanticSessionOutcomeV1::Accepted);
+
+        let ordinary_overflow = SemanticSessionCommandV1::CompleteSynchronization {
+            exchange: id(|v| SemanticExchangeRefV1::new(v).unwrap(), 9),
+            operation: id(|v| SemanticSessionOperationRefV1::new(v).unwrap(), 9),
+            incarnation: broker.incarnation(),
+            membership,
+            epoch,
+            manifest,
+        };
+        let SemanticBrokerDecisionV1::Reply(full) = broker.command(ctx, ordinary_overflow) else {
+            panic!()
+        };
+        assert_eq!(full.outcome(), &SemanticSessionOutcomeV1::ReplayCapacity);
+
+        let leave = SemanticSessionCommandV1::LeaveSession {
+            exchange: id(|v| SemanticExchangeRefV1::new(v).unwrap(), 10),
+            operation: id(|v| SemanticSessionOperationRefV1::new(v).unwrap(), 10),
+            incarnation: broker.incarnation(),
+            membership,
+        };
+        let SemanticBrokerDecisionV1::Reply(retired) = broker.command(ctx, leave) else {
+            panic!()
+        };
+        assert_eq!(retired.outcome(), &SemanticSessionOutcomeV1::Accepted);
+        assert_eq!(broker.usage().current_memberships, 0);
+
+        let mut rejoin = join(11);
+        if let SemanticSessionCommandV1::JoinSession { operation, .. } = &mut rejoin {
+            *operation = id(|v| SemanticSessionOperationRefV1::new(v).unwrap(), 11);
+        }
+        let next = joined(broker.command(ctx, rejoin));
+        assert_ne!(next, membership);
+    }
+
+    #[test]
     fn replay_bytes_are_exactly_bounded_and_early_refusals_are_immutable() {
         let mut limits = SemanticSessionLimitsV1::reference();
-        limits.max_replay_intent_bytes = 143;
+        limits.max_documents = 1;
+        limits.max_pending = 1;
+        limits.max_memberships = 1;
+        limits.max_operations_per_membership = 3;
+        // One join + one ordinary begin + the two-operation retirement tail.
+        limits.max_replay_intent_bytes = 241;
         let mut bounded = SemanticSessionBrokerV1::try_new(
             id(|v| SemanticSessionIncarnationV1::new(v).unwrap(), 3),
             limits,

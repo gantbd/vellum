@@ -921,6 +921,9 @@ mod tests {
             requests: BTreeMap::new(),
             result_reservation: 0,
             remaining_operations: 32,
+            remaining_retirement_operations: SemanticSessionLimitsV1::reference()
+                .retirement_operation_reserve()
+                .unwrap(),
             definitive_operations: BTreeSet::new(),
         });
         client.description = Some(
@@ -960,6 +963,9 @@ mod tests {
             requests: BTreeMap::new(),
             result_reservation: 0,
             remaining_operations: 32,
+            remaining_retirement_operations: SemanticSessionLimitsV1::reference()
+                .retirement_operation_reserve()
+                .unwrap(),
             definitive_operations: BTreeSet::new(),
         });
         client.description = Some(

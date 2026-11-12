@@ -140,6 +140,9 @@ fn member_client(
         requests: BTreeMap::new(),
         result_reservation: 0,
         remaining_operations: 100,
+        remaining_retirement_operations: SemanticSessionLimitsV1::reference()
+            .retirement_operation_reserve()
+            .unwrap(),
         definitive_operations: BTreeSet::new(),
     });
     client.update_gauges();
@@ -306,6 +309,8 @@ fn join_attempt(
     remaining: u32,
 ) -> SemanticExchangeDispositionV1<SemanticSessionReplyV1> {
     let mut limits = SemanticSessionLimitsV1::reference();
+    limits.max_documents = 1;
+    limits.max_pending = 1;
     limits.max_operations_per_membership = described_max;
     let observed = SemanticSessionDescriptionV1::try_new(
         incarnation(1),
@@ -387,8 +392,8 @@ fn join_rejects_role_amplification_bottom_grants_and_budget_increases() {
             SemanticSessionRolesV1::top(),
             SemanticSessionRolesV1::top(),
             SemanticSessionRolesV1::query(),
-            2,
             3,
+            4,
         ),
         SemanticExchangeDispositionV1::OutcomeUnknown
     );
@@ -447,6 +452,32 @@ fn definitive_operation_budget_is_monotone_and_matching_replay_is_inert() {
         }),
         Err(SemanticSessionClientRefusalV1::Capacity)
     );
+}
+
+#[test]
+fn exhausted_ordinary_budget_still_admits_reserved_leave() {
+    let leave = SemanticSessionCommandV1::LeaveSession {
+        exchange: exchange(40),
+        operation: operation(40),
+        incarnation: incarnation(1),
+        membership: membership(2),
+    };
+    let mut client = member_client([SemanticExchangeDispositionV1::Reply(reply(
+        &leave,
+        SemanticSessionOutcomeV1::Accepted,
+    ))]);
+    let state = client.membership.as_mut().unwrap();
+    state.remaining_operations = 0;
+    state.remaining_retirement_operations = 1;
+    client.update_gauges();
+
+    let SemanticExchangeDispositionV1::Reply(retired) = client.attempt(leave).unwrap() else {
+        panic!()
+    };
+    assert_eq!(retired.outcome(), &SemanticSessionOutcomeV1::Accepted);
+    assert!(client.binding().is_none());
+    assert_eq!(client.usage().remaining_operations, 0);
+    assert_eq!(client.usage().remaining_retirement_operations, 0);
 }
 
 #[test]
