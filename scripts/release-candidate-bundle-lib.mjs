@@ -258,7 +258,7 @@ export function buildCandidateBundle(qualifiedDirectory, options = {}) {
   return encode(entries);
 }
 
-export function verifyCandidateBundle(bundleFile, options = {}) {
+const inspectCandidateBundle = (bundleFile, options = {}, includeProducts = false) => {
   const stat = fs.lstatSync(bundleFile);
   if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_BUNDLE_BYTES) {
     fail('bundle must be one bounded regular file');
@@ -286,13 +286,35 @@ export function verifyCandidateBundle(bundleFile, options = {}) {
       launchd: smokeLaunchdDeployment(candidate),
       activator: smokeLaunchdActivationExecutor(candidate),
     };
-    return {
+    const report = {
       manifestSha256: candidate.manifestSha256,
       vellumRevision: candidate.manifest.source.vellum.revision,
       fileCount: FILES.length,
       smoke,
     };
+    const products = includeProducts ? ARTIFACT_NAMES.map((name) => {
+      const artifact = candidate.manifest.artifacts.find((item) => item.file === name);
+      const entry = entries.find((item) => item.name === `candidate/${name}`);
+      if (artifact === undefined || entry === undefined) {
+        fail('candidate product closure is incompatible');
+      }
+      return {
+        name,
+        bytes: entry.bytes,
+        byteLength: artifact.bytes,
+        sha256: artifact.sha256,
+      };
+    }) : [];
+    return { report, products };
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
+};
+
+export function verifyCandidateBundle(bundleFile, options = {}) {
+  return inspectCandidateBundle(bundleFile, options).report;
+}
+
+export function prepareCandidateBundleInstall(bundleFile, options = {}) {
+  return inspectCandidateBundle(bundleFile, options, true);
 }

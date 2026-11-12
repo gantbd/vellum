@@ -186,9 +186,10 @@ and `vellum-mcp`, both built from the installation-only `vellum` package; it
 also builds the two separately classified launchd
 deployment tools. It stages the product binaries, executes each staged
 `--help` path, and checksum-closes the inert, relocatable
-`vellum-launchd-render` helper and activation executor. It uploads a short-lived Actions artifact
-containing the two binaries, the renderer, the separately authorized activation
-executor, a content-safe `manifest.json`, and `SHA256SUMS`. The renderer emits a
+`vellum-launchd-render` helper and activation executor. It uploads one
+short-lived canonical USTAR Actions artifact containing the two binaries, the
+renderer, the separately authorized activation executor, a content-safe
+`manifest.json`, `SHA256SUMS`, and byte-equivalence evidence. The renderer emits a
 fail-closed read-only LaunchAgent plist but
 does not install or activate it; see the
 [launchd distribution profile](launchd-distribution.md).
@@ -197,11 +198,21 @@ The workflow invokes the clean-source qualifier at the selected commit. That
 qualifier makes detached local clones of the exact Vellum and Keystone commits,
 sets Cargo offline, builds the locked candidate twice into distinct scratch
 products, and refuses upload unless their complete regular-file closures are
-byte-identical. It uploads a separate content-safe byte-equivalence record
-beside one candidate. This is evidence for those two materializations under one
-workflow environment; it is not a cross-run reproducible-build, signature, or
-attestation claim. Local source clones and exact URL rewrites are used; the
-qualifier performs no remote fetch, release, package publication, or activation.
+byte-identical. It packages the content-safe byte-equivalence record with one
+candidate, flattens only the outer tar mode to match GitHub artifact transport,
+then safely re-extracts and requalifies the complete download. This is evidence
+for those two materializations under one workflow environment; it is not a
+cross-run reproducible-build, signature, or attestation claim. Local source
+clones and exact URL rewrites are used; the qualifier performs no remote fetch,
+release, package publication, or activation.
+
+Before upload, the workflow also installs that exact flattened-mode download
+into a fresh private scratch root and executes the installed daemon and MCP help
+paths. The installer admits only those two product binaries and a canonical
+receipt. It does not place the packaged launchd tools in the ordinary product
+prefix, mutate `PATH`, install a plist, invoke launchd, activate, overwrite,
+upgrade or uninstall. This qualifies the download-to-binaries path without
+granting deployment authority.
 
 `vellum-semantic-local`, `vellum-semantic-mcp`, and all TUI/GUI applications
 are explicitly outside this artifact set. In particular, semantic-local must

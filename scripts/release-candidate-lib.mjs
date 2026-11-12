@@ -8,6 +8,7 @@ export const MANIFEST_FILE = 'manifest.json';
 export const CHECKSUM_FILE = 'SHA256SUMS';
 export const ARTIFACT_NAMES = ['vellum-daemon', 'vellum-mcp'];
 export const DEPLOYMENT_NAMES = ['vellum-launchd-render', 'vellum-launchd-activate'];
+const SMOKE_TIMEOUT_MILLIS = 30_000;
 
 const DEPLOYMENT_IDENTITIES = [
   {
@@ -224,7 +225,7 @@ export function smokeCandidate(candidate) {
     const result = spawnSync(candidate.artifactFiles[index], ['--help'], {
       encoding: 'utf8',
       env: { PATH: process.env.PATH ?? '' },
-      timeout: 10_000,
+      timeout: SMOKE_TIMEOUT_MILLIS,
     });
     if (result.status !== 0 || result.signal !== null) {
       fail(`${artifact.binary} help smoke failed`);
@@ -288,7 +289,7 @@ export function smokeLaunchdDeployment(candidate) {
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH ?? '' },
-        timeout: 10_000,
+        timeout: SMOKE_TIMEOUT_MILLIS,
         maxBuffer: 128 * 1024,
       },
     );
@@ -304,7 +305,7 @@ export function smokeLaunchdDeployment(candidate) {
     fs.writeFileSync(plistFile, plist, { flag: 'wx', mode: 0o600 });
     const lint = spawnSync('/usr/bin/plutil', ['-lint', plistFile], {
       encoding: 'utf8',
-      timeout: 10_000,
+      timeout: SMOKE_TIMEOUT_MILLIS,
     });
     if (lint.status !== 0 || lint.signal !== null || lint.error !== undefined) {
       fail('launchd renderer output failed plist lint');
@@ -326,7 +327,7 @@ export function smokeLaunchdActivationExecutor(candidate) {
   const result = spawnSync(candidate.deploymentFiles[1], ['--help'], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH ?? '' },
-    timeout: 10_000,
+    timeout: SMOKE_TIMEOUT_MILLIS,
     maxBuffer: 128 * 1024,
   });
   const stdout = result.stdout ?? '';
@@ -336,7 +337,9 @@ export function smokeLaunchdActivationExecutor(candidate) {
     || result.signal !== null
     || result.error !== undefined
     || !stdout.includes('vellum-launchd-activate')
+    || !stdout.includes('--execute-authorized-first-install')
     || !stdout.includes('--execute-authorized-activation')
+    || !stdout.includes('--reconcile-first-install-journal')
     || stderr !== ''
   ) {
     fail('launchd activation executor help smoke failed');

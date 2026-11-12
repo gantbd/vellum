@@ -56,6 +56,9 @@ const requiredFiles = [
   'scripts/release-candidate-bundle-lib.test.mjs',
   'scripts/package-release-candidate.mjs',
   'scripts/verify-release-candidate-bundle.mjs',
+  'scripts/release-candidate-install-lib.mjs',
+  'scripts/release-candidate-install-lib.test.mjs',
+  'scripts/install-release-candidate.mjs',
   'scripts/qualify-release-candidate.mjs',
   'scripts/qualify-release-candidate.test.mjs',
   'scripts/activation-transaction-lib.mjs',
@@ -274,10 +277,15 @@ if (sourcePolicy !== undefined) {
     '--vellum-ref=${{ github.sha }}',
     'make check-clean-release-candidate',
     'make check-candidate-bundle',
+    'make check-candidate-install',
     'scripts/package-release-candidate.mjs',
     'scripts/verify-release-candidate-bundle.mjs',
+    'scripts/install-release-candidate.mjs',
     '--qualified-dir=../release-candidate',
     '--bundle-file=../vellum-release-candidate.tar',
+    '--install-root=../vellum-candidate-install',
+    '../vellum-candidate-install/bin/vellum-daemon --help',
+    '../vellum-candidate-install/bin/vellum-mcp --help',
     'path: vellum-release-candidate.tar',
   ]) {
     if (!candidateWorkflow.includes(required)) {
@@ -362,6 +370,7 @@ if (mcpExtraction !== undefined) {
     'vellum.replace_and_save',
     'vellum.workspace_edit',
     'vellum.poll_changes',
+    'vellum.resolve_locator',
     'vellum.membership',
   ];
   const expectedAuthenticatedMcpAdditions = [
@@ -376,7 +385,7 @@ if (mcpExtraction !== undefined) {
     || JSON.stringify(mcpExtraction.protocol?.authenticatedAdditions)
       !== JSON.stringify(expectedAuthenticatedMcpAdditions)
   ) {
-    fail('MCP extraction catalog must retain six ordinary tools plus four authenticated additions');
+    fail('MCP extraction catalog must retain seven ordinary tools plus four authenticated additions');
   }
   const blockers = mcpExtraction.immutableDependencyBlockers ?? [];
   const immutableDependencies = mcpExtraction.qualifiedImmutableDependencies ?? [];

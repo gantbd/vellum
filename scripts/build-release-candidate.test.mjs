@@ -112,7 +112,7 @@ try {
   write(
     vellum,
     'distribution/launchd-activate/src/main.rs',
-    'fn main() { println!("vellum-launchd-activate --execute-authorized-activation --help"); }\n',
+    'fn main() { println!("vellum-launchd-activate --execute-authorized-first-install --execute-authorized-activation --reconcile-first-install-journal --help"); }\n',
   );
   write(
     vellum,

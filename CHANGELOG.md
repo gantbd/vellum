@@ -14,6 +14,13 @@ will follow Semantic Versioning once a public release contract is selected.
   byte or file-closure drift, and retains one candidate with content-safe
   equivalence evidence. Working-tree changes, remotes, crates.io publication,
   signing, attestation, installation and activation remain outside the effect.
+- Added a canonical GitHub download bundle and a separate verified local
+  installer. The installer validates and smokes the complete bundle before its
+  first write, installs only the daemon and MCP peer into a new private root,
+  synchronizes exclusive fixed-mode files, and writes a canonical receipt last.
+  Exact reruns are idempotent; partial or substituted roots refuse. It performs
+  no PATH mutation, launchd/plist effect, activation, overwrite, upgrade,
+  uninstall, remote fetch or publication.
 - Added a bounded, source-revision-bound atomic workspace edit across the
   native protocol, wire, client SDK, service, and MCP projection. One request
   validates every explicit document and replacement before a single in-memory

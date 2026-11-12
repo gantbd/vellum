@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-candidate-install check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-shipped-mcp check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-candidate-install check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-shipped-mcp check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -24,6 +24,12 @@ check-candidate-bundle:
 	node --check scripts/package-release-candidate.mjs
 	node --check scripts/verify-release-candidate-bundle.mjs
 	node scripts/release-candidate-bundle-lib.test.mjs
+
+check-candidate-install:
+	node --check scripts/release-candidate-install-lib.mjs
+	node --check scripts/release-candidate-install-lib.test.mjs
+	node --check scripts/install-release-candidate.mjs
+	node scripts/release-candidate-install-lib.test.mjs
 
 check-activation-transaction:
 	node --check scripts/activation-transaction-lib.mjs
@@ -53,6 +59,10 @@ check-mcp-extraction:
 	node --check scripts/emit-semantic-mcp-peer-source.mjs
 	node scripts/verify-mcp-extraction.mjs
 	node scripts/verify-semantic-mcp-extraction.mjs
+
+check-shipped-mcp:
+	cargo build --locked --offline -p vellum-daemon --bin vellum-daemon -p vellum-mcp --bin vellum-mcp
+	cargo test --locked --offline -p vellum-mcp --test live_daemon shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog -- --exact --ignored
 
 check-boundaries:
 	node scripts/check-project-boundaries.mjs

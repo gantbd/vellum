@@ -63,6 +63,22 @@ The Git form is locally qualified against immutable Git objects. Remote
 installability remains deliberately unclaimed until the pinned Keystone object
 and the Vellum release commit are both reachable from their declared URLs.
 
+An exact GitHub candidate download can instead be verified and installed into
+one new private local root without Cargo or crates.io:
+
+```sh
+mkdir -m 0700 /absolute/private/vellum
+node scripts/install-release-candidate.mjs \
+  --bundle-file=/absolute/download/vellum-release-candidate.tar \
+  --install-root=/absolute/private/vellum
+```
+
+Run the installer from the exact Vellum source revision that produced the
+candidate. It installs only `bin/vellum-daemon` and `bin/vellum-mcp`; it does
+not alter `PATH`, install a plist, invoke launchd, activate a service, fetch a
+dependency, overwrite an installation, or install the packaged deployment
+tools. See the [artifact lifecycle](docs/artifact-lifecycle.md).
+
 Run the headless example with:
 
 ```sh

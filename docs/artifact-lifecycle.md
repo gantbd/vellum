@@ -98,6 +98,41 @@ Both commands extract only through the closed archive parser; neither invokes
 the system tar utility, installs a product, activates launchd, signs, publishes
 or contacts a remote service.
 
+## Verified local installation
+
+From the exact Vellum source revision that produced the candidate, create one
+empty, canonical, same-owner private installation root and install the two
+first-release products with:
+
+```sh
+mkdir -m 0700 /absolute/private/vellum
+node scripts/install-release-candidate.mjs \
+  --bundle-file=/absolute/download/vellum-release-candidate.tar \
+  --install-root=/absolute/private/vellum
+```
+
+The installer uses the same closed USTAR parser. It validates hashes, build
+inputs and byte-equivalence evidence and completes all four native smoke probes
+before its first installation write. The durable installation closure is
+exactly:
+
+```text
+bin/vellum-daemon       0500
+bin/vellum-mcp          0500
+install-receipt.json    0400
+```
+
+The root and `bin` directory remain `0700`. Files are created exclusively and
+synchronized before the canonical, path-free receipt is written last and the
+root directory is synchronized. An exact completed rerun reports
+`already-installed`. A partial, substituted, differently permissioned or
+extended root refuses; interrupted installation is never reported as success.
+
+Installation does not mutate `PATH`, install the launchd renderer or activator,
+install a plist, invoke launchd, activate a service, fetch remotely, publish,
+overwrite, upgrade or uninstall. Activation and rollback therefore remain a
+separate explicitly authorized boundary below.
+
 ## Local activation transaction model
 
 `activation-transaction-lib.mjs` supplies the release layer's closed

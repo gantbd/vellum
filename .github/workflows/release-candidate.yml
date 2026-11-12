@@ -47,9 +47,11 @@ jobs:
           make check-artifact-lifecycle
           make check-clean-release-candidate
           make check-candidate-bundle
+          make check-candidate-install
           make check-activation-transaction
           make check-launchd-distribution
           make check-launchd-activation
+          make check-shipped-mcp
       - name: Build twice from exact clean source and compare bytes
         working-directory: vellum
         run: >-
@@ -65,6 +67,12 @@ jobs:
           chmod 0644 ../vellum-release-candidate.tar
           node scripts/verify-release-candidate-bundle.mjs \
             --bundle-file=../vellum-release-candidate.tar
+          mkdir -m 0700 ../vellum-candidate-install
+          node scripts/install-release-candidate.mjs \
+            --bundle-file=../vellum-release-candidate.tar \
+            --install-root=../vellum-candidate-install
+          ../vellum-candidate-install/bin/vellum-daemon --help
+          ../vellum-candidate-install/bin/vellum-mcp --help
       - name: Upload unsigned candidate artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
