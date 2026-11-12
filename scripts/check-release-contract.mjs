@@ -410,6 +410,7 @@ for (const required of [
   `ref: ${sourcePolicy?.keystone?.revision ?? ''}`,
   'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
   'cargo fetch --locked',
+  'make check-cargo-install-qualification qualify-github-source',
   'check-supply-chain',
   'check-effect-boundaries',
   'check-compatibility',

@@ -52,7 +52,10 @@ security gates.
 The GitHub release-contract workflow intentionally runs the source-level gate
 from a lone checkout. Full build CI also checks out the exact qualified
 Keystone revision so policy can inspect the object independently of Cargo's
-exact Git resolution.
+exact Git resolution. Coordinated CI runs both the synthetic verifier fixture
+and the actual committed clean-archive, immutable-Git Cargo installation
+qualification. That continuous local-object evidence does not establish that
+either commit is retrievable from GitHub.
 
 ## Coordinated GitHub source qualification
 
@@ -155,7 +158,9 @@ service or claim authenticated health.
 `make check-cargo-install-qualification` exercises the successful synthetic
 contract without remotes or network. `make qualify-github-source` applies the
 same verifier to the actual committed `HEAD` and never substitutes dirty
-working-tree bytes for either revision.
+working-tree bytes for either revision. Coordinated CI requires both commands
+after checking out the exact Vellum and Keystone revisions. Remote reachability
+remains a separate, explicitly deferred `--verify-remote` gate.
 
 The source archive is not a final release artifact. Checksummed manifests,
 signatures/provenance and immutable release-bundle assembly remain separate
