@@ -488,6 +488,17 @@ if (semanticMcpExtraction !== undefined) {
     fail('semantic MCP extraction bypasses the semantic SDK facade');
   }
 }
+const semanticMcpEmitter = read('scripts/emit-semantic-mcp-peer-source.mjs');
+for (const marker of [
+  'release/payload.json',
+  'tests/payload_contract.rs',
+  'payload_manifest_closes_the_repository_tree',
+  "crypto.createHash('sha256')",
+]) {
+  if (!semanticMcpEmitter.includes(marker)) {
+    fail(`semantic MCP emitter is missing payload-integrity marker ${marker}`);
+  }
+}
 
 let dependencyPolicy;
 try {
