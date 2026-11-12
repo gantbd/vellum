@@ -64,10 +64,11 @@ extraction still depends on the Vellum public SDK. Its isolated install/root che
 daemon or claim that the future sibling repository is independently installable.
 
 The ignored `.peer-staging/vellum-mcp` tree was refreshed from Vellum
-`aa9075409f4eb45f4391dc7a199dfaf9b8d926fd` and copied to the local sibling at
-`../vellum-mcp`. Its reviewed initial commit is
-`57510ed03959d9a688c32af03e3f8cf50a8d26e4`; the locked sibling suite passes
-against the exact Vellum and Keystone inputs recorded in `release/source.json`.
+`02f2670fd2a886c58c5188dd014958049fbe392d` and copied to the local sibling at
+`../vellum-mcp`. Its current reviewed commit is
+`8a96a983396aa4bb419340c079b2ac83e9671722`; the locked sibling suite, exact
+source-contract test and strict Clippy pass against the Vellum and Keystone
+inputs recorded in `release/source.json`.
 No remote or publication has been configured. Coordinated live-daemon
 qualification remains owned by Vellum until the peer release lifecycle is
 available from immutable remote inputs.
