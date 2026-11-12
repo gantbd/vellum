@@ -4,7 +4,7 @@
 use keystone_replay::{ReplayDecision, ReplayRegister};
 use std::{
     collections::VecDeque,
-    path::Path,
+    path::{Component, Path},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -50,8 +50,8 @@ use vellum_protocol::{
     WorkspaceChangeCursorV1, WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1,
     WorkspaceChangeV1, WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1,
     WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
-    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
-    WorkspaceRootV1,
+    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceLocatorResolutionV1,
+    WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,6 +207,11 @@ pub struct ServiceUsage {
     pub inventory_page_foreign: u64,
     pub inventory_page_invalid: u64,
     pub inventory_page_limited: u64,
+    pub locator_resolution_requests: u64,
+    pub locators_resolved: u64,
+    pub locators_absent_or_foreign: u64,
+    pub locator_resolution_refused: u64,
+    pub locator_resolution_unavailable: u64,
     pub change_feed_requests: u64,
     pub change_feed_pages: u64,
     pub change_feed_gaps: u64,
@@ -964,6 +969,7 @@ impl Service {
                     Ok(()) => self.execute_fresh(request.client, &request.command),
                     Err(refusal) => ReplyV1::Refused(refusal),
                 };
+                self.observe_locator_resolution(&request.command, &reply);
                 self.requests
                     .record_new((request.client, request.request), request, reply.clone())
                     .expect("serialized replay decision must remain new until retention");
@@ -1625,6 +1631,36 @@ impl Service {
         reply
     }
 
+    fn observe_locator_resolution(&mut self, command: &CommandV1, reply: &ReplyV1) {
+        if !matches!(command, CommandV1::ResolveLocator { .. }) {
+            return;
+        }
+        bump(
+            &mut self.usage.locator_resolution_requests,
+            &mut self.usage.counter_saturated,
+        );
+        let counter = match reply {
+            ReplyV1::Accepted(OutcomeV1::LocatorResolved(resolution))
+                if resolution.document.is_some() || resolution.root.is_some() =>
+            {
+                &mut self.usage.locators_resolved
+            }
+            ReplyV1::Accepted(OutcomeV1::LocatorResolved(_)) => {
+                &mut self.usage.locators_absent_or_foreign
+            }
+            ReplyV1::Refused(
+                RefusalV1::AuthorityUnavailable
+                | RefusalV1::EditorClosed
+                | RefusalV1::EditorIncomplete
+                | RefusalV1::EditorUnavailable,
+            ) => &mut self.usage.locator_resolution_unavailable,
+            ReplyV1::Accepted(_) | ReplyV1::Refused(_) => {
+                &mut self.usage.locator_resolution_refused
+            }
+        };
+        bump(counter, &mut self.usage.counter_saturated);
+    }
+
     fn request_retention_decision(&self, request: &RequestV1) -> RequestRetentionDecision {
         project_request_decision(
             self.requests
@@ -1684,6 +1720,9 @@ impl Service {
             CommandV1::WorkspaceInventory => self
                 .workspace_inventory()
                 .map(OutcomeV1::WorkspaceInventory),
+            CommandV1::ResolveLocator { locator } => self
+                .resolve_locator(locator)
+                .map(OutcomeV1::LocatorResolved),
             CommandV1::WorkspaceChanges { after, page_size } => self
                 .workspace_changes(*after, *page_size)
                 .map(OutcomeV1::WorkspaceChanges),
@@ -2165,6 +2204,25 @@ impl Service {
     fn validate_locator(&self, locator: &str) -> Result<(), RefusalV1> {
         if locator.is_empty() || locator.len() > self.limits.max_locator_bytes {
             return Err(RefusalV1::InputLimit);
+        }
+        Ok(())
+    }
+
+    fn validate_resolution_locator(&self, locator: &str) -> Result<(), RefusalV1> {
+        self.validate_locator(locator)?;
+        let path = Path::new(locator);
+        let has_noncanonical_segment = locator != "/"
+            && locator
+                .strip_prefix('/')
+                .is_some_and(|tail| tail.split('/').any(|part| matches!(part, "" | "." | "..")));
+        if locator.contains('\0')
+            || !path.is_absolute()
+            || has_noncanonical_segment
+            || path
+                .components()
+                .any(|component| !matches!(component, Component::RootDir | Component::Normal(_)))
+        {
+            return Err(RefusalV1::InvalidRange);
         }
         Ok(())
     }
@@ -2659,6 +2717,61 @@ impl Service {
         })
     }
 
+    /// Resolves one caller-supplied absolute locator against current,
+    /// already-projected membership. The join is exact and in-memory: it does
+    /// not canonicalize, access the filesystem, follow symlinks, admit
+    /// membership, or allocate protocol identities.
+    fn resolve_locator(
+        &mut self,
+        locator: &str,
+    ) -> Result<WorkspaceLocatorResolutionV1, RefusalV1> {
+        self.validate_resolution_locator(locator)?;
+        let bindings = self
+            .workspace
+            .binding_inventory()
+            .map_err(classify_workspace)?;
+        let path = Path::new(locator);
+
+        let document = bindings
+            .documents
+            .iter()
+            .find(|binding| binding.locator == path)
+            .map(|binding| {
+                self.document_projections
+                    .iter()
+                    .find(|projection| projection.native == binding.document)
+                    .map(|projection| projection.protocol)
+                    .ok_or(RefusalV1::EditorUnavailable)
+            })
+            .transpose()?;
+        let root = bindings
+            .roots
+            .iter()
+            .find(|binding| binding.locator == path)
+            .map(|binding| {
+                let id = self
+                    .root_projections
+                    .iter()
+                    .find(|projection| projection.native == binding.root)
+                    .map(|projection| projection.protocol)
+                    .ok_or(RefusalV1::EditorUnavailable)?;
+                Ok::<_, RefusalV1>(WorkspaceRootV1 {
+                    id,
+                    kind: match binding.kind {
+                        WorkspaceRootKind::File => WorkspaceRootKindV1::File,
+                        WorkspaceRootKind::Directory => WorkspaceRootKindV1::Directory,
+                    },
+                })
+            })
+            .transpose()?;
+
+        Ok(WorkspaceLocatorResolutionV1 {
+            workspace: self.workspace_id,
+            document,
+            root,
+        })
+    }
+
     fn workspace_inventory_page(
         &mut self,
         cursor: Option<WorkspaceInventoryCursorV1>,
@@ -3062,6 +3175,7 @@ struct AuthorityActionPlan {
 const fn action_plan(command: &CommandV1) -> AuthorityActionPlan {
     let action = match command {
         CommandV1::WorkspaceInventory
+        | CommandV1::ResolveLocator { .. }
         | CommandV1::WorkspaceInventoryPage { .. }
         | CommandV1::WorkspaceChanges { .. } => AuthorityActionV1::InspectWorkspace,
         CommandV1::OpenView | CommandV1::CloseView => AuthorityActionV1::ManageView,

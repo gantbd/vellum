@@ -56,7 +56,7 @@ The implemented surface is deliberately closed:
 - `resources/read`, accepting only canonical scoped `vellum://workspace/...`
   URIs. Each document read selects its URI identity within that same request;
   root reads return only their file/directory kind, never their locator;
-- `tools/list`, returning a deterministic six-tool ordinary catalog with no pagination;
+- `tools/list`, returning a deterministic seven-tool ordinary catalog with no pagination;
 - `vellum.snapshot`, returning text and a workspace revision;
 - `vellum.replace`, replacing an exact UTF-8 byte range only against that
   revision;
@@ -74,6 +74,11 @@ The implemented surface is deliberately closed:
   unconstrained JSON object;
 - `vellum.poll_changes`, returning at most one content-free event, an opaque
   continuation, or an explicit retention gap;
+- `vellum.resolve_locator`, resolving one caller-known absolute locator by
+  exact in-memory match to its current opaque document and/or root identity.
+  The response never echoes the locator; missing and foreign locators share
+  one closed outcome. Resolution does not canonicalize, access the filesystem,
+  follow symlinks, admit membership, or allocate identity;
 - `vellum.membership`, projecting add/remove operations only through the
   daemon's independent authority decision. Presence in the catalog is not a
   grant; the read-only daemon returns `authority_denied` without an effect.

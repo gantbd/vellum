@@ -20,7 +20,7 @@ use vellum_host::authority::{AuthorityActionSetV1, AuthorityActionV1};
 use vellum_mcp::{
     CHANGES_TOOL, DURABLE_EXECUTE_TOOL, DURABLE_RECEIPT_TOOL, DURABLE_RETIRE_TOOL,
     DURABLE_STATUS_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
-    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -80,6 +80,7 @@ fn extraction_catalog() -> (Vec<String>, Vec<String>) {
 }
 
 #[test]
+#[ignore = "run through make check-shipped-mcp so both product executables are current"]
 fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -144,13 +145,59 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     });
     let mut mcp_stdin = mcp.stdin.take().unwrap();
     writeln!(mcp_stdin, "{request}").unwrap();
+    let resolve = json!({
+        "jsonrpc":"2.0", "id":"resolve", "method":"tools/call",
+        "params":{"_meta":meta(), "name":RESOLVE_LOCATOR_TOOL,
+            "arguments":{"locator":source.to_str().unwrap()}}
+    });
+    writeln!(mcp_stdin, "{resolve}").unwrap();
     mcp_stdin.flush().unwrap();
     let mut mcp_stdout = BufReader::new(mcp.stdout.take().unwrap());
     let mut listed = String::new();
     mcp_stdout.read_line(&mut listed).unwrap();
+    let mut resolved = String::new();
+    mcp_stdout.read_line(&mut resolved).unwrap();
     drop(mcp_stdin);
-    assert!(mcp.wait().unwrap().success());
+    let status = mcp.wait().unwrap();
+    let mut mcp_stderr = String::new();
+    mcp.stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut mcp_stderr)
+        .unwrap();
+    if !status.success() {
+        let shutdown = Command::new(&daemon_binary)
+            .arg("--shutdown")
+            .arg(&control)
+            .output()
+            .unwrap();
+        let daemon_status = daemon.wait().unwrap();
+        let mut daemon_remainder = String::new();
+        daemon_stdout.read_to_string(&mut daemon_remainder).unwrap();
+        let mut daemon_stderr = String::new();
+        daemon
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_string(&mut daemon_stderr)
+            .unwrap();
+        panic!(
+            "MCP failed: {mcp_stderr}; resolved={resolved}; shutdown={:?}; daemon={daemon_status:?}; daemon stdout={daemon_remainder}; daemon stderr={daemon_stderr}",
+            shutdown.status
+        );
+    }
     let listed: Value = serde_json::from_str(&listed).unwrap();
+    let resolved: Value = serde_json::from_str(&resolved).unwrap();
+    assert_eq!(
+        resolved["result"]["structuredContent"]["kind"],
+        "locator_resolved"
+    );
+    assert!(resolved["result"]["structuredContent"]["document"].is_number());
+    assert_eq!(
+        resolved["result"]["structuredContent"]["root"]["kind"],
+        "file"
+    );
+    assert!(!resolved.to_string().contains(source.to_str().unwrap()));
     let names = listed["result"]["tools"]
         .as_array()
         .unwrap()
@@ -164,6 +211,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         REPLACE_AND_SAVE_TOOL,
         WORKSPACE_EDIT_TOOL,
         CHANGES_TOOL,
+        RESOLVE_LOCATOR_TOOL,
         MEMBERSHIP_TOOL,
     ];
     let authenticated_runtime = [
@@ -189,12 +237,6 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
             .chain(authenticated_runtime)
             .collect::<Vec<_>>()
     );
-    let mut mcp_stderr = String::new();
-    mcp.stderr
-        .take()
-        .unwrap()
-        .read_to_string(&mut mcp_stderr)
-        .unwrap();
     assert!(!mcp_stderr.contains(credential_text.as_ref()));
 
     let shutdown = Command::new(&daemon_binary)

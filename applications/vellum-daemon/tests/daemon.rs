@@ -401,13 +401,18 @@ fn limits() -> DaemonLimits {
 fn required_authentication_is_exact_per_exchange_and_closes_on_disconnect() {
     let fixture = Fixture::new("alpha");
     let claim = [0x31; 16];
-    let mut daemon = LocalDaemon::bind(&fixture.socket, workspace(&fixture.source), limits())
-        .unwrap()
-        .require_authentication(
-            ScriptedAuthenticationPort,
-            (AuthenticationBehavior::Accept, claim),
-            3,
-        );
+    let mut daemon = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        AuthorityActionSetV1::read_only(),
+    )
+    .unwrap()
+    .require_authentication(
+        ScriptedAuthenticationPort,
+        (AuthenticationBehavior::Accept, claim),
+        4,
+    );
     assert_eq!(
         daemon.authentication_profile(),
         DaemonAuthenticationProfileV1::Required
@@ -426,17 +431,25 @@ fn required_authentication_is_exact_per_exchange_and_closes_on_disconnect() {
             client.snapshot().unwrap(),
             ReplyV1::Accepted(OutcomeV1::Snapshot(_))
         ));
+        let resolved = client
+            .resolve_locator(fixture.source.to_string_lossy().into_owned())
+            .unwrap();
         client.disconnect().map_err(|(_, error)| error).unwrap();
+        resolved
     });
-    for _ in 0..3 {
+    for _ in 0..4 {
         daemon.serve_next().unwrap();
     }
-    client.join().unwrap();
+    let resolved = client.join().unwrap();
+    assert!(
+        matches!(resolved, ReplyV1::Accepted(OutcomeV1::LocatorResolved(_))),
+        "unexpected resolver reply: {resolved:?}"
+    );
     let usage = daemon.usage().authentication;
-    assert_eq!(usage.handshakes_started, 3);
-    assert_eq!(usage.handshakes_completed, 3);
-    assert_eq!(usage.sessions_issued, 3);
-    assert_eq!(usage.sessions_closed, 3);
+    assert_eq!(usage.handshakes_started, 4);
+    assert_eq!(usage.handshakes_completed, 4);
+    assert_eq!(usage.sessions_issued, 4);
+    assert_eq!(usage.sessions_closed, 4);
     assert_eq!(usage.active_sessions, 0);
     assert_eq!(daemon.service_usage().active_clients, 0);
 }

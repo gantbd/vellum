@@ -13,8 +13,8 @@ use vellum_protocol::{
     WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
     WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
     WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
-    WorkspaceInventoryV1, WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
-    WorkspaceRootV1,
+    WorkspaceInventoryV1, WorkspaceLocatorResolutionV1, WorkspaceReplacementV1, WorkspaceRootIdV1,
+    WorkspaceRootKindV1, WorkspaceRootV1,
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1,
@@ -1198,6 +1198,14 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
             documents: vec![],
             roots: vec![],
         }),
+        OutcomeV1::LocatorResolved(WorkspaceLocatorResolutionV1 {
+            workspace: WorkspaceIdV1::new(1).unwrap(),
+            document: Some(WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(1).unwrap(), 1).unwrap()),
+            root: Some(WorkspaceRootV1 {
+                id: WorkspaceRootIdV1::new(WorkspaceIdV1::new(1).unwrap(), 1).unwrap(),
+                kind: WorkspaceRootKindV1::File,
+            }),
+        }),
         OutcomeV1::WorkspaceInventoryPage(WorkspaceInventoryPageV1 {
             workspace: WorkspaceIdV1::new(1).unwrap(),
             documents: vec![],
@@ -1282,6 +1290,17 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
         request: RequestId::new(1).unwrap(),
         command: CommandV1::Snapshot,
     });
+    let encoded = encode_request_v1(&request, limits()).unwrap();
+    assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+
+    let request = WireRequestV1::Execute(RequestV1 {
+        client: ClientId::new(1).unwrap(),
+        request: RequestId::new(2).unwrap(),
+        command: CommandV1::ResolveLocator {
+            locator: "/private/exact/member".into(),
+        },
+    });
+    assert!(!format!("{request:?}").contains("/private/exact/member"));
     let encoded = encode_request_v1(&request, limits()).unwrap();
     assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
 

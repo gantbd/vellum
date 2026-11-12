@@ -368,6 +368,17 @@ pub struct WorkspaceRootV1 {
     pub kind: WorkspaceRootKindV1,
 }
 
+/// Content-free result of resolving one caller-supplied exact locator against
+/// current workspace membership. The locator is never retained in or projected
+/// by this product. Both identities may be present for a file root; neither is
+/// the single closed absent-or-foreign result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceLocatorResolutionV1 {
+    pub workspace: WorkspaceIdV1,
+    pub document: Option<WorkspaceDocumentIdV1>,
+    pub root: Option<WorkspaceRootV1>,
+}
+
 /// Content-free inventory scoped to the connected live service instance.
 ///
 /// These opaque identities are projections of live workspace identities. They
@@ -450,6 +461,9 @@ pub struct WorkspaceEditReceiptV1 {
 #[derive(Clone, PartialEq, Eq)]
 pub enum CommandV1 {
     WorkspaceInventory,
+    ResolveLocator {
+        locator: String,
+    },
     WorkspaceChanges {
         after: Option<WorkspaceChangeCursorV1>,
         page_size: u16,
@@ -507,6 +521,10 @@ impl fmt::Debug for CommandV1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::WorkspaceInventory => f.write_str("WorkspaceInventory"),
+            Self::ResolveLocator { locator: _ } => f
+                .debug_struct("ResolveLocator")
+                .field("locator", &"<redacted>")
+                .finish(),
             Self::WorkspaceChanges { after, page_size } => f
                 .debug_struct("WorkspaceChanges")
                 .field("after", after)
@@ -940,6 +958,7 @@ impl fmt::Debug for SnapshotV1 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutcomeV1 {
     WorkspaceInventory(WorkspaceInventoryV1),
+    LocatorResolved(WorkspaceLocatorResolutionV1),
     WorkspaceChanges(WorkspaceChangesV1),
     WorkspaceInventoryPage(WorkspaceInventoryPageV1),
     ViewOpened(ViewOpenReceiptV1),
@@ -1120,6 +1139,9 @@ mod tests {
         assert!(!debug.contains("31"));
 
         for command in [
+            CommandV1::ResolveLocator {
+                locator: "/private/resolved".into(),
+            },
             CommandV1::AddFile {
                 locator: "/private/file".into(),
             },

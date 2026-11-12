@@ -76,8 +76,22 @@ where
             output.flush()?;
         }
     }
-    if server.into_client().disconnect().is_err() {
-        return Err(Box::new(CliError("daemon disconnect failed")));
+    if let Err((_, error)) = server.into_client().disconnect() {
+        let message = match error {
+            vellum_sdk_client::protocol::ServiceControlErrorV1::Refused(_) => {
+                "daemon disconnect refused"
+            }
+            vellum_sdk_client::protocol::ServiceControlErrorV1::Access(
+                vellum_sdk_client::protocol::ServiceAccessErrorV1::NotSent,
+            ) => "daemon disconnect was not sent",
+            vellum_sdk_client::protocol::ServiceControlErrorV1::Access(
+                vellum_sdk_client::protocol::ServiceAccessErrorV1::OutcomeUnknown,
+            ) => "daemon disconnect outcome is unknown",
+            vellum_sdk_client::protocol::ServiceControlErrorV1::Access(_) => {
+                "daemon disconnect unavailable"
+            }
+        };
+        return Err(Box::new(CliError(message)));
     }
     Ok(())
 }

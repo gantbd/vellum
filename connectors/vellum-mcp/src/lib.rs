@@ -33,6 +33,7 @@ pub const REPLACE_TOOL: &str = "vellum.replace";
 pub const REPLACE_AND_SAVE_TOOL: &str = "vellum.replace_and_save";
 pub const WORKSPACE_EDIT_TOOL: &str = "vellum.workspace_edit";
 pub const CHANGES_TOOL: &str = "vellum.poll_changes";
+pub const RESOLVE_LOCATOR_TOOL: &str = "vellum.resolve_locator";
 pub const MEMBERSHIP_TOOL: &str = "vellum.membership";
 pub const DURABLE_EXECUTE_TOOL: &str = "vellum.durable_execute";
 pub const DURABLE_RECEIPT_TOOL: &str = "vellum.durable_receipt";
@@ -417,6 +418,15 @@ impl<T: ServicePort> McpServer<T> {
                 };
                 self.client.workspace_changes(after, page_size)
             }
+            RESOLVE_LOCATOR_TOOL => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some(locator) = locator_argument(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                self.client.resolve_locator(locator)
+            }
             MEMBERSHIP_TOOL => {
                 let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
                     return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
@@ -748,6 +758,7 @@ impl<T: ServicePort> McpServer<T> {
             ReplyV1::Accepted(OutcomeV1::Snapshot(_)) => Ok(ReplyV1::Refused(RefusalV1::Stale)),
             ReplyV1::Accepted(
                 OutcomeV1::WorkspaceInventory(_)
+                | OutcomeV1::LocatorResolved(_)
                 | OutcomeV1::WorkspaceChanges(_)
                 | OutcomeV1::WorkspaceInventoryPage(_)
                 | OutcomeV1::ViewOpened(_)
@@ -1296,6 +1307,17 @@ fn tools_result(durable_projection: bool) -> Value {
             "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
         }),
         json!({
+            "name": RESOLVE_LOCATOR_TOOL,
+            "title": "Resolve a Vellum workspace locator",
+            "description": "Resolve one exact absolute locator to its existing opaque workspace identities without returning the locator, reading the filesystem, or changing membership.",
+            "inputSchema": closed_schema(
+                &["locator"],
+                json!({"locator": {"type": "string", "minLength": 1, "maxLength": 4096}}),
+            ),
+            "outputSchema": locator_resolution_output_schema(),
+            "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+        }),
+        json!({
             "name": MEMBERSHIP_TOOL,
             "title": "Change Vellum workspace membership",
             "description": "Add or retire workspace membership. The daemon's independently configured authority policy must permit the requested operation.",
@@ -1628,6 +1650,40 @@ fn generic_tool_output_schema() -> Value {
     })
 }
 
+fn locator_resolution_output_schema() -> Value {
+    let root = closed_schema(
+        &["root", "kind"],
+        json!({
+            "root": nonzero_integer_schema(),
+            "kind": {"enum": ["file", "directory"]}
+        }),
+    );
+    json!({
+        "oneOf": [
+            closed_schema(
+                &["kind", "workspace", "document", "root"],
+                json!({
+                    "kind": {"const": "locator_resolved"},
+                    "workspace": nonzero_integer_schema(),
+                    "document": {"oneOf": [nonzero_integer_schema(), {"type": "null"}]},
+                    "root": {"oneOf": [root, {"type": "null"}]}
+                }),
+            ),
+            closed_schema(
+                &["kind", "workspace"],
+                json!({
+                    "kind": {"const": "locator_absent_or_foreign"},
+                    "workspace": nonzero_integer_schema()
+                }),
+            ),
+            closed_schema(
+                &["code"],
+                json!({"code": {"type": "string", "enum": TOOL_ERROR_CODES}}),
+            )
+        ]
+    })
+}
+
 fn workspace_edit_output_schema() -> Value {
     json!({
         "oneOf": [
@@ -1737,6 +1793,17 @@ fn document_arguments(arguments: &Map<String, Value>) -> Option<WorkspaceDocumen
     }
     let workspace = WorkspaceIdV1::new(arguments.get("workspace")?.as_u64()?)?;
     WorkspaceDocumentIdV1::new(workspace, arguments.get("document")?.as_u64()?)
+}
+
+fn locator_argument(arguments: &Map<String, Value>) -> Option<String> {
+    if !only_keys(arguments, &["locator"]) {
+        return None;
+    }
+    let locator = arguments.get("locator")?.as_str()?;
+    if locator.is_empty() || locator.len() > 4096 {
+        return None;
+    }
+    Some(locator.to_owned())
 }
 
 fn replace_arguments(
@@ -2143,6 +2210,35 @@ fn tool_success(outcome: OutcomeV1) -> Value {
         | OutcomeV1::DirectoryAdded(inventory) => {
             let structured = inventory_json(inventory);
             return tool_complete("workspace_inventory", structured);
+        }
+        OutcomeV1::LocatorResolved(resolution) => {
+            if resolution.document.is_none() && resolution.root.is_none() {
+                return tool_complete(
+                    "locator_absent_or_foreign",
+                    json!({
+                        "kind": "locator_absent_or_foreign",
+                        "workspace": resolution.workspace.get()
+                    }),
+                );
+            }
+            let root = resolution.root.map(|root| {
+                json!({
+                    "root": root.id.get(),
+                    "kind": match root.kind {
+                        WorkspaceRootKindV1::File => "file",
+                        WorkspaceRootKindV1::Directory => "directory",
+                    }
+                })
+            });
+            return tool_complete(
+                "locator_resolved",
+                json!({
+                    "kind": "locator_resolved",
+                    "workspace": resolution.workspace.get(),
+                    "document": resolution.document.map(|document| document.get()),
+                    "root": root
+                }),
+            );
         }
         OutcomeV1::FileAdmitted(receipt) => {
             let root = receipt.root.map(|root| {
@@ -2968,7 +3064,7 @@ mod durable_projection_tests {
         }))
         .unwrap();
         let reply: Value = serde_json::from_slice(&server.handle(&list).unwrap()).unwrap();
-        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 6);
+        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 7);
         for tool in [
             DURABLE_EXECUTE_TOOL,
             DURABLE_RECEIPT_TOOL,
@@ -3050,7 +3146,7 @@ mod durable_projection_tests {
     fn durable_discovery_describes_the_exact_closed_algebra() {
         let catalog = tools_result(true);
         let tools = catalog["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 11);
         let execute = tools
             .iter()
             .find(|tool| tool["name"] == DURABLE_EXECUTE_TOOL)

@@ -2,7 +2,8 @@ use serde_json::{Value, json};
 use std::{collections::VecDeque, io::BufReader};
 use vellum_mcp::{
     BoundedLine, CHANGES_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
-    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL, read_bounded_line,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
+    read_bounded_line,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -14,8 +15,8 @@ use vellum_sdk_client::{
         SnapshotV1, VersionWitness, WorkspaceChangeCursorV1, WorkspaceChangeGapV1,
         WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1, WorkspaceChangesV1,
         WorkspaceDocumentIdV1, WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1,
-        WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1, WorkspaceRootIdV1,
-        WorkspaceRootKindV1, WorkspaceRootV1,
+        WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1, WorkspaceLocatorResolutionV1,
+        WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
     },
 };
 
@@ -569,6 +570,7 @@ fn modern_discovery_is_per_request_and_initialize_is_always_legacy() {
             REPLACE_AND_SAVE_TOOL,
             WORKSPACE_EDIT_TOOL,
             CHANGES_TOOL,
+            RESOLVE_LOCATOR_TOOL,
             MEMBERSHIP_TOOL
         ]
     );
@@ -921,6 +923,69 @@ fn membership_is_strictly_shaped_and_native_authority_remains_decisive() {
         json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":MEMBERSHIP_TOOL, "arguments":{"operation":"add_file", "locator":"x", "document":1}}}),
     );
     assert_eq!(malformed["error"]["code"], -32602);
+}
+
+#[test]
+fn locator_resolution_is_closed_and_never_echoes_private_input() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let root = WorkspaceRootV1 {
+        id: WorkspaceRootIdV1::new(workspace, 13).unwrap(),
+        kind: WorkspaceRootKindV1::File,
+    };
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::LocatorResolved(
+            WorkspaceLocatorResolutionV1 {
+                workspace,
+                document: Some(document),
+                root: Some(root),
+            },
+        ))),
+        Ok(ReplyV1::Accepted(OutcomeV1::LocatorResolved(
+            WorkspaceLocatorResolutionV1 {
+                workspace,
+                document: None,
+                root: None,
+            },
+        ))),
+    ]);
+    let private = "/private/agent/source.rs";
+    let resolved = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":RESOLVE_LOCATOR_TOOL, "arguments":{"locator":private}}}),
+    );
+    assert_eq!(
+        resolved["result"]["structuredContent"],
+        json!({
+            "kind": "locator_resolved",
+            "workspace": 7,
+            "document": 11,
+            "root": {"root": 13, "kind": "file"}
+        })
+    );
+    assert!(!resolved.to_string().contains(private));
+
+    let absent = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":RESOLVE_LOCATOR_TOOL, "arguments":{"locator":"/foreign/member"}}}),
+    );
+    assert_eq!(
+        absent["result"]["structuredContent"],
+        json!({"kind": "locator_absent_or_foreign", "workspace": 7})
+    );
+    assert!(!absent.to_string().contains("/foreign/member"));
+
+    let malformed = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{"_meta":meta(), "name":RESOLVE_LOCATOR_TOOL, "arguments":{"locator":"/x", "extra":true}}}),
+    );
+    assert_eq!(malformed["error"]["code"], -32602);
+
+    let transport = server.into_client().into_transport();
+    assert!(matches!(
+        &transport.requests[0].command,
+        CommandV1::ResolveLocator { locator } if locator == private
+    ));
 }
 
 #[test]

@@ -20,8 +20,8 @@ use vellum_protocol::{
     WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
     WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
     WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
-    WorkspaceInventoryV1, WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
-    WorkspaceRootV1,
+    WorkspaceInventoryV1, WorkspaceLocatorResolutionV1, WorkspaceReplacementV1, WorkspaceRootIdV1,
+    WorkspaceRootKindV1, WorkspaceRootV1,
 };
 
 /// Canonical restart-stable durable intent encoding. This profile is separate
@@ -1140,6 +1140,10 @@ fn decode_workspace_edit_receipt_payload(
 fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), WireEncodeError> {
     match command {
         CommandV1::WorkspaceInventory => encoder.u8(3),
+        CommandV1::ResolveLocator { locator } => {
+            encoder.u8(18)?;
+            encoder.text(locator)
+        }
         CommandV1::WorkspaceChanges { after, page_size } => {
             encoder.u8(13)?;
             match after {
@@ -1227,6 +1231,9 @@ fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), Wire
 fn decode_command(decoder: &mut Decoder<'_>) -> Result<CommandV1, WireDecodeError> {
     match read_u8(decoder)? {
         3 => Ok(CommandV1::WorkspaceInventory),
+        18 => Ok(CommandV1::ResolveLocator {
+            locator: read_text(decoder)?,
+        }),
         13 => {
             let after = match read_u8(decoder)? {
                 0 => None,
@@ -1321,6 +1328,23 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
                 OutcomeV1::WorkspaceInventory(inventory) => {
                     encoder.u8(3)?;
                     encode_inventory(encoder, inventory)
+                }
+                OutcomeV1::LocatorResolved(resolution) => {
+                    encoder.u8(18)?;
+                    encoder.u64(resolution.workspace.get())?;
+                    encoder.u8(u8::from(resolution.document.is_some()))?;
+                    if let Some(document) = resolution.document {
+                        encoder.u64(document.get())?;
+                    }
+                    encoder.u8(u8::from(resolution.root.is_some()))?;
+                    if let Some(root) = &resolution.root {
+                        encoder.u64(root.id.get())?;
+                        encoder.u8(match root.kind {
+                            WorkspaceRootKindV1::File => 1,
+                            WorkspaceRootKindV1::Directory => 2,
+                        })?;
+                    }
+                    Ok(())
                 }
                 OutcomeV1::WorkspaceChanges(changes) => {
                     encoder.u8(13)?;
@@ -1417,6 +1441,31 @@ fn decode_protocol_reply(
         1 => {
             let outcome = match read_u8(decoder)? {
                 3 => OutcomeV1::WorkspaceInventory(decode_inventory(decoder, limits)?),
+                18 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    let document = match read_u8(decoder)? {
+                        0 => None,
+                        1 => Some(workspace_document_id(workspace, read_u64(decoder)?)?),
+                        _ => return Err(WireDecodeError::Malformed),
+                    };
+                    let root = match read_u8(decoder)? {
+                        0 => None,
+                        1 => Some(WorkspaceRootV1 {
+                            id: workspace_root_id(workspace, read_u64(decoder)?)?,
+                            kind: match read_u8(decoder)? {
+                                1 => WorkspaceRootKindV1::File,
+                                2 => WorkspaceRootKindV1::Directory,
+                                _ => return Err(WireDecodeError::Malformed),
+                            },
+                        }),
+                        _ => return Err(WireDecodeError::Malformed),
+                    };
+                    OutcomeV1::LocatorResolved(WorkspaceLocatorResolutionV1 {
+                        workspace,
+                        document,
+                        root,
+                    })
+                }
                 13 => OutcomeV1::WorkspaceChanges(decode_workspace_changes(decoder, limits)?),
                 10 => OutcomeV1::WorkspaceInventoryPage(decode_inventory_page(decoder, limits)?),
                 8 => {
@@ -2028,7 +2077,9 @@ fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
             CommandV1::WorkspaceInventoryPage { cursor, .. } => {
                 Ok(if cursor.is_some() { 52 } else { 28 })
             }
-            CommandV1::AddFile { locator } | CommandV1::AddDirectory { locator } => {
+            CommandV1::ResolveLocator { locator }
+            | CommandV1::AddFile { locator }
+            | CommandV1::AddDirectory { locator } => {
                 check_wire_text_length(locator.len())?;
                 checked_add(23, locator.len())
             }
@@ -2067,6 +2118,14 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             OutcomeV1::WorkspaceInventory(inventory)
             | OutcomeV1::FileAdded(inventory)
             | OutcomeV1::DirectoryAdded(inventory) => inventory_length(inventory),
+            OutcomeV1::LocatorResolved(resolution) => Ok(
+                match (resolution.document.is_some(), resolution.root.is_some()) {
+                    (false, false) => 14,
+                    (true, false) => 22,
+                    (false, true) => 23,
+                    (true, true) => 31,
+                },
+            ),
             OutcomeV1::FileAdmitted(receipt) => Ok(if receipt.root.is_some() { 30 } else { 22 }),
             OutcomeV1::DirectoryAdmitted(receipt) => receipt
                 .added_documents
@@ -2151,7 +2210,10 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
             }
         }
         WireRequestV1::Execute(RequestV1 {
-            command: CommandV1::AddFile { locator } | CommandV1::AddDirectory { locator },
+            command:
+                CommandV1::ResolveLocator { locator }
+                | CommandV1::AddFile { locator }
+                | CommandV1::AddDirectory { locator },
             ..
         }) => {
             check_text_limit(locator.len(), limits)?;
@@ -2233,6 +2295,20 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
                     .ok_or(WireEncodeError::LengthOverflow)?;
                 check_field_limit(fields, limits)?;
                 fields
+            }
+            OutcomeV1::LocatorResolved(resolution) => {
+                if resolution
+                    .document
+                    .is_some_and(|document| document.workspace() != resolution.workspace)
+                    || resolution
+                        .root
+                        .as_ref()
+                        .is_some_and(|root| root.id.workspace() != resolution.workspace)
+                {
+                    return Err(WireEncodeError::IdentityMismatch);
+                }
+                7 + usize::from(resolution.document.is_some())
+                    + usize::from(resolution.root.is_some()) * 2
             }
             OutcomeV1::FileAdmitted(receipt) => {
                 if receipt

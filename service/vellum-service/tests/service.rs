@@ -283,6 +283,122 @@ fn service_with_limits(source: &str, limits: ServiceLimits) -> (Fixture, Service
     )
 }
 
+#[test]
+fn locator_resolution_is_exact_private_and_read_only() {
+    let fixture = Fixture::new("locator-private-source");
+    let foreign = Fixture::new("foreign-private-source");
+    let workspace = workspace_for(std::slice::from_ref(&fixture.0));
+    let mut service = Service::new(workspace, ServiceLimits::reference()).unwrap();
+    let client = service.connect().unwrap();
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceInventory(inventory)) =
+        service.execute(request(client, 1, CommandV1::WorkspaceInventory))
+    else {
+        panic!("inventory must materialize the existing identities")
+    };
+    let identity_before = service.identity_revision_evidence();
+
+    let locator = fixture.0.to_str().unwrap().to_owned();
+    let reply = service.execute(request(
+        client,
+        2,
+        CommandV1::ResolveLocator {
+            locator: locator.clone(),
+        },
+    ));
+    let ReplyV1::Accepted(OutcomeV1::LocatorResolved(resolved)) = &reply else {
+        panic!("exact current binding must resolve")
+    };
+    assert_eq!(resolved.workspace, inventory.workspace);
+    assert_eq!(resolved.document, Some(inventory.documents[0]));
+    assert_eq!(resolved.root, Some(inventory.roots[0].clone()));
+    assert_eq!(
+        service.execute(request(
+            client,
+            2,
+            CommandV1::ResolveLocator {
+                locator: locator.clone(),
+            },
+        )),
+        reply
+    );
+
+    let unknown = service.execute(request(
+        client,
+        3,
+        CommandV1::ResolveLocator {
+            locator: foreign.0.to_str().unwrap().into(),
+        },
+    ));
+    let ReplyV1::Accepted(OutcomeV1::LocatorResolved(unknown)) = unknown else {
+        panic!("unknown and foreign locators must share the closed absent outcome")
+    };
+    assert_eq!(unknown.workspace, inventory.workspace);
+    assert_eq!(unknown.document, None);
+    assert_eq!(unknown.root, None);
+
+    let absent = service.execute(request(
+        client,
+        4,
+        CommandV1::ResolveLocator {
+            locator: "/no/such/vellum-workspace-member".into(),
+        },
+    ));
+    let ReplyV1::Accepted(OutcomeV1::LocatorResolved(absent)) = absent else {
+        panic!("a nonexistent locator must not trigger filesystem access")
+    };
+    assert_eq!(absent.document, None);
+    assert_eq!(absent.root, None);
+
+    for (id, invalid) in [
+        (5, "relative/member".to_owned()),
+        (6, format!("{locator}/../member")),
+        (7, format!("{locator}/./member")),
+    ] {
+        assert_eq!(
+            service.execute(request(
+                client,
+                id,
+                CommandV1::ResolveLocator { locator: invalid },
+            )),
+            ReplyV1::Refused(RefusalV1::InvalidRange)
+        );
+    }
+
+    assert_eq!(service.identity_revision_evidence(), identity_before);
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(WorkspaceChangesV1::Page(changes))) = service
+        .execute(request(
+            client,
+            8,
+            CommandV1::WorkspaceChanges {
+                after: None,
+                page_size: 1,
+            },
+        ))
+    else {
+        panic!("change feed must remain available")
+    };
+    assert!(changes.changes.is_empty());
+    assert_eq!(
+        service.execute(request(
+            client,
+            9,
+            CommandV1::AddFile {
+                locator: foreign.0.to_str().unwrap().into(),
+            },
+        )),
+        ReplyV1::Refused(RefusalV1::AuthorityDenied)
+    );
+    let usage = service.usage();
+    assert_eq!(usage.locator_resolution_requests, 6);
+    assert_eq!(usage.locators_resolved, 1);
+    assert_eq!(usage.locators_absent_or_foreign, 2);
+    assert_eq!(usage.locator_resolution_refused, 3);
+    assert_eq!(usage.locator_resolution_unavailable, 0);
+    let operational = format!("{reply:?} {usage:?}");
+    assert!(!operational.contains(&locator));
+    assert!(!operational.contains("locator-private-source"));
+}
+
 fn service_with_save_task_capacity(source: &str, capacity: usize) -> (Fixture, Service) {
     let fixture = Fixture::new(source);
     let mut profile = vellum_editor::reference_workspace_profile(

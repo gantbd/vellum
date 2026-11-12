@@ -53,6 +53,10 @@ impl<T: ServicePort> Client<T> {
         self.send(CommandV1::WorkspaceInventory)
     }
 
+    pub fn resolve_locator(&mut self, locator: String) -> Result<ReplyV1, ServiceAccessErrorV1> {
+        self.send(CommandV1::ResolveLocator { locator })
+    }
+
     pub fn workspace_changes(
         &mut self,
         after: Option<WorkspaceChangeCursorV1>,
@@ -564,6 +568,26 @@ mod tests {
         let transport = client.into_transport();
         assert_eq!(transport.requests.len(), 1);
         assert_eq!(transport.requests[0].command, CommandV1::WorkspaceInventory);
+    }
+
+    #[test]
+    fn client_projects_exact_locator_without_interpreting_or_logging_it() {
+        let transport = RecordingTransport {
+            requests: Vec::new(),
+            disconnected: Vec::new(),
+        };
+        let mut client = Client::connect(transport).unwrap();
+        client
+            .resolve_locator("/private/workspace/file".into())
+            .unwrap();
+        let transport = client.into_transport();
+        assert_eq!(
+            transport.requests[0].command,
+            CommandV1::ResolveLocator {
+                locator: "/private/workspace/file".into()
+            }
+        );
+        assert!(!format!("{:?}", transport.requests[0]).contains("/private"));
     }
 
     #[test]

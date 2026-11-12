@@ -21,6 +21,7 @@ const expectedOrdinaryTools = [
   'vellum.replace_and_save',
   'vellum.workspace_edit',
   'vellum.poll_changes',
+  'vellum.resolve_locator',
   'vellum.membership',
 ];
 const expectedAuthenticatedAdditions = [
@@ -34,7 +35,7 @@ if (
   || JSON.stringify(contract.protocol?.authenticatedAdditions)
     !== JSON.stringify(expectedAuthenticatedAdditions)
 ) {
-  throw new Error('MCP extraction catalog drifted from the qualified six-plus-four surface');
+  throw new Error('MCP extraction catalog drifted from the qualified seven-plus-four surface');
 }
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {

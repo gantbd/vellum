@@ -63,6 +63,9 @@ jobs:
       - name: Test every target and feature offline
         working-directory: vellum
         run: cargo test --workspace --all-targets --all-features --locked --offline
+      - name: Qualify the shipped daemon and MCP peer together
+        working-directory: vellum
+        run: make check-shipped-mcp
       - name: Test deterministic semantic-provider qualification offline
         working-directory: vellum
         run: make check-semantic-provider-qualification
