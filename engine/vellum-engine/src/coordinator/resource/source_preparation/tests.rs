@@ -46,6 +46,44 @@ fn export_capture_consumes_exact_codec_bytes_and_releases_the_temporary_charge_o
 }
 
 #[test]
+fn retained_export_capture_preserves_the_exact_preparation_for_native_admission() {
+    let (mut owner, mut recorder, source) = ready();
+    let prepared = owner
+        .resources
+        .source_preparation
+        .as_ref()
+        .unwrap()
+        .id
+        .clone();
+    let before = owner.resource_usage();
+
+    let capture = owner
+        .capture_prepared_source_serialization_retained(&prepared, &mut recorder)
+        .unwrap();
+    assert_eq!(capture.bytes(), b"A");
+    assert_eq!(capture.source(), &source);
+    assert_eq!(owner.resource_usage(), before);
+    assert!(matches!(
+        owner.capture_prepared_source_serialization_retained(&prepared, &mut recorder),
+        Err(ResourceError::Unavailable)
+    ));
+    assert!(matches!(
+        owner.capture_prepared_source_serialization(&prepared, &mut recorder),
+        Err(ResourceError::Unavailable)
+    ));
+    assert_eq!(owner.resource_usage(), before);
+
+    let artifact = owner
+        .retain_prepared_source_artifact(&prepared, &mut recorder)
+        .unwrap();
+    assert_eq!(owner.resource_usage().prepared_sources, 0);
+    assert_eq!(owner.resource_usage().retained_artifacts, 1);
+    owner
+        .retire_resource_artifact(&artifact, &mut recorder)
+        .unwrap();
+}
+
+#[test]
 fn foreign_export_capture_cannot_consume_the_local_preparation() {
     let (mut owner, mut recorder, _) = ready();
     let (peer, _, _) = ready();

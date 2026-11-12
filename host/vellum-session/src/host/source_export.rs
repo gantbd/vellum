@@ -150,7 +150,7 @@ impl<A: ResourceAdapter> LocalHost<A> {
         };
         let capture = match self
             .owner
-            .capture_prepared_source_serialization(&prepared.native, &mut self.diagnostics)
+            .capture_prepared_source_serialization_retained(&prepared.native, &mut self.diagnostics)
         {
             Ok(capture) => capture,
             Err(error) => {

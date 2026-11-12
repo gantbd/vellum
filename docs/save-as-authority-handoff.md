@@ -66,17 +66,22 @@ The following gaps are release-blocking for that public surface:
    release, and retirement errors preserve the exact reconciliation token; no
    recovery path can repeat admission, write, or activation. A non-effecting native
    recovery API reconstructs the activated document handle when the original task
-   proves binding publication completed. The workspace wrapper must still own this
-   coordinator per stable document and commit the private locator/handle swap. The
-   coordinator ports are stage-specific, allowing each workspace call to borrow only
-   its authority, execution, activation, or cleanup dependencies.
+   proves binding publication completed. `vellum-editor::Workspace` now owns this
+   coordinator per stable document, excludes conflicting edits/saves/removal until
+   activation, and commits only the private locator/native-handle swap after durable
+   write plus activated binding evidence. Workspace identity, document identity,
+   active views, and inventory generation remain unchanged; subsequent ordinary
+   saves route through the new handle. The coordinator ports are stage-specific,
+   allowing each workspace call to borrow only its authority, execution, activation,
+   or cleanup dependencies.
 4. Save As activation is a fault-fenced engine publication. `vellum-host` now owns
    the closed native receipt sum with separate `Durable | NotDurable | Unknown |
    NotAttempted` physical and `Activated | NotActivated | Unknown` binding
    projections. Invalid products are unrepresentable, every unknown installs an
    explicit fence, and only `Durable + Activated` permits a stable binding change.
-   The retained session/workspace coordinator must still construct this receipt from
-   actual native outcomes and retain recovery obligations across activation errors.
+   The retained session/workspace coordinator retains recovery obligations across
+   activation errors, but must still construct this receipt from actual native
+   outcomes before service or protocol projection.
 5. The durable request journal must encode the eventual command and receipt before
    wire publication. A crash after the external write but before a completed journal
    record must replay/fence as unknown; it must never repeat the overwrite under a

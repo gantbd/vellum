@@ -10,7 +10,39 @@ pub(super) struct SourcePreparation {
     pub(super) source: DocumentVersion,
     pub(super) serialization: SourceSerializationStateV1,
     pub(super) bytes: Blob,
+    capture_issued: bool,
 }
+
+fn copy_source_capture(
+    preparation: &SourcePreparation,
+) -> Result<CapturedSourceSerializationV1, ResourceError> {
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(preparation.bytes.0.len())
+        .map_err(|_| ResourceError::Capacity)?;
+    bytes.extend_from_slice(&preparation.bytes.0);
+    let mut digest = Sha256::new();
+    digest.update(b"vellum.source-serialization-capture.v1\0");
+    digest.update(preparation.source.document.slot.to_le_bytes());
+    digest.update(preparation.source.revision.to_le_bytes());
+    digest.update(preparation.serialization.generation.to_le_bytes());
+    digest.update([match preparation.serialization.serialization.profile {
+        SourceSerializationProfileV1::StrictUtf8OneBom => 1,
+    }]);
+    digest.update([u8::from(preparation.serialization.serialization.bom)]);
+    digest.update(preparation.bytes.0.len().to_le_bytes());
+    digest.update(&*preparation.bytes.0);
+    let digest = digest.finalize();
+    let mut witness = [0_u8; 16];
+    witness.copy_from_slice(&digest[..16]);
+    Ok(CapturedSourceSerializationV1 {
+        witness: SourceSerializationCaptureWitnessV1(witness),
+        source: preparation.source.clone(),
+        serialization: preparation.serialization,
+        bytes,
+    })
+}
+
 impl SourceCoordinator {
     pub(super) fn artifact_charge_intact(&self) -> Result<(), ResourceError> {
         let endpoint = if let Some(a) = &self.resources.read_baseline_attachment {
@@ -88,6 +120,7 @@ impl SourceCoordinator {
                 source: source.clone(),
                 serialization,
                 bytes: Blob(Arc::from(bytes)),
+                capture_issued: false,
             });
             self.resources.held_artifact_bytes = held;
             Ok(id)
@@ -121,6 +154,9 @@ impl SourceCoordinator {
             self.ensure_ordinary_admission().map_err(owner_error)?;
             let p = self.source_preparation(prepared)?;
             self.artifact_charge_intact()?;
+            if p.capture_issued {
+                return Err(ResourceError::Unavailable);
+            }
             if !p.serialization.valid() {
                 return Err(ResourceError::Faulted);
             }
@@ -129,37 +165,49 @@ impl SourceCoordinator {
                 .held_artifact_bytes
                 .checked_sub(p.bytes.0.len())
                 .ok_or(ResourceError::Faulted)?;
-            let mut bytes = Vec::new();
-            bytes
-                .try_reserve_exact(p.bytes.0.len())
-                .map_err(|_| ResourceError::Capacity)?;
-            bytes.extend_from_slice(&p.bytes.0);
-            let p = self
-                .resources
+            let captured = copy_source_capture(p)?;
+            self.resources
                 .source_preparation
                 .take()
                 .expect("validated original preparation");
-            let mut digest = Sha256::new();
-            digest.update(b"vellum.source-serialization-capture.v1\0");
-            digest.update(p.source.document.slot.to_le_bytes());
-            digest.update(p.source.revision.to_le_bytes());
-            digest.update(p.serialization.generation.to_le_bytes());
-            digest.update([match p.serialization.serialization.profile {
-                SourceSerializationProfileV1::StrictUtf8OneBom => 1,
-            }]);
-            digest.update([u8::from(p.serialization.serialization.bom)]);
-            digest.update(p.bytes.0.len().to_le_bytes());
-            digest.update(&*p.bytes.0);
-            let digest = digest.finalize();
-            let mut witness = [0_u8; 16];
-            witness.copy_from_slice(&digest[..16]);
             self.resources.held_artifact_bytes = held;
-            Ok(CapturedSourceSerializationV1 {
-                witness: SourceSerializationCaptureWitnessV1(witness),
-                source: p.source,
-                serialization: p.serialization,
-                bytes,
-            })
+            Ok(captured)
+        })();
+        if matches!(out, Err(ResourceError::Faulted)) {
+            self.faulted = true;
+        }
+        capture(r, Boundary::SourceArtifactExportCapture, &out);
+        out
+    }
+
+    /// Copies the exact prepared serialization into a one-use authority
+    /// carrier while retaining the original preparation for later native task
+    /// admission. At most one preparation exists, and both byte owners remain
+    /// bounded by the configured source/artifact limits. Neither carrier is a
+    /// destination grant; callers must explicitly discharge the preparation.
+    pub fn capture_prepared_source_serialization_retained(
+        &mut self,
+        prepared: &PreparedSourceArtifactIdV1,
+        r: &mut Recorder,
+    ) -> Result<CapturedSourceSerializationV1, ResourceError> {
+        let out = (|| {
+            self.ensure_ordinary_admission().map_err(owner_error)?;
+            let preparation = self.source_preparation(prepared)?;
+            self.artifact_charge_intact()?;
+            if !preparation.serialization.valid() {
+                return Err(ResourceError::Faulted);
+            }
+            if preparation.capture_issued {
+                return Err(ResourceError::Unavailable);
+            }
+            let captured = copy_source_capture(preparation)?;
+            let preparation = self
+                .resources
+                .source_preparation
+                .as_mut()
+                .expect("validated original preparation");
+            preparation.capture_issued = true;
+            Ok(captured)
         })();
         if matches!(out, Err(ResourceError::Faulted)) {
             self.faulted = true;

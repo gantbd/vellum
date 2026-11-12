@@ -32,6 +32,9 @@ use vellum_session::host::{
     LocalDocument as SessionDocument, LocalHost as SessionHost, SessionConfig, SessionError,
 };
 
+mod save_as;
+pub use save_as::*;
+
 type LocalDocument = SessionDocument<ErasedResourceHandle>;
 type LocalHost = SessionHost<ErasedPathResourceAdapter>;
 
@@ -71,6 +74,7 @@ pub enum WorkspaceError {
     Empty,
     InvalidView,
     Capacity,
+    SaveAsInProgress,
     Discovery(DirectoryDiscoveryRefusal),
     Session(SessionError),
 }
@@ -359,6 +363,9 @@ pub struct Workspace {
     groups: Vec<HistoryGroupId>,
     save_tasks: Vec<RetainedSave>,
     max_save_tasks: usize,
+    save_as_transactions: Vec<Option<save_as::RetainedWorkspaceSaveAs>>,
+    max_save_as_transactions: usize,
+    next_save_as_transaction: u64,
     inventory_generation: u64,
 }
 
@@ -386,6 +393,10 @@ impl Workspace {
         save_tasks
             .try_reserve_exact(max_save_tasks)
             .map_err(|_| WorkspaceError::Capacity)?;
+        let mut save_as_transactions = Vec::new();
+        save_as_transactions
+            .try_reserve_exact(max_save_tasks)
+            .map_err(|_| WorkspaceError::Capacity)?;
         Ok(Self {
             id: WorkspaceId(Arc::new(())),
             host: LocalHost::new(session)?,
@@ -395,6 +406,9 @@ impl Workspace {
             groups: Vec::new(),
             save_tasks,
             max_save_tasks,
+            save_as_transactions,
+            max_save_as_transactions: max_save_tasks,
+            next_save_as_transaction: 1,
             inventory_generation: 1,
         })
     }
@@ -824,6 +838,9 @@ impl Workspace {
         if !Arc::ptr_eq(&self.id.0, &document.owner) {
             return Err(WorkspaceError::InvalidView);
         }
+        if self.document_has_live_save_as(document) {
+            return Err(WorkspaceError::SaveAsInProgress);
+        }
         let entry = self
             .documents
             .get_mut(document.slot)
@@ -950,6 +967,9 @@ impl Workspace {
             .try_reserve_exact(writes.len())
             .map_err(|_| WorkspaceError::Capacity)?;
         for write in writes {
+            if self.document_has_live_save_as(&write.document) {
+                return Err(WorkspaceError::SaveAsInProgress);
+            }
             let retained = self.entry(&write.document)?.document.clone();
             if self.host.read(&retained)?.version.document != write.expected.document {
                 return Err(SessionError::WrongDocument.into());
@@ -984,6 +1004,9 @@ impl Workspace {
         expected: &DocumentVersion,
         edits: Vec<Replacement>,
     ) -> Result<(), WorkspaceError> {
+        if self.document_has_live_save_as(&view.active_document) {
+            return Err(WorkspaceError::SaveAsInProgress);
+        }
         let document = self.document(view)?.clone();
         if self.host.read(&document)?.version.document != expected.document {
             return Err(SessionError::WrongDocument.into());
@@ -1004,6 +1027,9 @@ impl Workspace {
         expected: &DocumentVersion,
     ) -> Result<WorkspaceSaveReceipt, WorkspaceError> {
         let document_id = view.active_document.clone();
+        if self.document_has_live_save_as(&document_id) {
+            return Err(WorkspaceError::SaveAsInProgress);
+        }
         let document = self.document(view)?.clone();
         if self.host.read(&document)?.version != *expected {
             return Err(SessionError::WrongDocument.into());

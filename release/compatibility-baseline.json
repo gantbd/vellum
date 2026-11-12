@@ -300,8 +300,8 @@
       ],
       "sourceTree": {
         "directory": "host/vellum-editor/src",
-        "fileCount": 13,
-        "sha256": "cc32a9788623f22d0bfc81bff5d836224de738515923c4dcc9496dc5ad9143c4"
+        "fileCount": 14,
+        "sha256": "c1475313720b1b0041afecc0a6b718292d56ee75251f13e0cf981b7591f128f7"
       }
     },
     {
@@ -325,7 +325,7 @@
       "sourceTree": {
         "directory": "engine/vellum-engine/src",
         "fileCount": 643,
-        "sha256": "46d516e5432ff9293af5b8ecc4ffc1fe5a5b2fbf98fe3200237a3ccc46f645ea"
+        "sha256": "75c8fc20eee4773b9d154eacdde01bffc4330b7b3521518664a9536576c1debc"
       }
     },
     {
@@ -902,7 +902,7 @@
       "sourceTree": {
         "directory": "host/vellum-session/src",
         "fileCount": 16,
-        "sha256": "0e962b94125379db2d34e2beb66eb9cd68ed346127fa1544f7594a394ed89282"
+        "sha256": "37fed198be00848d8ec53431207bc9b28578fb1c46153a394b1423258260b590"
       }
     },
     {

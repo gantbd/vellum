@@ -545,6 +545,66 @@ impl<T: SourceSaveAsTokenSetV1> RetainedSourceSaveAsV1<T> {
         }
     }
 
+    /// Observe the retained attempt without transferring effect authority.
+    pub const fn attempt(&self) -> Option<&T::Attempt> {
+        match &self.state {
+            State::Queued(attempt)
+            | State::WriteFenced(attempt)
+            | State::Written(attempt)
+            | State::ActivationFenced(attempt) => Some(attempt),
+            State::Activated { attempt, .. }
+            | State::CompletionPending { attempt, .. }
+            | State::ReleaseFenced { attempt, .. }
+            | State::Released { attempt, .. }
+            | State::RetirementFenced { attempt, .. } => Some(attempt),
+            State::Transitioning
+            | State::Ready
+            | State::Prepared(_)
+            | State::AdmissionFenced(_)
+            | State::Complete(_) => None,
+        }
+    }
+
+    pub const fn activation(&self) -> Option<&T::Activation> {
+        match &self.state {
+            State::Activated { activation, .. } => Some(activation),
+            State::Transitioning
+            | State::Ready
+            | State::Prepared(_)
+            | State::AdmissionFenced(_)
+            | State::Queued(_)
+            | State::WriteFenced(_)
+            | State::Written(_)
+            | State::ActivationFenced(_)
+            | State::CompletionPending { .. }
+            | State::ReleaseFenced { .. }
+            | State::Released { .. }
+            | State::RetirementFenced { .. }
+            | State::Complete(_) => None,
+        }
+    }
+
+    /// Transfer an acknowledged activation to the workspace binding commit.
+    /// The attempt remains retained for release and retirement.
+    pub fn take_activation(
+        &mut self,
+    ) -> Result<T::Activation, RetainedSourceSaveAsErrorV1<std::convert::Infallible>> {
+        let state = self.take_state();
+        let State::Activated {
+            attempt,
+            activation,
+        } = state
+        else {
+            self.state = state;
+            return Err(RetainedSourceSaveAsErrorV1::InvalidTransition);
+        };
+        self.state = State::CompletionPending {
+            attempt,
+            activation: None,
+        };
+        Ok(activation)
+    }
+
     fn take_state(&mut self) -> State<T> {
         std::mem::replace(&mut self.state, State::Transitioning)
     }
