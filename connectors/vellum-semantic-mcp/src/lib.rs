@@ -26,11 +26,12 @@ use vellum_semantic_client::{
     SemanticOutcomeV1, SemanticProviderReadinessV1, SemanticQueryKindV1, SemanticQueryV1,
     SemanticRefusalV1, SemanticReleaseOutcomeV1, SemanticReplyV1, SemanticRequestRefV1,
     SemanticRequestV1, SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSessionQueryPortV1,
-    SemanticSessionQueryResumeRefusalV1, SemanticSessionQuerySuspensionV1,
-    SemanticSourceRevisionV1, SemanticSubmitOutcomeV1, SemanticSymbolKindV1, SemanticTargetV1,
-    SemanticTextV1, SovereignValidatedSemanticServicePortV1,
+    SemanticSessionQueryReconnectV1, SemanticSessionQueryResumeRefusalV1,
+    SemanticSessionQuerySuspensionV1, SemanticSourceRevisionV1, SemanticSubmitOutcomeV1,
+    SemanticSymbolKindV1, SemanticTargetV1, SemanticTextV1,
+    SovereignValidatedSemanticServicePortV1,
 };
-use vellum_semantic_session_client::SemanticSessionExchangePortV1;
+use vellum_semantic_session_client::{SemanticSessionClientV1, SemanticSessionExchangePortV1};
 
 mod stdio;
 pub use stdio::{
@@ -277,6 +278,58 @@ pub struct SemanticMcpServerSuspensionV1<P> {
     documents: Vec<SemanticMcpDocumentV1>,
     records: BTreeMap<SemanticRequestRefV1, QueryRecord>,
     usage: SemanticMcpUsageV1,
+}
+
+/// Sessionless MCP owner used only across a definitive semantic transport
+/// reconnect. MCP request records, metrics, catalog and query correlations are
+/// retained without carrying the retired session or transport.
+#[must_use = "an MCP reconnect owner must bind a fresh session or be explicitly abandoned"]
+pub struct SemanticMcpServerReconnectV1 {
+    client: SemanticSessionQueryReconnectV1,
+    limits: SemanticMcpLimitsV1,
+    documents: Vec<SemanticMcpDocumentV1>,
+    records: BTreeMap<SemanticRequestRefV1, QueryRecord>,
+    usage: SemanticMcpUsageV1,
+}
+
+#[must_use = "reconnect refusal retains the complete MCP owner and candidate session"]
+pub struct SemanticMcpServerReconnectFailureV1<P> {
+    reason: SemanticSessionQueryResumeRefusalV1,
+    reconnect: SemanticMcpServerReconnectV1,
+    session: SemanticSessionClientV1<P>,
+}
+
+impl<P> SemanticMcpServerReconnectFailureV1<P> {
+    pub const fn reason(&self) -> SemanticSessionQueryResumeRefusalV1 {
+        self.reason
+    }
+
+    pub fn into_parts(self) -> (SemanticMcpServerReconnectV1, SemanticSessionClientV1<P>) {
+        (self.reconnect, self.session)
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticMcpServerReconnectFailureV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticMcpServerReconnectFailureV1")
+            .field("reason", &self.reason)
+            .field("reconnect", &"<owned>")
+            .field("session", &"<owned>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SemanticMcpServerReconnectV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticMcpServerReconnectV1")
+            .field("documents", &self.documents.len())
+            .field("records", &self.records.len())
+            .field("usage", &self.usage)
+            .field("client", &"<owned>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -891,6 +944,95 @@ impl<P: SemanticSessionExchangePortV1 + Send> SemanticMcpServerSuspensionV1<P> {
 
     pub fn into_query_suspension(self) -> SemanticSessionQuerySuspensionV1<P> {
         self.client
+    }
+
+    /// Separates the complete MCP lifetime from a definitively retired
+    /// session and returns the old transport so composition can close it
+    /// before attempting a fresh authenticated connection.
+    pub fn try_into_reconnect(self) -> Result<(SemanticMcpServerReconnectV1, P), Box<Self>> {
+        if self.client.collecting_requests().any(|request| {
+            self.records
+                .get(&request)
+                .is_none_or(|record| record.outcome.is_some() || record.outcome_unknown)
+        }) {
+            return Err(Box::new(self));
+        }
+        let Self {
+            client,
+            limits,
+            documents,
+            mut records,
+            mut usage,
+        } = self;
+        match client.try_into_reconnect() {
+            Ok((mut client, port)) => {
+                for request in client.take_retired_collections() {
+                    let record = records
+                        .get_mut(&request)
+                        .expect("preflight retained every collected request");
+                    record.outcome = Some(json!({"status":"cancelled"}));
+                    record.outcome_unknown = false;
+                    bump(&mut usage.cancelled, &mut usage.saturated);
+                    bump(&mut usage.completed, &mut usage.saturated);
+                }
+                Ok((
+                    SemanticMcpServerReconnectV1 {
+                        client,
+                        limits,
+                        documents,
+                        records,
+                        usage,
+                    },
+                    port,
+                ))
+            }
+            Err(client) => Err(Box::new(Self {
+                client: *client,
+                limits,
+                documents,
+                records,
+                usage,
+            })),
+        }
+    }
+}
+
+impl SemanticMcpServerReconnectV1 {
+    pub fn try_bind<P: SemanticSessionExchangePortV1 + Send>(
+        self,
+        session: SemanticSessionClientV1<P>,
+    ) -> Result<SemanticMcpServerSuspensionV1<P>, Box<SemanticMcpServerReconnectFailureV1<P>>> {
+        let Self {
+            client,
+            limits,
+            documents,
+            records,
+            usage,
+        } = self;
+        match client.try_bind(session) {
+            Ok(client) => Ok(SemanticMcpServerSuspensionV1 {
+                client,
+                limits,
+                documents,
+                records,
+                usage,
+            }),
+            Err(failure) => {
+                let reason = failure.reason();
+                let (client, session) = failure.into_parts();
+                Err(Box::new(SemanticMcpServerReconnectFailureV1 {
+                    reason,
+                    reconnect: Self {
+                        client,
+                        limits,
+                        documents,
+                        records,
+                        usage,
+                    },
+                    session,
+                }))
+            }
+        }
     }
 }
 

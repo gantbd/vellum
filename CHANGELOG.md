@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Kept one semantic MCP stdio lifetime alive across definitive global replay
+  exhaustion. The connector now retires and closes the old authenticated
+  session, reconnects through a fresh quiescent service incarnation, fully
+  resynchronizes before rebinding its affine MCP owner, and preserves exact
+  terminal replay while cancelling pending work owned by the retired
+  membership. Uncertain transport outcomes never trigger reconnect.
 - Made semantic connection retirement and replay-domain rotation explicit.
   Every authenticated disconnect now projects exact authority loss and drives
   bounded cleanup; before another client is accepted, a quiescence-gated actor

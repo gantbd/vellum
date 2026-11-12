@@ -414,6 +414,16 @@ pub struct SemanticSessionQuerySuspensionV1<P> {
     collecting: VecDeque<SemanticRequestRefV1>,
 }
 
+/// Sessionless owner retained while a trusted composition closes one retired
+/// transport and establishes a fresh semantic-session incarnation. Query
+/// correlations and collection obligations remain affine across the gap.
+#[must_use = "a reconnect owner must bind a fresh session or be explicitly abandoned"]
+pub struct SemanticSessionQueryReconnectV1 {
+    next_exchange: u128,
+    next_operation: u128,
+    collecting: VecDeque<SemanticRequestRefV1>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticSessionQueryResumeRefusalV1 {
     PendingMutation,
@@ -426,6 +436,34 @@ pub enum SemanticSessionQueryResumeRefusalV1 {
 pub struct SemanticSessionQueryResumeFailureV1<P> {
     reason: SemanticSessionQueryResumeRefusalV1,
     suspension: SemanticSessionQuerySuspensionV1<P>,
+}
+
+#[must_use = "reconnect refusal retains both the reconnect owner and candidate session"]
+pub struct SemanticSessionQueryReconnectFailureV1<P> {
+    reason: SemanticSessionQueryResumeRefusalV1,
+    reconnect: SemanticSessionQueryReconnectV1,
+    session: SemanticSessionClientV1<P>,
+}
+
+impl<P> SemanticSessionQueryReconnectFailureV1<P> {
+    pub const fn reason(&self) -> SemanticSessionQueryResumeRefusalV1 {
+        self.reason
+    }
+
+    pub fn into_parts(self) -> (SemanticSessionQueryReconnectV1, SemanticSessionClientV1<P>) {
+        (self.reconnect, self.session)
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticSessionQueryReconnectFailureV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticSessionQueryReconnectFailureV1")
+            .field("reason", &self.reason)
+            .field("reconnect", &"<owned>")
+            .field("session", &"<owned>")
+            .finish()
+    }
 }
 
 impl<P> SemanticSessionQueryResumeFailureV1<P> {
@@ -455,6 +493,15 @@ impl<P> std::fmt::Debug for SemanticSessionQuerySuspensionV1<P> {
             .field("collecting", &self.collecting.len())
             .field("session", &"<owned>")
             .finish()
+    }
+}
+
+impl std::fmt::Debug for SemanticSessionQueryReconnectV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticSessionQueryReconnectV1")
+            .field("collecting", &self.collecting.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -638,6 +685,10 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionQuerySuspensionV1<P> {
         &mut self.session
     }
 
+    pub fn collecting_requests(&self) -> impl Iterator<Item = SemanticRequestRefV1> + '_ {
+        self.collecting.iter().copied()
+    }
+
     /// Retires a paused query composition without fabricating a resumed query
     /// port. The retained collection queue is intentionally consumed: session
     /// retirement is the authoritative bounded cleanup for those requests.
@@ -649,26 +700,41 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionQuerySuspensionV1<P> {
         }
     }
 
+    /// Yields the retired transport only after a definitive Leave removed the
+    /// old membership. The returned reconnect owner contains no transport or
+    /// session authority and cannot service queries until rebound.
+    pub fn try_into_reconnect(self) -> Result<(SemanticSessionQueryReconnectV1, P), Box<Self>> {
+        if self.session.pending_mutation().is_some() || self.session.binding().is_some() {
+            return Err(Box::new(self));
+        }
+        let Self {
+            session,
+            next_exchange,
+            next_operation,
+            collecting,
+        } = self;
+        match session.try_into_port() {
+            Ok(port) => Ok((
+                SemanticSessionQueryReconnectV1 {
+                    next_exchange,
+                    next_operation,
+                    collecting,
+                },
+                port,
+            )),
+            Err(session) => Err(Box::new(Self {
+                session: *session,
+                next_exchange,
+                next_operation,
+                collecting,
+            })),
+        }
+    }
+
     pub fn try_resume(
         self,
     ) -> Result<SemanticSessionQueryPortV1<P>, Box<SemanticSessionQueryResumeFailureV1<P>>> {
-        let reason = if self.session.pending_mutation().is_some() {
-            Some(SemanticSessionQueryResumeRefusalV1::PendingMutation)
-        } else {
-            match self.session.binding() {
-                None => Some(SemanticSessionQueryResumeRefusalV1::Unbound),
-                Some(binding) if !binding.roles.contains(SemanticSessionRolesV1::query()) => {
-                    Some(SemanticSessionQueryResumeRefusalV1::RoleDenied)
-                }
-                Some(_)
-                    if self.session.validation_state()
-                        != SemanticReplyValidationV1::WitnessValidated =>
-                {
-                    Some(SemanticSessionQueryResumeRefusalV1::Unsealed)
-                }
-                Some(_) => None,
-            }
-        };
+        let reason = query_resume_refusal(&self.session);
         if let Some(reason) = reason {
             return Err(Box::new(SemanticSessionQueryResumeFailureV1 {
                 reason,
@@ -683,6 +749,50 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionQuerySuspensionV1<P> {
             pending_release: None,
             collecting: self.collecting,
         })
+    }
+}
+
+impl SemanticSessionQueryReconnectV1 {
+    pub fn take_retired_collections(&mut self) -> Vec<SemanticRequestRefV1> {
+        self.collecting.drain(..).collect()
+    }
+
+    pub fn try_bind<P: SemanticSessionExchangePortV1>(
+        self,
+        session: SemanticSessionClientV1<P>,
+    ) -> Result<SemanticSessionQuerySuspensionV1<P>, Box<SemanticSessionQueryReconnectFailureV1<P>>>
+    {
+        if let Some(reason) = query_resume_refusal(&session) {
+            return Err(Box::new(SemanticSessionQueryReconnectFailureV1 {
+                reason,
+                reconnect: self,
+                session,
+            }));
+        }
+        Ok(SemanticSessionQuerySuspensionV1 {
+            session,
+            next_exchange: self.next_exchange,
+            next_operation: self.next_operation,
+            collecting: self.collecting,
+        })
+    }
+}
+
+fn query_resume_refusal<P>(
+    session: &SemanticSessionClientV1<P>,
+) -> Option<SemanticSessionQueryResumeRefusalV1> {
+    if session.pending_mutation().is_some() {
+        return Some(SemanticSessionQueryResumeRefusalV1::PendingMutation);
+    }
+    match session.binding() {
+        None => Some(SemanticSessionQueryResumeRefusalV1::Unbound),
+        Some(binding) if !binding.roles.contains(SemanticSessionRolesV1::query()) => {
+            Some(SemanticSessionQueryResumeRefusalV1::RoleDenied)
+        }
+        Some(_) if session.validation_state() != SemanticReplyValidationV1::WitnessValidated => {
+            Some(SemanticSessionQueryResumeRefusalV1::Unsealed)
+        }
+        Some(_) => None,
     }
 }
 

@@ -155,6 +155,7 @@ impl SemanticSessionExchangePortV1 for WitnessServer {
                 self.request = None;
                 SemanticSessionOutcomeV1::Accepted
             }
+            SemanticSessionCommandV1::LeaveSession { .. } => SemanticSessionOutcomeV1::Accepted,
             _ => panic!("unexpected command"),
         };
         self.reply(command, outcome)
@@ -364,10 +365,83 @@ fn witness_validated_session_becomes_a_sealed_query_port() {
         run(client.release_request(SemanticRequestRefV1::new([5; 16]))),
         SemanticReleaseOutcomeV1::Released
     );
-    let extracted = match client.into_port().try_into_session() {
-        Ok(extracted) => extracted,
-        Err(_) => panic!("completed query port must extract for explicit leave"),
+    let mut suspension = match client.into_port().try_suspend() {
+        Ok(suspension) => suspension,
+        Err(_) => panic!("completed query port must suspend for reconnect"),
     };
+    let binding = suspension.session_mut().binding().unwrap();
+    attempt(
+        suspension.session_mut(),
+        SemanticSessionCommandV1::LeaveSession {
+            exchange: opaque(16, SemanticExchangeRefV1::new),
+            operation: opaque(16, SemanticSessionOperationRefV1::new),
+            incarnation: binding.incarnation,
+            membership: binding.membership,
+        },
+    );
+    let (reconnect, mut old_port) = suspension
+        .try_into_reconnect()
+        .expect("definitively retired session must yield its old transport");
+    old_port.incarnation = opaque(31, SemanticSessionIncarnationV1::new);
+    old_port.membership = opaque(32, SemanticMembershipRefV1::new);
+    old_port.epoch = opaque(33, SemanticSynchronizationEpochV1::new);
+    old_port.ready = false;
+    old_port.request = None;
+    let mut replacement =
+        SemanticSessionClientV1::try_new(old_port, SemanticSessionClientLimitsV1::reference())
+            .unwrap();
+    attempt(
+        &mut replacement,
+        SemanticSessionCommandV1::Describe {
+            exchange: opaque(34, SemanticExchangeRefV1::new),
+        },
+    );
+    attempt(
+        &mut replacement,
+        SemanticSessionCommandV1::JoinSession {
+            exchange: opaque(35, SemanticExchangeRefV1::new),
+            operation: opaque(35, SemanticSessionOperationRefV1::new),
+            incarnation: opaque(31, SemanticSessionIncarnationV1::new),
+            requested_roles: SemanticSessionRolesV1::top(),
+        },
+    );
+    let empty_manifest = SemanticSynchronizationManifestV1::try_from_seals(
+        &[],
+        SemanticSessionLimitsV1::reference(),
+    )
+    .unwrap();
+    attempt(
+        &mut replacement,
+        SemanticSessionCommandV1::BeginSynchronization {
+            exchange: opaque(36, SemanticExchangeRefV1::new),
+            operation: opaque(36, SemanticSessionOperationRefV1::new),
+            incarnation: opaque(31, SemanticSessionIncarnationV1::new),
+            membership: opaque(32, SemanticMembershipRefV1::new),
+            epoch: opaque(33, SemanticSynchronizationEpochV1::new),
+            manifest: empty_manifest,
+        },
+    );
+    attempt(
+        &mut replacement,
+        SemanticSessionCommandV1::CompleteSynchronization {
+            exchange: opaque(37, SemanticExchangeRefV1::new),
+            operation: opaque(37, SemanticSessionOperationRefV1::new),
+            incarnation: opaque(31, SemanticSessionIncarnationV1::new),
+            membership: opaque(32, SemanticMembershipRefV1::new),
+            epoch: opaque(33, SemanticSynchronizationEpochV1::new),
+            manifest: empty_manifest,
+        },
+    );
+    attempt(
+        &mut replacement,
+        SemanticSessionCommandV1::Describe {
+            exchange: opaque(38, SemanticExchangeRefV1::new),
+        },
+    );
+    let rebound = reconnect
+        .try_bind(replacement)
+        .expect("fresh witness-validated session must bind the reconnect owner");
+    let extracted = rebound.into_extraction();
     assert_eq!(extracted.next_exchange, 110);
     assert_eq!(extracted.next_operation, 105);
     assert!(extracted.session.binding().is_some());

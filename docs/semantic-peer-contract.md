@@ -7,8 +7,9 @@ deadline scheduler, staged provider replacement, bounded MCP projection and
 stdio driver, and background-session protocol/client/broker/actor substrate are
 implemented. The semantic MCP executable has both an explicit unavailable
 qualification composition and an authenticated local rust-analyzer composition
-that serves bounded startup workspace snapshots. No remote semantic transport,
-PSI, nREPL, automatic restart policy or post-start file watching is claimed.
+that serves bounded startup workspace snapshots. No remote network semantic
+transport, PSI, nREPL, automatic provider restart policy or post-start file
+watching is claimed.
 
 Vellum's useful semantic surface is a peer capability, not an editor wrapper.
 `vellum_host::semantic` defines the outbound contract that a trusted embedded
@@ -394,7 +395,15 @@ that frame. When the membership falls below this reserve, it uses the separate
 retirement tail to leave, rejoins under a fresh membership, resets the local
 synchronization coordinator, opens a complete current epoch, rebinds the MCP
 catalog, and continues the same stdio lifetime. Successful rollovers are a
-content-safe exit metric. This does not compact the broker's historical global
+content-safe exit metric. If a fresh Join instead receives definitive global
+`ReplayCapacity`, the peer completes Leave, extracts a sessionless affine MCP
+owner, closes the retired transport, authenticates a fresh connection,
+synchronizes and witness-validates a new session, and then rebinds that same MCP
+owner and stdio lifetime. Pending collections tied to the retired membership
+become exact replayable `cancelled` receipts. This path is never entered for
+`NotSent`, `OutcomeUnknown`, an unresolved mutation, or a non-quiescent
+session. Reconnect and rollover totals are fixed-cardinality, content-safe
+metrics. Ordinary rollover does not compact the broker's historical global
 join/membership replay ledger or rotate its service incarnation.
 
 The explicit `--unavailable` mode admits one process-local partition to a real sovereign
@@ -434,11 +443,12 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes external filesystem watching, bounded same-connection reconnect
-at global replay exhaustion, and extraction of the MCP peer into its sibling
-repository. Membership-local operation exhaustion now
-rolls over without consuming the broker/client retirement tail; historical
-global replay evidence is still never silently deleted.
+work includes external filesystem watching and extraction of the MCP peer into
+its sibling repository. Membership-local operation exhaustion rolls over
+without consuming the broker/client retirement tail, and definitive global
+replay exhaustion reconnects through a fresh service incarnation without
+ending MCP stdio; historical global replay evidence is still never silently
+deleted in place.
 
 The same exact authority-loss projection now occurs on every authenticated
 connection exit, not only signal-driven shutdown. The listener's idle loop
@@ -454,9 +464,10 @@ obligations. Rotation atomically drops the fully retired replay domain, resets
 broker-local session identities, and preserves the current provider epoch and
 projection. Same-incarnation, active-membership, queued-command and external-
 obligation cases refuse without partial compaction. Actor usage records
-content-safe rotation/refusal totals. A single persistent connection can still
-exhaust the global broker ledger; bounded reconnect at that definitive boundary
-remains separate connector work.
+content-safe rotation/refusal totals. The MCP composition now closes a
+definitively retired exhausted connection so this quiescent rotation can occur,
+then binds its sessionless owner only after the fresh session is fully
+synchronized and witness-validated.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

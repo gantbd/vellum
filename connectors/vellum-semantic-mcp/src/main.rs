@@ -167,6 +167,7 @@ enum RemoteStage {
     NativeTransport,
     SessionDescribe,
     SessionJoin,
+    SessionReconnect,
     Synchronization,
     Catalog,
     NativeDisconnect,
@@ -185,6 +186,7 @@ struct RemoteSynchronizationUsage {
     feed_gaps: u64,
     refreshes: u64,
     rollovers: u64,
+    reconnects: u64,
     quiescent_observations: u64,
     saturated: bool,
 }
@@ -214,6 +216,7 @@ impl std::fmt::Display for RemoteStage {
             Self::NativeTransport => "native_transport",
             Self::SessionDescribe => "session_describe",
             Self::SessionJoin => "session_join",
+            Self::SessionReconnect => "session_reconnect",
             Self::Synchronization => "synchronization",
             Self::Catalog => "catalog",
             Self::NativeDisconnect => "native_disconnect",
@@ -411,6 +414,7 @@ fn join_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV1
             {
                 Ok(())
             }
+            SemanticSessionOutcomeV1::ReplayCapacity => Err(RemoteStage::SessionReconnect),
             _ => Err(RemoteStage::SessionJoin),
         },
         SemanticExchangeDispositionV1::NotSent | SemanticExchangeDispositionV1::OutcomeUnknown => {
@@ -780,6 +784,53 @@ where
 }
 
 #[cfg(unix)]
+fn reconnect_membership<T, P, F>(
+    native: &mut vellum_sdk_client::client::Client<T>,
+    suspended: SemanticMcpServerSuspensionV1<P>,
+    coordinator: &mut vellum_semantic_session_client::VellumSnapshotSynchronizationCoordinatorV1,
+    composition: &mut UniformSynchronizationComposition,
+    usage: &mut RemoteSynchronizationUsage,
+    connect: F,
+) -> Result<SemanticMcpServerSuspensionV1<P>, RemoteStage>
+where
+    T: vellum_sdk_client::protocol::ServicePort,
+    P: vellum_semantic_session_client::SemanticSessionExchangePortV1 + Send,
+    F: FnOnce() -> Result<vellum_semantic_session_client::SemanticSessionClientV1<P>, RemoteStage>,
+{
+    let (reconnect, retired_port) = suspended
+        .try_into_reconnect()
+        .map_err(|_| RemoteStage::SessionReconnect)?;
+    // Closing the old transport is the observable boundary that lets the
+    // service retire authority and rotate its quiescent broker incarnation.
+    drop(retired_port);
+    let mut replacement = connect()?;
+    let description = describe_session(
+        &mut replacement,
+        composition
+            .next_value()
+            .ok_or(RemoteStage::SessionDescribe)?,
+    )?;
+    join_session(
+        &mut replacement,
+        description,
+        composition.next_value().ok_or(RemoteStage::SessionJoin)?,
+        composition.next_value().ok_or(RemoteStage::SessionJoin)?,
+    )?;
+    *coordinator =
+        vellum_semantic_session_client::VellumSnapshotSynchronizationCoordinatorV1::default();
+    synchronize_ready(native, &mut replacement, coordinator, composition)?;
+    if replacement.usage().remaining_operations == 0 {
+        return Err(RemoteStage::Synchronization);
+    }
+    let suspended = reconnect
+        .try_bind(replacement)
+        .map_err(|_| RemoteStage::QueryBinding)?;
+    RemoteSynchronizationUsage::bump(&mut usage.rollovers, &mut usage.saturated);
+    RemoteSynchronizationUsage::bump(&mut usage.reconnects, &mut usage.saturated);
+    Ok(suspended)
+}
+
+#[cfg(unix)]
 fn retire_suspended_server<P>(
     suspended: SemanticMcpServerSuspensionV1<P>,
 ) -> Result<(), RemoteStage>
@@ -817,24 +868,28 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
     };
 
     let mut store = LocalCredentialStoreV1::default();
-    let semantic_record = store
-        .load(&configuration.semantic_credential)
-        .map_err(|_| RemoteStage::Credential)?;
     let native_record = store
         .load(&configuration.native_credential)
         .map_err(|_| RemoteStage::Credential)?;
-
-    let exchange = UnixSemanticFrameExchangeV1::try_new_authenticated(
-        configuration.semantic_socket,
-        UnixSemanticFrameDeadlinesV1::reference(),
-        semantic_authentication(semantic_record),
-    )
-    .map_err(|_| RemoteStage::SemanticTransport)?;
-    let remote = SemanticRemoteSessionV1::try_new(exchange, SemanticTransportLimitsV1::reference())
+    let semantic_socket = configuration.semantic_socket.clone();
+    let semantic_credential = configuration.semantic_credential.clone();
+    let mut connect_semantic = || {
+        let semantic_record = store
+            .load(&semantic_credential)
+            .map_err(|_| RemoteStage::Credential)?;
+        let exchange = UnixSemanticFrameExchangeV1::try_new_authenticated(
+            semantic_socket.clone(),
+            UnixSemanticFrameDeadlinesV1::reference(),
+            semantic_authentication(semantic_record),
+        )
         .map_err(|_| RemoteStage::SemanticTransport)?;
-    let mut semantic =
+        let remote =
+            SemanticRemoteSessionV1::try_new(exchange, SemanticTransportLimitsV1::reference())
+                .map_err(|_| RemoteStage::SemanticTransport)?;
         SemanticSessionClientV1::try_new(remote, SemanticSessionClientLimitsV1::reference())
-            .map_err(|_| RemoteStage::SemanticTransport)?;
+            .map_err(|_| RemoteStage::SemanticTransport)
+    };
+    let mut semantic = connect_semantic()?;
     let mut composition =
         UniformSynchronizationComposition::try_new(configuration.language.clone())
             .ok_or(RemoteStage::Runtime)?;
@@ -963,18 +1018,37 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
                 return Err(cleanup.err().unwrap_or(stage));
             }
         };
-        if rollover_required
-            && let Err(stage) = rollover_membership(
+        if rollover_required {
+            match rollover_membership(
                 &mut native,
                 &mut suspended,
                 &mut coordinator,
                 &mut composition,
                 &mut synchronization_usage,
-            )
-        {
-            let cleanup = retire_suspended_server(suspended);
-            let _ = native.disconnect();
-            return Err(cleanup.err().unwrap_or(stage));
+            ) {
+                Ok(()) => {}
+                Err(RemoteStage::SessionReconnect) => {
+                    suspended = match reconnect_membership(
+                        &mut native,
+                        suspended,
+                        &mut coordinator,
+                        &mut composition,
+                        &mut synchronization_usage,
+                        &mut connect_semantic,
+                    ) {
+                        Ok(suspended) => suspended,
+                        Err(stage) => {
+                            let _ = native.disconnect();
+                            return Err(stage);
+                        }
+                    };
+                }
+                Err(stage) => {
+                    let cleanup = retire_suspended_server(suspended);
+                    let _ = native.disconnect();
+                    return Err(cleanup.err().unwrap_or(stage));
+                }
+            }
         }
         if let Err(stage) = converge_workspace(
             &mut native,
@@ -1066,6 +1140,7 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
                     "feed_gaps":synchronization_usage.feed_gaps,
                     "refreshes":synchronization_usage.refreshes,
                     "rollovers":synchronization_usage.rollovers,
+                    "reconnects":synchronization_usage.reconnects,
                     "quiescent_observations":synchronization_usage.quiescent_observations,
                     "saturated":synchronization_usage.saturated
                 },
@@ -1262,6 +1337,7 @@ mod tests {
         membership: Option<SemanticMembershipRefV1>,
         epoch: Option<vellum_semantic_protocol::SemanticSynchronizationEpochV1>,
         limits: SemanticSessionLimitsV1,
+        replay_capacity_on_join: bool,
     }
 
     impl ServicePort for ChangeTransport {
@@ -1372,6 +1448,12 @@ mod tests {
                     SemanticSessionOutcomeV1::Description(self.description())
                 }
                 SemanticSessionCommandV1::JoinSession { .. } => {
+                    if self.replay_capacity_on_join {
+                        self.replay_capacity_on_join = false;
+                        return SemanticExchangeDispositionV1::Reply(
+                            self.reply(command, SemanticSessionOutcomeV1::ReplayCapacity),
+                        );
+                    }
                     self.next_membership = self.next_membership.checked_add(1).unwrap();
                     let membership = SemanticMembershipRefV1::new([self.next_membership; 16])
                         .expect("nonzero membership");
@@ -1388,6 +1470,15 @@ mod tests {
                 | SemanticSessionCommandV1::SyncClose { .. } => SemanticSessionOutcomeV1::Accepted,
                 SemanticSessionCommandV1::CompleteSynchronization { epoch, .. } => {
                     self.epoch = Some(*epoch);
+                    SemanticSessionOutcomeV1::Accepted
+                }
+                SemanticSessionCommandV1::Submit { .. } => SemanticSessionOutcomeV1::Accepted,
+                SemanticSessionCommandV1::Collect { request, .. } => {
+                    SemanticSessionOutcomeV1::Pending(
+                        vellum_semantic_protocol::SemanticSessionPendingV1::Request(*request),
+                    )
+                }
+                SemanticSessionCommandV1::ReleaseRequest { .. } => {
                     SemanticSessionOutcomeV1::Accepted
                 }
                 SemanticSessionCommandV1::LeaveSession { .. } => {
@@ -1501,6 +1592,30 @@ mod tests {
     }
 
     #[test]
+    fn definitive_join_replay_capacity_selects_the_reconnect_path() {
+        let limits = SemanticSessionLimitsV1::reference();
+        let mut semantic = SemanticSessionClientV1::try_new(
+            RolloverSemanticPort {
+                incarnation: SemanticSessionIncarnationV1::new([7; 16]).unwrap(),
+                next_membership: 1,
+                membership: None,
+                epoch: None,
+                limits,
+                replay_capacity_on_join: true,
+            },
+            SemanticSessionClientLimitsV1::reference(),
+        )
+        .unwrap();
+        let description = describe_session(&mut semantic, 1).unwrap();
+        assert_eq!(
+            join_session(&mut semantic, description, 2, 3),
+            Err(RemoteStage::SessionReconnect)
+        );
+        assert!(semantic.binding().is_none());
+        assert!(semantic.pending_mutation().is_none());
+    }
+
+    #[test]
     fn rollover_leaves_rejoins_reopens_and_resumes_the_same_mcp_owner() {
         let workspace = WorkspaceIdV1::new(1).unwrap();
         let document = WorkspaceDocumentIdV1::new(workspace, 1).unwrap();
@@ -1511,6 +1626,7 @@ mod tests {
             membership: None,
             epoch: None,
             limits,
+            replay_capacity_on_join: false,
         };
         let mut semantic =
             SemanticSessionClientV1::try_new(port, SemanticSessionClientLimitsV1::reference())
@@ -1571,6 +1687,157 @@ mod tests {
         let mut extraction = match query.try_into_session() {
             Ok(extraction) => extraction,
             Err(_) => panic!("resumed query owner must extract"),
+        };
+        leave_session(
+            &mut extraction.session,
+            extraction.next_exchange,
+            extraction.next_operation,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn reconnect_rebinds_a_retired_transport_without_losing_the_mcp_owner() {
+        let workspace = WorkspaceIdV1::new(21).unwrap();
+        let document = WorkspaceDocumentIdV1::new(workspace, 22).unwrap();
+        let limits = SemanticSessionLimitsV1::reference();
+        let port = RolloverSemanticPort {
+            incarnation: SemanticSessionIncarnationV1::new([1; 16]).unwrap(),
+            next_membership: 1,
+            membership: None,
+            epoch: None,
+            limits,
+            replay_capacity_on_join: false,
+        };
+        let mut semantic =
+            SemanticSessionClientV1::try_new(port, SemanticSessionClientLimitsV1::reference())
+                .unwrap();
+        let mut composition =
+            UniformSynchronizationComposition::try_new("rust".to_owned()).unwrap();
+        let description = describe_session(&mut semantic, composition.next_value().unwrap())
+            .expect("description");
+        join_session(
+            &mut semantic,
+            description,
+            composition.next_value().unwrap(),
+            composition.next_value().unwrap(),
+        )
+        .expect("join");
+        let original = semantic.binding().unwrap();
+        let mut native = vellum_sdk_client::client::Client::connect(SnapshotTransport {
+            workspace,
+            document,
+        })
+        .unwrap();
+        let mut coordinator = VellumSnapshotSynchronizationCoordinatorV1::default();
+        synchronize_ready(
+            &mut native,
+            &mut semantic,
+            &mut coordinator,
+            &mut composition,
+        )
+        .expect("initial synchronization");
+        let query = try_bind_semantic_session_query_v1(semantic, composition.query_seed().unwrap())
+            .unwrap();
+        let mcp_limits = SemanticMcpLimitsV1::reference();
+        let documents = semantic_documents(&coordinator, mcp_limits).unwrap();
+        let semantic_document = documents[0].document();
+        let source_revision = documents[0].source_revision().get();
+        let document_hex: String = semantic_document
+            .as_bytes()
+            .into_iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let request = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"tools/call",
+            "params":{
+                "_meta":{
+                    "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities":{},
+                    "io.modelcontextprotocol/clientInfo":{"name":"reconnect-test","version":"1"}
+                },
+                "name":"vellum.semantic.diagnostics",
+                "arguments":{
+                    "request":"11111111111111111111111111111111",
+                    "document":document_hex,
+                    "source_revision":source_revision,
+                    "index_generation":1,
+                    "language":"rust"
+                }
+            }
+        }))
+        .unwrap();
+        let mut server =
+            SemanticMcpServerV1::try_new_with_documents(query, mcp_limits, documents).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let pending: serde_json::Value = serde_json::from_slice(
+            &runtime
+                .block_on(server.handle(&request))
+                .expect("query response"),
+        )
+        .unwrap();
+        assert_eq!(
+            pending.pointer("/result/structuredContent/status"),
+            Some(&json!("pending"))
+        );
+        let mut suspended = match server.try_suspend_client() {
+            Ok(suspended) => suspended,
+            Err(_) => panic!("clean MCP owner must suspend"),
+        };
+        leave_session_with_composition(suspended.session_mut(), &mut composition).unwrap();
+        assert!(suspended.session_mut().binding().is_none());
+
+        let mut usage = RemoteSynchronizationUsage::default();
+        let mut suspended = reconnect_membership(
+            &mut native,
+            suspended,
+            &mut coordinator,
+            &mut composition,
+            &mut usage,
+            || {
+                SemanticSessionClientV1::try_new(
+                    RolloverSemanticPort {
+                        incarnation: SemanticSessionIncarnationV1::new([2; 16]).unwrap(),
+                        next_membership: 9,
+                        membership: None,
+                        epoch: None,
+                        limits,
+                        replay_capacity_on_join: false,
+                    },
+                    SemanticSessionClientLimitsV1::reference(),
+                )
+                .map_err(|_| RemoteStage::SemanticTransport)
+            },
+        )
+        .expect("reconnect");
+        let rebound = suspended.session_mut().binding().unwrap();
+        assert_ne!(rebound.incarnation, original.incarnation);
+        assert_ne!(rebound.membership, original.membership);
+        assert_eq!(usage.reconnects, 1);
+        assert_eq!(usage.rollovers, 1);
+        assert_eq!(coordinator.synchronized_documents().len(), 1);
+
+        let documents = semantic_documents(&coordinator, mcp_limits).unwrap();
+        let mut server = suspended.try_resume(documents).unwrap();
+        let cancelled: serde_json::Value = serde_json::from_slice(
+            &runtime
+                .block_on(server.handle(&request))
+                .expect("cancelled replay response"),
+        )
+        .unwrap();
+        assert_eq!(
+            cancelled.pointer("/result/structuredContent/status"),
+            Some(&json!("cancelled"))
+        );
+        assert_eq!(server.usage().cancelled, 1);
+        let query = server.into_client().into_port();
+        let mut extraction = match query.try_into_session() {
+            Ok(extraction) => extraction,
+            Err(_) => panic!("reconnected query owner must extract"),
         };
         leave_session(
             &mut extraction.session,
