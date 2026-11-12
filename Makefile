@@ -24,8 +24,8 @@ qualify-github-source:
 	node scripts/qualify-github-source.mjs --vellum-ref=HEAD
 
 check-launchd-distribution:
-	node --check distribution/launchd/render-plist.mjs
-	node distribution/launchd/render-plist.test.mjs
+	cargo test --locked --offline -p vellum-launchd-render --all-targets --all-features
+	cargo clippy --locked --offline -p vellum-launchd-render --all-targets --all-features -- -D warnings
 
 check-mcp-extraction:
 	node --check scripts/verify-mcp-extraction.mjs

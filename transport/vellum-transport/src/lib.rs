@@ -4,8 +4,9 @@
 use std::io::{self, Read, Write};
 use vellum_protocol::{
     ClientId, DurableExecuteOutcomeV1, DurableExecuteRequestV1, DurableReceiptLookupOutcomeV1,
-    DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1, ReplyV1,
-    RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
+    DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
+    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, ReplyV1, RequestV1,
+    ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1, decode_reply_v1,
@@ -197,6 +198,16 @@ impl<X: FrameExchange> ServicePort for RemoteTransport<X> {
         }
     }
 
+    fn durable_receipt_status(
+        &mut self,
+        request: DurableReceiptStatusRequestV1,
+    ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+        match self.call(&WireRequestV1::DurableReceiptStatus(request))? {
+            WireReplyV1::DurableReceiptStatus(status) => Ok(status),
+            _ => self.unexpected(),
+        }
+    }
+
     fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1> {
         match self.call(&WireRequestV1::Disconnect(client)) {
             Ok(WireReplyV1::Disconnected) => Ok(()),
@@ -240,6 +251,12 @@ pub fn dispatch_v1<S: ServicePort>(
         WireRequestV1::DurableReceiptRetirement(retirement) => {
             match service.retire_durable_receipt(retirement) {
                 Ok(outcome) => WireReplyV1::DurableReceiptRetired(outcome),
+                Err(_) => return Err(TransportError::ServiceUnavailable),
+            }
+        }
+        WireRequestV1::DurableReceiptStatus(request) => {
+            match service.durable_receipt_status(request) {
+                Ok(status) => WireReplyV1::DurableReceiptStatus(status),
                 Err(_) => return Err(TransportError::ServiceUnavailable),
             }
         }

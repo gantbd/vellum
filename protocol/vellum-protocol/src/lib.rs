@@ -621,6 +621,26 @@ pub struct DurableReceiptLookupV1 {
     pub intent: DurableEffectIntentV1,
 }
 
+/// Read-only, content-free projection of one restart-stable operation's
+/// current receipt state. The daemon binds workspace and authenticated subject;
+/// the operation reference is correlation only and grants no mutation or
+/// retirement authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DurableReceiptStatusRequestV1 {
+    pub operation: DurableOperationRefV1,
+    pub client: ClientId,
+    pub request: RequestId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableReceiptStatusV1 {
+    Pending,
+    Complete,
+    Retired,
+    AbsentOrForeign,
+    Unavailable,
+}
+
 /// Exact, authenticated request to retire one completed durable receipt.
 /// The stable intent is part of the target so changed-input reuse cannot erase
 /// or alias an operation identity.
@@ -956,6 +976,15 @@ pub trait ServicePort {
         _lookup: DurableReceiptLookupV1,
     ) -> Result<DurableReceiptLookupOutcomeV1, ServiceAccessErrorV1> {
         Ok(DurableReceiptLookupOutcomeV1::Unavailable)
+    }
+
+    /// Projects only current operation state. The default is closed and never
+    /// falls through to lookup, execution, or retirement.
+    fn durable_receipt_status(
+        &mut self,
+        _request: DurableReceiptStatusRequestV1,
+    ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+        Ok(DurableReceiptStatusV1::Unavailable)
     }
 
     /// Retires only exact completed historical evidence. The default is

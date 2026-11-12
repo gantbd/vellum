@@ -9,16 +9,16 @@ use vellum_protocol::{
     DurableExecuteRequestV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
-    DurableReplaceAndSaveReceiptV1, DurableSaveReceiptV1, EditPersistenceV1,
-    FileAdmissionReceiptV1, FileAdmissionStatusV1, MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1,
-    MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
-    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
-    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
-    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
-    WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
-    WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
-    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
-    WorkspaceRootV1,
+    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
+    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
+    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
+    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
+    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
+    WorkspaceChangeCursorV1, WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1,
+    WorkspaceChangeV1, WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1,
+    WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1,
+    WorkspaceRootKindV1, WorkspaceRootV1,
 };
 
 /// Canonical restart-stable durable intent encoding. This profile is separate
@@ -573,6 +573,7 @@ const DISCONNECT_REQUEST: u8 = 0x03;
 const DURABLE_EXECUTE_REQUEST: u8 = 0x04;
 const DURABLE_RECEIPT_LOOKUP_REQUEST: u8 = 0x05;
 const DURABLE_RECEIPT_RETIRE_REQUEST: u8 = 0x06;
+const DURABLE_RECEIPT_STATUS_REQUEST: u8 = 0x07;
 const CONNECTED_REPLY: u8 = 0x81;
 const CONNECT_REFUSED_REPLY: u8 = 0x82;
 const EXECUTED_REPLY: u8 = 0x83;
@@ -581,6 +582,7 @@ const DISCONNECT_REFUSED_REPLY: u8 = 0x85;
 const DURABLE_EXECUTED_REPLY: u8 = 0x86;
 const DURABLE_RECEIPT_LOOKED_UP_REPLY: u8 = 0x87;
 const DURABLE_RECEIPT_RETIRED_REPLY: u8 = 0x88;
+const DURABLE_RECEIPT_STATUS_REPLY: u8 = 0x89;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WireLimits {
@@ -627,6 +629,7 @@ pub enum WireRequestV1 {
     DurableExecute(DurableExecuteRequestV1),
     DurableReceiptLookup(DurableReceiptLookupV1),
     DurableReceiptRetirement(DurableReceiptRetirementV1),
+    DurableReceiptStatus(DurableReceiptStatusRequestV1),
 }
 
 impl fmt::Debug for WireRequestV1 {
@@ -645,6 +648,10 @@ impl fmt::Debug for WireRequestV1 {
                 .debug_tuple("DurableReceiptRetirement")
                 .field(retirement)
                 .finish(),
+            Self::DurableReceiptStatus(request) => f
+                .debug_tuple("DurableReceiptStatus")
+                .field(request)
+                .finish(),
         }
     }
 }
@@ -659,6 +666,7 @@ pub enum WireReplyV1 {
     DurableExecuted(DurableExecuteOutcomeV1),
     DurableReceiptLookedUp(DurableReceiptLookupOutcomeV1),
     DurableReceiptRetired(DurableReceiptRetirementOutcomeV1),
+    DurableReceiptStatus(DurableReceiptStatusV1),
 }
 
 impl fmt::Debug for WireReplyV1 {
@@ -684,6 +692,9 @@ impl fmt::Debug for WireReplyV1 {
                 .debug_tuple("DurableReceiptRetired")
                 .field(outcome)
                 .finish(),
+            Self::DurableReceiptStatus(status) => {
+                f.debug_tuple("DurableReceiptStatus").field(status).finish()
+            }
         }
     }
 }
@@ -729,6 +740,12 @@ pub fn encode_request_v1(
             encoder.u64(retirement.request.get())?;
             encode_durable_intent_fields(&mut encoder, &retirement.intent)?;
         }
+        WireRequestV1::DurableReceiptStatus(request) => {
+            encoder.u8(DURABLE_RECEIPT_STATUS_REQUEST)?;
+            encode_operation_ref(&mut encoder, request.operation)?;
+            encoder.u64(request.client.get())?;
+            encoder.u64(request.request.get())?;
+        }
     }
     encoder.finish(length)
 }
@@ -772,6 +789,13 @@ pub fn decode_request_v1(
                 client: client_id(read_u64(&mut decoder)?)?,
                 request: request_id(read_u64(&mut decoder)?)?,
                 intent: decode_durable_intent_fields(&mut decoder)?,
+            })
+        }
+        DURABLE_RECEIPT_STATUS_REQUEST => {
+            WireRequestV1::DurableReceiptStatus(DurableReceiptStatusRequestV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
             })
         }
         _ => return Err(WireDecodeError::UnknownTag),
@@ -824,6 +848,16 @@ pub fn encode_reply_v1(
                 DurableReceiptRetirementOutcomeV1::Unavailable => 5,
             })?;
         }
+        WireReplyV1::DurableReceiptStatus(status) => {
+            encoder.u8(DURABLE_RECEIPT_STATUS_REPLY)?;
+            encoder.u8(match status {
+                DurableReceiptStatusV1::Pending => 1,
+                DurableReceiptStatusV1::Complete => 2,
+                DurableReceiptStatusV1::Retired => 3,
+                DurableReceiptStatusV1::AbsentOrForeign => 4,
+                DurableReceiptStatusV1::Unavailable => 5,
+            })?;
+        }
     }
     encoder.finish(length)
 }
@@ -854,6 +888,16 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
                 3 => DurableReceiptRetirementOutcomeV1::RequestConflict,
                 4 => DurableReceiptRetirementOutcomeV1::OutcomeUnknown,
                 5 => DurableReceiptRetirementOutcomeV1::Unavailable,
+                _ => return Err(WireDecodeError::UnknownTag),
+            })
+        }
+        DURABLE_RECEIPT_STATUS_REPLY => {
+            WireReplyV1::DurableReceiptStatus(match read_u8(&mut decoder)? {
+                1 => DurableReceiptStatusV1::Pending,
+                2 => DurableReceiptStatusV1::Complete,
+                3 => DurableReceiptStatusV1::Retired,
+                4 => DurableReceiptStatusV1::AbsentOrForeign,
+                5 => DurableReceiptStatusV1::Unavailable,
                 _ => return Err(WireDecodeError::UnknownTag),
             })
         }
@@ -1733,6 +1777,7 @@ fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
                 .checked_add(33)
                 .ok_or(WireEncodeError::LengthOverflow)
         }
+        WireRequestV1::DurableReceiptStatus(_) => Ok(34),
         WireRequestV1::Execute(request) => match &request.command {
             CommandV1::WorkspaceInventory | CommandV1::OpenView | CommandV1::CloseView => Ok(19),
             CommandV1::WorkspaceChanges { after, .. } => Ok(if after.is_some() { 52 } else { 28 }),
@@ -1769,6 +1814,7 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             .checked_add(2)
             .ok_or(WireEncodeError::LengthOverflow),
         WireReplyV1::DurableReceiptRetired(_) => Ok(3),
+        WireReplyV1::DurableReceiptStatus(_) => Ok(3),
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
             OutcomeV1::WorkspaceInventory(inventory)
             | OutcomeV1::FileAdded(inventory)
@@ -1819,6 +1865,7 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
         WireRequestV1::DurableReceiptRetirement(retirement) => 6_usize
             .checked_add(validate_durable_intent(&retirement.intent, limits)?)
             .ok_or(WireEncodeError::LengthOverflow)?,
+        WireRequestV1::DurableReceiptStatus(_) => 5,
         WireRequestV1::Execute(RequestV1 {
             command: CommandV1::WorkspaceInventory,
             ..
@@ -1895,6 +1942,7 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
             .checked_add(validate_durable_lookup_outcome(outcome, limits)?)
             .ok_or(WireEncodeError::LengthOverflow)?,
         WireReplyV1::DurableReceiptRetired(_) => 3,
+        WireReplyV1::DurableReceiptStatus(_) => 3,
         WireReplyV1::Executed(ReplyV1::Refused(_)) => 4,
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
             OutcomeV1::WorkspaceInventory(inventory)

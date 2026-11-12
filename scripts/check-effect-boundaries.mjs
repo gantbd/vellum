@@ -4,6 +4,7 @@ import path from 'node:path';
 const productionRoots = [
   'engine', 'host', 'service', 'protocol', 'client', 'sdk', 'transport',
   'adapters', 'applications', 'connectors',
+  'distribution',
   // The excluded live-provider qualifier is still an authority-bearing
   // composition root and therefore participates in the exact effect ledger.
   'qualification/semantic-lsp-provider',
@@ -32,6 +33,8 @@ const trusted = new Map([
     'applications/vellum-daemon/src/lib.rs',
     'applications/vellum-semantic-local/src/lib.rs',
     'applications/vellum-semantic-local/src/service.rs',
+    'distribution/launchd-render/src/lib.rs',
+    'distribution/launchd-render/src/main.rs',
     'qualification/semantic-lsp-provider/src/lib.rs',
     'qualification/semantic-lsp-provider/src/scenario.rs',
     'transport/vellum-semantic-transport/src/unix.rs',

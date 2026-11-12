@@ -80,8 +80,8 @@ use vellum_protocol::DurableEffectReceiptV1;
 use vellum_protocol::{
     CommandV1, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
     DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1,
-    DurableReceiptRetirementV1, OutcomeV1, ReplyV1, RequestV1, ServiceAccessErrorV1,
-    ServiceControlErrorV1, ServicePort,
+    DurableReceiptRetirementV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1, OutcomeV1,
+    ReplyV1, RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
 };
 #[cfg(unix)]
 use vellum_service::{
@@ -1188,6 +1188,37 @@ fn recovered_durable_reply(
 }
 
 #[cfg(unix)]
+fn project_durable_receipt_status(
+    active: &[DurableOperationRecordV1],
+    retired: &[DurableOperationRetirementRecordV1],
+    scope: RequestJournalScopeV1,
+    subject: [u8; 16],
+    operation: vellum_protocol::DurableOperationRefV1,
+) -> DurableReceiptStatusV1 {
+    if retired.iter().any(|record| {
+        record.scope == scope
+            && record.authenticated_subject == subject
+            && record.operation == operation
+    }) {
+        return DurableReceiptStatusV1::Retired;
+    }
+    active
+        .iter()
+        .find(|record| {
+            record.scope == scope
+                && record.authenticated_subject == subject
+                && record.operation == operation
+        })
+        .map_or(DurableReceiptStatusV1::AbsentOrForeign, |record| {
+            if record.frozen_reply.is_some() {
+                DurableReceiptStatusV1::Complete
+            } else {
+                DurableReceiptStatusV1::Pending
+            }
+        })
+}
+
+#[cfg(unix)]
 fn document_is_issued(
     document: vellum_protocol::WorkspaceDocumentIdV1,
     identity: &WorkspaceIdentityMetadataV1,
@@ -1858,6 +1889,25 @@ impl ServicePort for CheckpointingService<'_> {
         };
         bump(counter, &mut self.daemon_usage.counter_saturated);
         Ok(outcome)
+    }
+
+    fn durable_receipt_status(
+        &mut self,
+        request: DurableReceiptStatusRequestV1,
+    ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+        let Some(authenticated_subject) = self.authenticated_subject else {
+            return Ok(DurableReceiptStatusV1::Unavailable);
+        };
+        if !self.service.is_client_active(request.client) {
+            return Ok(DurableReceiptStatusV1::Unavailable);
+        }
+        Ok(project_durable_receipt_status(
+            self.durable_operations,
+            self.retired_durable_operations,
+            self.journal_scope,
+            authenticated_subject,
+            request.operation,
+        ))
     }
 
     fn retire_durable_receipt(
@@ -4755,6 +4805,71 @@ mod tests {
                 vellum_protocol::RefusalV1::RequestConflict
             )))
         );
+    }
+
+    #[test]
+    fn durable_status_is_scope_subject_and_operation_bound_without_content() {
+        let scope = RequestJournalScopeV1::new(11, 13).unwrap();
+        let other_scope = RequestJournalScopeV1::new(11, 14).unwrap();
+        let operation = vellum_protocol::DurableOperationRefV1::new([0x41; 16]).unwrap();
+        let retired_operation = vellum_protocol::DurableOperationRefV1::new([0x42; 16]).unwrap();
+        let active = vec![
+            DurableOperationRecordV1 {
+                scope,
+                operation,
+                authenticated_subject: [0x51; 16],
+                frozen_request: b"private intent".to_vec(),
+                frozen_reply: None,
+            },
+            DurableOperationRecordV1 {
+                scope,
+                operation: vellum_protocol::DurableOperationRefV1::new([0x43; 16]).unwrap(),
+                authenticated_subject: [0x51; 16],
+                frozen_request: b"private intent".to_vec(),
+                frozen_reply: Some(b"private receipt".to_vec()),
+            },
+        ];
+        let retired = vec![DurableOperationRetirementRecordV1 {
+            scope,
+            operation: retired_operation,
+            authenticated_subject: [0x51; 16],
+            frozen_request: b"private retired intent".to_vec(),
+        }];
+        assert_eq!(
+            project_durable_receipt_status(&active, &retired, scope, [0x51; 16], operation),
+            DurableReceiptStatusV1::Pending
+        );
+        assert_eq!(
+            project_durable_receipt_status(
+                &active,
+                &retired,
+                scope,
+                [0x51; 16],
+                active[1].operation,
+            ),
+            DurableReceiptStatusV1::Complete
+        );
+        assert_eq!(
+            project_durable_receipt_status(&active, &retired, scope, [0x51; 16], retired_operation,),
+            DurableReceiptStatusV1::Retired
+        );
+        for (queried_scope, subject) in [(scope, [0x52; 16]), (other_scope, [0x51; 16])] {
+            assert_eq!(
+                project_durable_receipt_status(
+                    &active,
+                    &retired,
+                    queried_scope,
+                    subject,
+                    operation,
+                ),
+                DurableReceiptStatusV1::AbsentOrForeign
+            );
+        }
+        let debug = format!(
+            "{:?}",
+            project_durable_receipt_status(&active, &retired, scope, [0x51; 16], operation)
+        );
+        assert!(!debug.contains("private"));
     }
 
     #[test]

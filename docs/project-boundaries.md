@@ -21,6 +21,7 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
 | `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; connector binaries may select public SDKs and credential adapters while their libraries retain bounded protocol projections | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
 | `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
+| `vellum/distribution/launchd-render` | Self-contained validation and inert rendering of the fixed read-only macOS LaunchAgent profile | Installation, activation, process control, health claims or service authority |
 | `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |
 | `vellum-gui-macos` | Native macOS GUI composition root, bindings, rendering and lifecycle | Terminal policy, independent source/history authority or reusable adapter policy |

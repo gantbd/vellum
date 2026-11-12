@@ -92,7 +92,7 @@ export function validateCandidate(directory, options = {}) {
     || manifest.build.profile !== 'release'
     || manifest.build.locked !== true
     || manifest.build.targetSelection !== 'cargo --target'
-    || manifest.build.packages.join(',') !== ARTIFACT_NAMES.join(',')
+    || manifest.build.packages.join(',') !== [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES].join(',')
     || manifest.build.features !== 'default'
     || JSON.stringify(manifest.build.environment) !== JSON.stringify({
       CARGO_BUILD_TARGET: 'unset',
@@ -114,7 +114,9 @@ export function validateCandidate(directory, options = {}) {
     'release/dependency-policy.json',
     'release/github-source.json',
     'release/source-sbom.manifest.json',
-    'distribution/launchd/render-plist.mjs',
+    'distribution/launchd-render/Cargo.toml',
+    'distribution/launchd-render/src/lib.rs',
+    'distribution/launchd-render/src/main.rs',
     'rust-toolchain.toml',
   ];
   if (Object.keys(manifest.inputs).sort().join(',') !== requiredInputs.sort().join(',')) {
@@ -157,7 +159,7 @@ export function validateCandidate(directory, options = {}) {
   if (
     deployment.file !== DEPLOYMENT_NAMES[0]
     || deployment.role !== 'inert-launchd-plist-renderer'
-    || deployment.runtime !== 'node'
+    || deployment.runtime !== 'native'
     || !Number.isSafeInteger(deployment.bytes)
     || deployment.bytes <= 0
   ) fail('launchd deployment artifact identity is incompatible');
@@ -259,8 +261,8 @@ export function smokeLaunchdDeployment(candidate) {
     fs.writeFileSync(configFile, canonicalJson(configuration), { flag: 'wx', mode: 0o600 });
     fs.chmodSync(configFile, 0o600);
     const result = spawnSync(
-      process.execPath,
-      [candidate.deploymentFile, `--config=${configFile}`],
+      candidate.deploymentFile,
+      [`--config=${configFile}`],
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH ?? '' },
@@ -287,7 +289,7 @@ export function smokeLaunchdDeployment(candidate) {
     }
     return {
       artifact: DEPLOYMENT_NAMES[0],
-      runtime: 'node',
+      runtime: 'native',
       invocation: 'private-absolute-deployment-record',
       exitCode: result.status,
       exactInertProfile: true,

@@ -107,6 +107,12 @@ response to retired-identity saturation is to provision a larger bounded journal
 before startup or perform a future explicitly authorized epoch rotation; manual
 file deletion is unsupported.
 
+Authenticated clients can query the additive content-free status projection
+using only the exact operation reference. Pending, complete, retired,
+absent-or-foreign and unavailable remain distinct, but the projection exposes
+no intent or receipt bytes and carries no retirement authority. Workspace and
+subject transplants coalesce with absence.
+
 ## Required qualification
 
 Implementation is gated on all of the following deterministic behaviors:

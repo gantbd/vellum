@@ -108,6 +108,7 @@ try {
     'build', '--locked', '--release', '--target', host, '--target-dir', target,
   ];
   for (const profile of profiles) cargoArguments.push('--package', profile.package);
+  cargoArguments.push('--package', 'vellum-launchd-render');
   run('cargo', cargoArguments, { env: buildEnvironment });
 
   const artifacts = [];
@@ -131,16 +132,18 @@ try {
     });
   }
   const deployment = DEPLOYMENT_NAMES.map((name) => {
-    const source = path.join(root, 'distribution/launchd/render-plist.mjs');
+    const source = path.join(target, host, 'release', name);
     const staged = path.join(output, name);
     fs.copyFileSync(source, staged);
     fs.chmodSync(staged, 0o755);
+    const help = run(staged, ['--help']);
+    if (!help.includes(name)) throw new Error(`${name} staged help output is not self-identifying`);
     return {
       file: name,
       bytes: fs.statSync(staged).size,
       sha256: sha256(staged),
       role: 'inert-launchd-plist-renderer',
-      runtime: 'node',
+      runtime: 'native',
     };
   });
 
@@ -173,7 +176,7 @@ try {
       locked: true,
       rustc: `rustc ${rustcRelease}`,
       cargo: cargoVersion,
-      packages: ARTIFACT_NAMES,
+      packages: [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES],
       features: 'default',
       environment: {
         CARGO_BUILD_TARGET: 'unset',
@@ -188,7 +191,9 @@ try {
         'release/dependency-policy.json',
         'release/github-source.json',
         'release/source-sbom.manifest.json',
-        'distribution/launchd/render-plist.mjs',
+        'distribution/launchd-render/Cargo.toml',
+        'distribution/launchd-render/src/lib.rs',
+        'distribution/launchd-render/src/main.rs',
         'rust-toolchain.toml',
       ].map((name) => [name, sha256(path.join(root, name))]),
     ),

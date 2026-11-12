@@ -9,14 +9,23 @@ const repository = path.join(fixture, 'repository');
 const candidate = path.join(fixture, 'candidate');
 const prior = path.join(fixture, 'prior');
 const qualifier = path.resolve('scripts/qualify-release-candidate.mjs');
-const rendererSource = fs.readFileSync(path.resolve('distribution/launchd/render-plist.mjs'), 'utf8');
+const rendererTarget = path.join(fixture, 'renderer-target');
+const rendererBuild = spawnSync(
+  'cargo',
+  ['build', '--locked', '--offline', '--package', 'vellum-launchd-render', '--target-dir', rendererTarget],
+  { cwd: path.resolve('.'), encoding: 'utf8' },
+);
+if (rendererBuild.status !== 0) throw new Error(rendererBuild.stderr || 'native renderer build failed');
+const rendererSource = fs.readFileSync(path.join(rendererTarget, 'debug', 'vellum-launchd-render'));
 const inputs = [
   'Cargo.lock',
   'release/compatibility-baseline.json',
   'release/dependency-policy.json',
   'release/github-source.json',
   'release/source-sbom.manifest.json',
-  'distribution/launchd/render-plist.mjs',
+  'distribution/launchd-render/Cargo.toml',
+  'distribution/launchd-render/src/lib.rs',
+  'distribution/launchd-render/src/main.rs',
   'rust-toolchain.toml',
 ];
 
@@ -50,7 +59,7 @@ const makeCandidate = (directory, revision, marker) => {
   const deploymentFile = path.join(directory, 'vellum-launchd-render');
   const deployment = [{
     file: 'vellum-launchd-render', bytes: fs.statSync(deploymentFile).size,
-    sha256: sha256File(deploymentFile), role: 'inert-launchd-plist-renderer', runtime: 'node',
+    sha256: sha256File(deploymentFile), role: 'inert-launchd-plist-renderer', runtime: 'native',
   }];
   const manifest = {
     schema: 3,
@@ -78,7 +87,7 @@ const makeCandidate = (directory, revision, marker) => {
       locked: true,
       rustc: 'rustc 1.95.0',
       cargo: 'cargo 1.95.0',
-      packages: ['vellum-daemon', 'vellum-mcp'],
+      packages: ['vellum-daemon', 'vellum-mcp', 'vellum-launchd-render'],
       features: 'default',
       environment: {
         CARGO_BUILD_TARGET: 'unset',
@@ -144,13 +153,7 @@ const refreshCandidateIdentity = (root) => {
 try {
   fs.mkdirSync(repository);
   for (const [index, name] of inputs.entries()) {
-    write(
-      repository,
-      name,
-      name === 'distribution/launchd/render-plist.mjs'
-        ? rendererSource
-        : `qualified input ${index}\n`,
-    );
+    write(repository, name, `qualified input ${index}\n`);
   }
   makeCandidate(candidate, 'a'.repeat(40), 'candidate');
   makeCandidate(prior, 'b'.repeat(40), 'prior');
@@ -168,7 +171,7 @@ try {
   for (const product of [report.candidate.launchdSmoke, report.rollback.launchdSmoke]) {
     if (
       product?.artifact !== 'vellum-launchd-render'
-      || product.runtime !== 'node'
+      || product.runtime !== 'native'
       || product.invocation !== 'private-absolute-deployment-record'
       || product.exitCode !== 0
       || product.exactInertProfile !== true
@@ -206,7 +209,7 @@ try {
   expectRefusal('invalid-launchd-renderer-output', (root) => {
     fs.writeFileSync(
       path.join(root, 'vellum-launchd-render'),
-      '#!/usr/bin/env node\nprocess.stdout.write("not a plist\\n");\n',
+      '#!/bin/sh\nprintf "not a plist\\n"\n',
       { mode: 0o755 },
     );
     refreshCandidateIdentity(root);
@@ -214,7 +217,7 @@ try {
   expectPriorRefusal('invalid-launchd-renderer-output', (root) => {
     fs.writeFileSync(
       path.join(root, 'vellum-launchd-render'),
-      '#!/usr/bin/env node\nprocess.stdout.write("not a plist\\n");\n',
+      '#!/bin/sh\nprintf "not a plist\\n"\n',
       { mode: 0o755 },
     );
     refreshCandidateIdentity(root);

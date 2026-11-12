@@ -7,9 +7,10 @@
 use vellum_protocol::{
     ClientId, CommandV1, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
     DurableOperationRefV1, DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1,
-    DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1, RefusalV1, ReplyV1, RequestId,
-    RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort, VersionWitness,
-    WorkspaceChangeCursorV1, WorkspaceDocumentIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1,
+    DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1, DurableReceiptStatusRequestV1,
+    DurableReceiptStatusV1, RefusalV1, ReplyV1, RequestId, RequestV1, ServiceAccessErrorV1,
+    ServiceControlErrorV1, ServicePort, VersionWitness, WorkspaceChangeCursorV1,
+    WorkspaceDocumentIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1,
 };
 
 #[derive(Debug)]
@@ -241,6 +242,25 @@ impl<T: ServicePort> Client<T> {
             })
     }
 
+    /// Reads only the content-free current state of one stable operation. This
+    /// does not clear an uncertain-operation fence and grants no execute or
+    /// receipt-retirement authority.
+    pub fn durable_receipt_status(
+        &mut self,
+        operation: DurableOperationRefV1,
+    ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+        if self.pending.is_some() {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        let request = self.next_request_id()?;
+        self.transport
+            .durable_receipt_status(DurableReceiptStatusRequestV1 {
+                operation,
+                client: self.client,
+                request,
+            })
+    }
+
     fn next_request_id(&mut self) -> Result<RequestId, ServiceAccessErrorV1> {
         let Some(request) = RequestId::new(self.next_request) else {
             return Err(ServiceAccessErrorV1::Limit);
@@ -376,6 +396,7 @@ mod tests {
     struct DurableFaultTransport {
         executes: Vec<DurableExecuteRequestV1>,
         lookups: Vec<DurableReceiptLookupV1>,
+        statuses: Vec<DurableReceiptStatusRequestV1>,
         execute_outcomes: VecDeque<Result<DurableExecuteOutcomeV1, ServiceAccessErrorV1>>,
         lookup_outcomes: VecDeque<Result<DurableReceiptLookupOutcomeV1, ServiceAccessErrorV1>>,
     }
@@ -408,6 +429,14 @@ mod tests {
             self.lookups.push(lookup);
             self.lookup_outcomes.pop_front().unwrap()
         }
+
+        fn durable_receipt_status(
+            &mut self,
+            request: DurableReceiptStatusRequestV1,
+        ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+            self.statuses.push(request);
+            Ok(DurableReceiptStatusV1::Pending)
+        }
     }
 
     #[test]
@@ -415,6 +444,7 @@ mod tests {
         let mut client = Client::connect(DurableFaultTransport {
             executes: Vec::new(),
             lookups: Vec::new(),
+            statuses: Vec::new(),
             execute_outcomes: [
                 Err(ServiceAccessErrorV1::OutcomeUnknown),
                 Ok(DurableExecuteOutcomeV1::Refused(RefusalV1::Stale)),
@@ -444,6 +474,12 @@ mod tests {
             client.execute_durable(other, intent.clone()),
             Err(ServiceAccessErrorV1::OutcomeUnknown)
         );
+        assert_eq!(
+            client.durable_receipt_status(operation),
+            Ok(DurableReceiptStatusV1::Pending)
+        );
+        assert_eq!(client.transport.statuses.len(), 1);
+        assert!(client.pending_durable.is_some());
         assert_eq!(
             client.lookup_durable_receipt(operation, intent.clone()),
             Ok(DurableReceiptLookupOutcomeV1::OutcomeUnknown)

@@ -838,6 +838,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-launchd-render"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "vellum-mcp"
 version = "0.1.0"
 dependencies = [

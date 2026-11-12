@@ -156,7 +156,9 @@ No provider artifact is uploaded, installed, or added to a release candidate
 by this workflow.
 
 The local release-candidate qualifier also executes the exact packaged launchd
-renderer for both the candidate and its selected distinct rollback version. It
+renderer for both the candidate and its selected distinct rollback version.
+That renderer is a locked workspace-built Rust executable and adds no Node
+runtime requirement to the artifact. It
 uses only private scratch paths, requires the exact inert read-only profile and
 `plutil` acceptance, and retains content-free dispositions rather than the
 rendered plist or deployment paths. This is packaged-renderer compatibility

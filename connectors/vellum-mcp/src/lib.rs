@@ -14,12 +14,12 @@ use vellum_sdk_client::{
     protocol::{
         CommandV1, DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
         DurableExportCopyFailureV1, DurableExportCopyPersistenceV1, DurableOperationRefV1,
-        DurableReceiptLookupOutcomeV1, DurableReceiptRetirementOutcomeV1, EditPersistenceV1,
-        FileAdmissionStatusV1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1,
-        OutcomeV1, RefusalV1, ReplyV1, SaveReceiptV1, ServiceAccessErrorV1, ServicePort,
-        ViewCloseStatusV1, ViewOpenStatusV1, WorkspaceChangeCursorV1, WorkspaceChangeKindV1,
-        WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
-        WorkspaceRootIdV1, WorkspaceRootKindV1,
+        DurableReceiptLookupOutcomeV1, DurableReceiptRetirementOutcomeV1, DurableReceiptStatusV1,
+        EditPersistenceV1, FileAdmissionStatusV1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
+        MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplyV1, SaveReceiptV1,
+        ServiceAccessErrorV1, ServicePort, ViewCloseStatusV1, ViewOpenStatusV1,
+        WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1,
+        WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
     },
 };
 
@@ -35,6 +35,7 @@ pub const MEMBERSHIP_TOOL: &str = "vellum.membership";
 pub const DURABLE_EXECUTE_TOOL: &str = "vellum.durable_execute";
 pub const DURABLE_RECEIPT_TOOL: &str = "vellum.durable_receipt";
 pub const DURABLE_RETIRE_TOOL: &str = "vellum.durable_retire";
+pub const DURABLE_STATUS_TOOL: &str = "vellum.durable_status";
 const MAX_ROOT_LOOKUP_PAGES: usize = 256;
 const TOOL_ERROR_CODES: &[&str] = &[
     "authority_denied",
@@ -110,10 +111,12 @@ pub struct McpUsage {
     pub durable_executes: u64,
     pub durable_lookups: u64,
     pub durable_retirements: u64,
+    pub durable_statuses: u64,
     pub durable_complete: u64,
     pub durable_retired: u64,
     pub durable_conflict: u64,
     pub durable_outcome_unknown: u64,
+    pub durable_pending: u64,
     pub durable_absent_or_foreign: u64,
     pub durable_unavailable: u64,
     pub retirement_retired: u64,
@@ -456,6 +459,19 @@ impl<T: ServicePort> McpServer<T> {
                 );
                 return self.durable_retirement_result(id, operation, intent);
             }
+            DURABLE_STATUS_TOOL if self.durable_projection => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some(operation) = durable_status_argument(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                bump(
+                    &mut self.usage.durable_statuses,
+                    &mut self.usage.counter_saturated,
+                );
+                return self.durable_status_result(id, operation);
+            }
             _ => return self.protocol_error_value(id, -32602, "unknown tool", None),
         };
         match result {
@@ -663,6 +679,31 @@ impl<T: ServicePort> McpServer<T> {
                     | ServiceAccessErrorV1::Malformed
                     | ServiceAccessErrorV1::Limit => {}
                 }
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(access_code(error)))
+            }
+        }
+    }
+
+    fn durable_status_result(&mut self, id: Value, operation: DurableOperationRefV1) -> Value {
+        match self.client.durable_receipt_status(operation) {
+            Ok(status) => {
+                let counter = match status {
+                    DurableReceiptStatusV1::Pending => &mut self.usage.durable_pending,
+                    DurableReceiptStatusV1::Complete => &mut self.usage.durable_complete,
+                    DurableReceiptStatusV1::Retired => &mut self.usage.durable_retired,
+                    DurableReceiptStatusV1::AbsentOrForeign => {
+                        &mut self.usage.durable_absent_or_foreign
+                    }
+                    DurableReceiptStatusV1::Unavailable => &mut self.usage.durable_unavailable,
+                };
+                bump(counter, &mut self.usage.counter_saturated);
+                success(id, durable_status_json(status))
+            }
+            Err(error) => {
                 bump(
                     &mut self.usage.tool_errors,
                     &mut self.usage.counter_saturated,
@@ -1241,6 +1282,14 @@ fn tools_result(durable_projection: bool) -> Value {
                 "inputSchema": durable_input_schema(),
                 "outputSchema": durable_retirement_output_schema(),
                 "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
+            }),
+            json!({
+                "name": DURABLE_STATUS_TOOL,
+                "title": "Read durable Vellum operation status",
+                "description": "Project only the authenticated subject- and workspace-scoped current state of one stable operation reference. This grants no execute or retirement authority.",
+                "inputSchema": durable_status_input_schema(),
+                "outputSchema": durable_status_output_schema(),
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             })
         ]);
     }
@@ -1276,6 +1325,20 @@ fn durable_input_schema() -> Value {
             durable_intent_schema("export_document_copy_exclusive", &["workspace", "document", "expected_revision", "destination"])
         ]
     })
+}
+
+fn durable_status_input_schema() -> Value {
+    closed_schema(
+        &["operation_ref"],
+        json!({
+            "operation_ref": {
+                "type": "string",
+                "pattern": "^vdo1[.](?!0{32}$)[0-9a-f]{32}$",
+                "minLength": 37,
+                "maxLength": 37
+            }
+        }),
+    )
 }
 
 fn durable_intent_schema(intent: &'static str, fields: &[&str]) -> Value {
@@ -1451,6 +1514,15 @@ fn durable_retirement_output_schema() -> Value {
                 &["code"],
                 json!({"code": {"type": "string", "enum": TOOL_ERROR_CODES}}),
             ),
+        ]
+    })
+}
+
+fn durable_status_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            closed_schema(&["kind"], json!({"kind": {"enum": ["pending", "complete", "retired", "absent_or_foreign", "unavailable"]}})),
+            closed_schema(&["code"], json!({"code": {"type": "string", "enum": TOOL_ERROR_CODES}}))
         ]
     })
 }
@@ -1777,6 +1849,11 @@ fn durable_arguments(
         _ => return None,
     };
     Some((operation, intent))
+}
+
+fn durable_status_argument(arguments: &Map<String, Value>) -> Option<DurableOperationRefV1> {
+    only_keys(arguments, &["operation_ref"])
+        .then(|| decode_durable_operation(arguments.get("operation_ref")?.as_str()?))?
 }
 
 fn decode_durable_operation(value: &str) -> Option<DurableOperationRefV1> {
@@ -2109,6 +2186,17 @@ fn durable_retirement_json(outcome: DurableReceiptRetirementOutcomeV1) -> Value 
             tool_complete("unavailable", json!({"kind": "unavailable"}))
         }
     }
+}
+
+fn durable_status_json(status: DurableReceiptStatusV1) -> Value {
+    let kind = match status {
+        DurableReceiptStatusV1::Pending => "pending",
+        DurableReceiptStatusV1::Complete => "complete",
+        DurableReceiptStatusV1::Retired => "retired",
+        DurableReceiptStatusV1::AbsentOrForeign => "absent_or_foreign",
+        DurableReceiptStatusV1::Unavailable => "unavailable",
+    };
+    tool_complete(kind, json!({"kind": kind}))
 }
 
 fn durable_receipt_json(
@@ -2496,7 +2584,7 @@ mod durable_projection_tests {
     use std::sync::{Arc, Mutex};
     use vellum_sdk_client::protocol::{
         ClientId, DurableExecuteRequestV1, DurableReceiptLookupV1, DurableReceiptRetirementV1,
-        RequestV1, ServiceControlErrorV1,
+        DurableReceiptStatusRequestV1, RequestV1, ServiceControlErrorV1,
     };
 
     #[derive(Default)]
@@ -2504,6 +2592,7 @@ mod durable_projection_tests {
         executes: usize,
         lookups: usize,
         retirements: usize,
+        statuses: usize,
         execute_intents: Vec<DurableEffectIntentV1>,
         lookup_intents: Vec<DurableEffectIntentV1>,
         retirement_operations: Vec<DurableOperationRefV1>,
@@ -2515,6 +2604,7 @@ mod durable_projection_tests {
         execute: Result<DurableExecuteOutcomeV1, ServiceAccessErrorV1>,
         lookup: Result<DurableReceiptLookupOutcomeV1, ServiceAccessErrorV1>,
         retirement: Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1>,
+        status: Result<DurableReceiptStatusV1, ServiceAccessErrorV1>,
     }
 
     impl ServicePort for Port {
@@ -2557,6 +2647,14 @@ mod durable_projection_tests {
             self.retirement
         }
 
+        fn durable_receipt_status(
+            &mut self,
+            _request: DurableReceiptStatusRequestV1,
+        ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+            self.calls.lock().unwrap().statuses += 1;
+            self.status
+        }
+
         fn disconnect(&mut self, _client: ClientId) -> Result<(), ServiceControlErrorV1> {
             Ok(())
         }
@@ -2589,6 +2687,7 @@ mod durable_projection_tests {
             execute,
             lookup,
             retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
+            status: Ok(DurableReceiptStatusV1::Unavailable),
         })
         .unwrap();
         (
@@ -2606,6 +2705,25 @@ mod durable_projection_tests {
             execute: Err(ServiceAccessErrorV1::Unavailable),
             lookup: Ok(DurableReceiptLookupOutcomeV1::Unavailable),
             retirement,
+            status: Ok(DurableReceiptStatusV1::Unavailable),
+        })
+        .unwrap();
+        (
+            McpServer::build(client, McpLimits::reference(), true).unwrap(),
+            calls,
+        )
+    }
+
+    fn server_with_status(
+        status: Result<DurableReceiptStatusV1, ServiceAccessErrorV1>,
+    ) -> (McpServer<Port>, Arc<Mutex<Calls>>) {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let client = Client::connect(Port {
+            calls: calls.clone(),
+            execute: Err(ServiceAccessErrorV1::Unavailable),
+            lookup: Ok(DurableReceiptLookupOutcomeV1::Unavailable),
+            retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
+            status,
         })
         .unwrap();
         (
@@ -2634,6 +2752,46 @@ mod durable_projection_tests {
     }
 
     #[test]
+    fn durable_status_projects_only_closed_state_without_intent_or_authority() {
+        let operation = "vdo1.11111111111111111111111111111111";
+        for (status, expected) in [
+            (DurableReceiptStatusV1::Pending, "pending"),
+            (DurableReceiptStatusV1::Complete, "complete"),
+            (DurableReceiptStatusV1::Retired, "retired"),
+            (DurableReceiptStatusV1::AbsentOrForeign, "absent_or_foreign"),
+            (DurableReceiptStatusV1::Unavailable, "unavailable"),
+        ] {
+            let (mut server, calls) = server_with_status(Ok(status));
+            let reply: Value = serde_json::from_slice(
+                &server
+                    .handle(&request(
+                        DURABLE_STATUS_TOOL,
+                        json!({"operation_ref": operation}),
+                    ))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(reply["result"]["structuredContent"]["kind"], expected);
+            assert_eq!(calls.lock().unwrap().statuses, 1);
+            assert_eq!(calls.lock().unwrap().executes, 0);
+            assert_eq!(calls.lock().unwrap().lookups, 0);
+            assert_eq!(calls.lock().unwrap().retirements, 0);
+        }
+        let (mut server, calls) = server_with_status(Ok(DurableReceiptStatusV1::Complete));
+        let rejected: Value = serde_json::from_slice(
+            &server
+                .handle(&request(
+                    DURABLE_STATUS_TOOL,
+                    json!({"operation_ref": operation, "intent": "add_file"}),
+                ))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rejected["error"]["code"], -32602);
+        assert_eq!(calls.lock().unwrap().statuses, 0);
+    }
+
+    #[test]
     fn ordinary_composition_neither_advertises_nor_accepts_durable_tools() {
         let calls = Arc::new(Mutex::new(Calls::default()));
         let client = Client::connect(Port {
@@ -2641,6 +2799,7 @@ mod durable_projection_tests {
             execute: Err(ServiceAccessErrorV1::Unavailable),
             lookup: Ok(DurableReceiptLookupOutcomeV1::AbsentOrForeign),
             retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
+            status: Ok(DurableReceiptStatusV1::Unavailable),
         })
         .unwrap();
         let mut server = McpServer::new(client, McpLimits::reference()).unwrap();
@@ -2654,6 +2813,7 @@ mod durable_projection_tests {
             DURABLE_EXECUTE_TOOL,
             DURABLE_RECEIPT_TOOL,
             DURABLE_RETIRE_TOOL,
+            DURABLE_STATUS_TOOL,
         ] {
             let rejected: Value = serde_json::from_slice(
                 &server
@@ -2710,6 +2870,7 @@ mod durable_projection_tests {
                 DURABLE_EXECUTE_TOOL,
                 DURABLE_RECEIPT_TOOL,
                 DURABLE_RETIRE_TOOL,
+                DURABLE_STATUS_TOOL,
             ] {
                 let reply: Value = serde_json::from_slice(
                     &server
@@ -2729,7 +2890,7 @@ mod durable_projection_tests {
     fn durable_discovery_describes_the_exact_closed_algebra() {
         let catalog = tools_result(true);
         let tools = catalog["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 9);
         let execute = tools
             .iter()
             .find(|tool| tool["name"] == DURABLE_EXECUTE_TOOL)
@@ -2742,6 +2903,12 @@ mod durable_projection_tests {
             .iter()
             .find(|tool| tool["name"] == DURABLE_RETIRE_TOOL)
             .unwrap();
+        let status = tools
+            .iter()
+            .find(|tool| tool["name"] == DURABLE_STATUS_TOOL)
+            .unwrap();
+        assert_eq!(status["annotations"]["readOnlyHint"], true);
+        assert_eq!(status["annotations"]["destructiveHint"], false);
 
         let intents = execute["inputSchema"]["oneOf"].as_array().unwrap();
         assert_eq!(intents.len(), 7);

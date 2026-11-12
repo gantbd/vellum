@@ -5,14 +5,15 @@ use vellum_protocol::{
     DurableExecuteRequestV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
-    DurableReplaceAndSaveReceiptV1, DurableSaveReceiptV1, EditPersistenceV1,
-    FileAdmissionReceiptV1, FileAdmissionStatusV1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
-    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
-    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
-    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
-    WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1, WorkspaceChangesV1,
-    WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
-    WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
+    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
+    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
+    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
+    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
+    WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
+    WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
+    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+    WorkspaceRootV1,
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1,
@@ -243,6 +244,36 @@ fn durable_envelopes_are_additive_exact_and_reject_a_zero_operation_reference() 
     assert_eq!(
         decode_request_v1(&zero, limits()),
         Err(WireDecodeError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn durable_status_is_content_free_fixed_width_and_closed() {
+    let request = WireRequestV1::DurableReceiptStatus(DurableReceiptStatusRequestV1 {
+        operation: operation(0x31),
+        client: ClientId::new(7).unwrap(),
+        request: RequestId::new(9).unwrap(),
+    });
+    let encoded = encode_request_v1(&request, limits()).unwrap();
+    assert_eq!(encoded.len(), 34);
+    assert_eq!(encoded[0..2], [1, 7]);
+    assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+    for status in [
+        DurableReceiptStatusV1::Pending,
+        DurableReceiptStatusV1::Complete,
+        DurableReceiptStatusV1::Retired,
+        DurableReceiptStatusV1::AbsentOrForeign,
+        DurableReceiptStatusV1::Unavailable,
+    ] {
+        let reply = WireReplyV1::DurableReceiptStatus(status);
+        let encoded = encode_reply_v1(&reply, limits()).unwrap();
+        assert_eq!(encoded.len(), 3);
+        assert_eq!(encoded[0..2], [1, 0x89]);
+        assert_eq!(decode_reply_v1(&encoded, limits()).unwrap(), reply);
+    }
+    assert_eq!(
+        decode_reply_v1(&[1, 0x89, 6], limits()),
+        Err(WireDecodeError::UnknownTag)
     );
 }
 

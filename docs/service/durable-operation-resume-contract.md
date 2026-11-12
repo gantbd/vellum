@@ -95,7 +95,11 @@ fresh operation after `AbsentOrForeign`.
 
 The authenticated MCP library projection exposes additive
 `vellum.durable_execute` and structurally separate read-only
-`vellum.durable_receipt` tools. `McpServer::new` neither advertises nor accepts
+`vellum.durable_receipt` and `vellum.durable_status` tools. The status tool
+accepts only the operation reference and returns one content-free closed state:
+pending, complete, retired, absent-or-foreign, or unavailable. It does not
+require or disclose the retained intent and cannot execute, look up receipt
+content, or retire. `McpServer::new` neither advertises nor accepts
 them; enabling them requires the authenticated connector composition through
 `McpServer::new_authenticated`. The handle is the canonical `vdo1.` encoding of
 only the nonzero 128-bit opaque operation reference. It contains no subject,

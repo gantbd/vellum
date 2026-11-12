@@ -59,9 +59,8 @@ try {
   write(
     vellum,
     'Cargo.toml',
-    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp"]\nresolver = "3"\n',
+    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/launchd-render"]\nresolver = "3"\n',
   );
-  write(vellum, 'distribution/launchd/render-plist.mjs', '#!/usr/bin/env node\nprocess.stdout.write("plist\\n");\n');
   const profiles = [
     ['applications/vellum-daemon', 'vellum-daemon', 'keystone-observe'],
     ['connectors/vellum-mcp', 'vellum-mcp', 'keystone-codec'],
@@ -78,6 +77,17 @@ try {
       `fn main() { println!("${name} --help"); }\n`,
     );
   }
+  write(
+    vellum,
+    'distribution/launchd-render/Cargo.toml',
+    '[package]\nname = "vellum-launchd-render"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n[[bin]]\nname = "vellum-launchd-render"\npath = "src/main.rs"\n',
+  );
+  write(vellum, 'distribution/launchd-render/src/lib.rs', 'pub const INERT: bool = true;\n');
+  write(
+    vellum,
+    'distribution/launchd-render/src/main.rs',
+    'fn main() { println!("vellum-launchd-render --help"); }\n',
+  );
   write(
     vellum,
     'release/github-source.json',

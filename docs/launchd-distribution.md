@@ -4,10 +4,11 @@ Status: inert LaunchAgent renderer and adversarial qualification implemented;
 installation and activation remain unauthorized.
 
 The GitHub release-candidate payload includes `vellum-launchd-render`, a
-relocatable plist renderer. It never writes a plist, changes a mode, installs a
-binary, or invokes `launchctl`. It validates one exact deployment record and
-emits XML to standard output. Review and installation are separate operator
-actions outside Vellum's current authority.
+self-contained Rust plist renderer. It has no Node or scripting-runtime
+dependency. It never writes a plist, changes a mode, installs a binary, or
+invokes `launchctl`. It validates one exact deployment record and emits XML to
+standard output. Review and installation are separate operator actions outside
+Vellum's current authority.
 
 The record names the label, daemon binary, effective owner UID, private state
 directory, data socket, control socket, persistent lock, workspace identity

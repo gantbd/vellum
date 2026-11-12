@@ -32,7 +32,8 @@ adversarial qualification is `make check-launchd-distribution`. Candidate
 qualification additionally executes the exact packaged helper for both
 selected versions against fresh same-owner private scratch state and validates
 the exact output with `plutil`; it does not install a plist, invoke `launchctl`
-or simulate launchd process supervision. See the
+or simulate launchd process supervision. The helper is a locked workspace-built
+Rust executable, so the distributed artifact requires no Node runtime. See the
 [launchd distribution profile](launchd-distribution.md).
 The candidate manifest explicitly denies launchd installation, launchd socket
 activation, and authenticated-health claims.

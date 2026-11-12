@@ -8,6 +8,19 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Replaced the packaged Node launchd renderer with a self-contained,
+  non-publishable Rust executable. GitHub candidates now build, checksum,
+  smoke, and qualify the exact native renderer for both candidate and rollback
+  versions while preserving the inert read-only profile and activation
+  nonclaims; `cargo install` continues to expose only the daemon and MCP peer.
+- Added an authenticated, content-free durable-operation status projection
+  across the native protocol/client and MCP surfaces. Pending, complete,
+  retired, absent-or-foreign, and unavailable remain distinct without granting
+  execution, receipt-content lookup, or retirement authority.
+- Added a policy-only semantic-provider restart controller with finite explicit
+  backoff, single-flight affine transition owners, no query replay, and a
+  permanent fuse for cleanup or launch uncertainty. It owns no clock or process
+  effects and is not silently enabled by the semantic-local binary.
 - Added the zero-authority semantic client SDK facade and moved the semantic MCP
   peer off direct semantic implementation-crate dependencies. A deterministic
   extraction contract now builds, tests, lints, installs and smokes the copied
@@ -410,8 +423,9 @@ will follow Semantic Versioning once a public release contract is selected.
   tombstone before cleanup, recovers every validated post-commit subset, and
   makes delayed exact execution terminate as `Retired` without a second effect.
   Authenticated MCP receipt retirement now projects that freshly authenticated,
-  separately authorized, crash-safe operation without granting its authority;
-  an additive external status projection remains deferred.
+  separately authorized, crash-safe operation without granting its authority.
+  The additive content-free status projection is now available independently
+  of receipt-content lookup or retirement authority.
   manual journal deletion and implicit pressure eviction are unsupported.
 - Added an offline coordinated-source cargo-install qualifier with fresh Cargo,
   install, and target roots; exact daemon/MCP binary closure; content-safe

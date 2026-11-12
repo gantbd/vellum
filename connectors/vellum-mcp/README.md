@@ -22,13 +22,17 @@ a local-user boundary. The optional private credential establishes a stable
 receipt subject and enables the authenticated durable-tool catalog; it grants
 no action and does not replace the daemon's independent authority ceiling.
 
-The library also implements three additive restart-stable tools for trusted
+The library also implements four additive restart-stable tools for trusted
 compositions: `vellum.durable_execute`, the structurally separate read-only
-`vellum.durable_receipt`, and `vellum.durable_retire`. They are neither
+`vellum.durable_receipt`, the content-free read-only
+`vellum.durable_status`, and `vellum.durable_retire`. They are neither
 advertised nor accepted by `McpServer::new`; enabling them requires
 `McpServer<RemoteTransport<AuthenticatedUnixConnector>>::new_authenticated`.
 The shipped CLI selects this constructor only when given `--credential`; the
 default command above remains owner-only and does not expose these tools.
+Status accepts only the stable operation reference and projects the closed
+pending/complete/retired/absent-or-foreign/unavailable state; it cannot return
+intent or receipt content and grants no mutation authority.
 
 The implemented surface is deliberately bounded. Current-version
 per-request discovery advertises tools plus non-subscribable resources. Legacy

@@ -75,7 +75,8 @@ The implemented surface is deliberately closed:
 
 The MCP library and credential-enabled CLI have an authenticated-only catalog
 with `vellum.durable_execute`, the structurally separate read-only
-`vellum.durable_receipt`, and `vellum.durable_retire`. The ordinary constructor
+`vellum.durable_receipt`, the content-free read-only `vellum.durable_status`,
+and `vellum.durable_retire`. The ordinary constructor
 and owner-only CLI invocation neither advertise nor accept these tools. A trusted embedding must
 construct the server over `RemoteTransport<AuthenticatedUnixConnector>` and
 call `McpServer::new_authenticated`; this is a type-level composition
@@ -100,6 +101,12 @@ intent, calls only the native retirement port, and returns the closed
 `request_conflict` algebra. Tool discovery and authentication grant no
 authority: the daemon must independently admit its distinct `RetireReceipt`
 action before a complete receipt can be mutated.
+
+Status takes only the canonical operation reference and returns pending,
+complete, retired, absent-or-foreign, or unavailable. The daemon binds that
+classification to the active authenticated subject and workspace scope.
+Foreign and absent targets coalesce, and status neither reveals intent/receipt
+content nor falls through to execute, full lookup, or retirement.
 
 An export response is locator- and content-free: it contains only the scoped
 document, source revision and the closed persistence/failure sum. Destination,

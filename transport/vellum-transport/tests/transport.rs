@@ -2,9 +2,10 @@ use std::io::{self, Cursor, Read, Write};
 use vellum_client::Client;
 use vellum_protocol::{
     ClientId, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
-    DurableOperationRefV1, DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1, RefusalV1,
-    ReplyV1, RequestId, RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
-    WorkspaceDocumentIdV1, WorkspaceIdV1,
+    DurableOperationRefV1, DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1,
+    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, RefusalV1, ReplyV1, RequestId,
+    RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort, WorkspaceDocumentIdV1,
+    WorkspaceIdV1,
 };
 use vellum_transport::{
     FrameExchange, RemoteTransport, TransportError, TransportLimits, dispatch_v1, read_frame,
@@ -29,6 +30,7 @@ struct StubService {
     ordinary_executions: u64,
     durable_executions: u64,
     durable_lookups: u64,
+    durable_statuses: u64,
 }
 
 impl StubService {
@@ -39,6 +41,7 @@ impl StubService {
             ordinary_executions: 0,
             durable_executions: 0,
             durable_lookups: 0,
+            durable_statuses: 0,
         }
     }
 }
@@ -67,6 +70,14 @@ impl ServicePort for StubService {
     ) -> Result<DurableReceiptLookupOutcomeV1, ServiceAccessErrorV1> {
         self.durable_lookups += 1;
         Ok(DurableReceiptLookupOutcomeV1::OutcomeUnknown)
+    }
+
+    fn durable_receipt_status(
+        &mut self,
+        _request: DurableReceiptStatusRequestV1,
+    ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
+        self.durable_statuses += 1;
+        Ok(DurableReceiptStatusV1::Pending)
     }
 
     fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1> {
@@ -150,9 +161,20 @@ fn durable_execute_and_read_only_lookup_dispatch_to_distinct_service_methods() {
             .unwrap(),
         DurableReceiptLookupOutcomeV1::OutcomeUnknown
     );
+    assert_eq!(
+        transport
+            .durable_receipt_status(DurableReceiptStatusRequestV1 {
+                operation,
+                client: ClientId::new(7).unwrap(),
+                request: RequestId::new(3).unwrap(),
+            })
+            .unwrap(),
+        DurableReceiptStatusV1::Pending
+    );
     let service = transport.into_exchange().service;
     assert_eq!(service.durable_executions, 1);
     assert_eq!(service.durable_lookups, 1);
+    assert_eq!(service.durable_statuses, 1);
     assert_eq!(service.ordinary_executions, 0);
 }
 

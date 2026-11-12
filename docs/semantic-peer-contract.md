@@ -265,6 +265,16 @@ facade. This supplies no clock source, authentication, background loop,
 automatic restart policy, wire protocol or daemon. The current binary remains
 only a content-safe probe.
 
+`vellum-semantic-local` also exposes a policy-only, single-flight restart
+controller for a composition that already owns the provider runtime. Its
+finite schedule returns one explicit backoff obligation per attempt; the
+composition remains responsible for elapsed-time evidence, launch, and exact
+terminal cleanup receipts. A failed cleanup or outcome-unknown launch
+permanently fuses that controller instance, and every restart request fixes
+pending query disposition to invalidation without replay. The controller is
+not installed as an automatic binary policy, has no reset route, and does not
+weaken the production-promotion requirements above.
+
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority
 replacement can race the last observation. It does not close inherited handles,
