@@ -60,6 +60,7 @@ mod unix {
     use vellum_semantic_service::SemanticClientRetirementStateV1;
     use vellum_semantic_service::SemanticServiceLimitsV1;
     use vellum_semantic_session_actor::{
+        SemanticSessionActorControlCompletionV1, SemanticSessionActorControlRefusalV1,
         SemanticSessionActorEventAdmissionV1, SemanticSessionActorLimitsV1,
     };
 
@@ -444,11 +445,49 @@ mod unix {
         let listener = SemanticLocalListenerV1::try_bind(arguments.socket)
             .map_err(|_| CliError("semantic socket bind refused"))?;
         let shutdown = SignalSupervisor::install()?;
+        let mut rotation_candidate = None;
         eprintln!("vellum-semantic-local: endpoint_ready probe-profile provider_indexing");
         'serve: loop {
             let mut stream = loop {
                 if shutdown.requested() {
                     break 'serve;
+                }
+                if let Some(next) = rotation_candidate {
+                    if let Ok(ticket) = actor.try_drive_provider() {
+                        let _ = ticket.receive();
+                    }
+                    if let Ok(ticket) = actor.try_drive_expiry() {
+                        let _ = ticket.receive();
+                    }
+                    if let Ok(ticket) = actor.try_drive_retirement() {
+                        let _ = ticket.receive();
+                    }
+                    match actor.try_rotate_incarnation(next) {
+                        Ok(ticket) => match ticket.receive() {
+                            SemanticSessionActorControlCompletionV1::Applied => {
+                                rotation_candidate = None;
+                                eprintln!("vellum-semantic-local: incarnation_rotated");
+                            }
+                            SemanticSessionActorControlCompletionV1::Quarantined => {}
+                            SemanticSessionActorControlCompletionV1::OutcomeUnknown => {
+                                return Err(Box::new(CliError(
+                                    "semantic incarnation rotation uncertain",
+                                )));
+                            }
+                        },
+                        Err(SemanticSessionActorControlRefusalV1::Full) => {}
+                        Err(
+                            SemanticSessionActorControlRefusalV1::Closed
+                            | SemanticSessionActorControlRefusalV1::NotDraining
+                            | SemanticSessionActorControlRefusalV1::NotQuiescent,
+                        ) => {
+                            return Err(Box::new(CliError(
+                                "semantic incarnation rotation refused",
+                            )));
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
                 }
                 match listener
                     .try_accept()
@@ -541,6 +580,10 @@ mod unix {
                     if shutdown.requested() {
                         break 'serve;
                     }
+                    rotation_candidate = Some(
+                        SemanticSessionIncarnationV1::new(random_nonzero()?)
+                            .ok_or(CliError("session incarnation refused"))?,
+                    );
                     break;
                 }
                 if let Ok(ticket) = actor.try_drive_provider() {

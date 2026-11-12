@@ -372,6 +372,12 @@ pub enum SemanticBrokerDivergenceV1 {
     TransitionOrdering,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticBrokerIncarnationRotationRefusalV1 {
+    SameIncarnation,
+    NotQuiescent,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SemanticBrokerUsageV1 {
     pub commands: u64,
@@ -553,6 +559,49 @@ impl SemanticSessionBrokerV1 {
     }
     pub fn membership_count(&self) -> usize {
         self.memberships.len()
+    }
+
+    /// Replaces one fully retired volatile replay domain with a fresh
+    /// incarnation while preserving only the current provider projection.
+    /// Historical mutation intent is never removed inside an incarnation.
+    pub fn try_rotate_incarnation(
+        &mut self,
+        next: SemanticSessionIncarnationV1,
+    ) -> Result<(), SemanticBrokerIncarnationRotationRefusalV1> {
+        if next == self.incarnation {
+            return Err(SemanticBrokerIncarnationRotationRefusalV1::SameIncarnation);
+        }
+        let quiescent = self.divergence.is_none()
+            && self.pending.is_empty()
+            && self.usage.current_memberships == 0
+            && self
+                .memberships
+                .values()
+                .all(|membership| membership.retired)
+            && self.seals.is_empty()
+            && self.witnesses.is_empty()
+            && self.cleanup_seals.is_empty()
+            && matches!(self.synchronization, SynchronizationState::Unavailable);
+        if !quiescent {
+            return Err(SemanticBrokerIncarnationRotationRefusalV1::NotQuiescent);
+        }
+        let provider_epoch = self.provider.epoch;
+        let mut replacement = Self::try_new_with_provider_binding(
+            next,
+            self.limits,
+            SemanticBrokerProviderBindingV1 {
+                epoch: 0,
+                observation: self.provider.observation,
+                provenance: self.provider.provenance.clone(),
+            },
+        )
+        .expect("an existing closed provider projection remains valid at fresh genesis");
+        // The provider process and effect port survive this session-domain
+        // transition, so their ordered epoch cannot be restarted. Only
+        // incarnation-scoped session/replay identities return to genesis.
+        replacement.provider.epoch = provider_epoch;
+        *self = replacement;
+        Ok(())
     }
 
     fn request_state_count(&self, predicate: impl Fn(&RequestState) -> bool) -> usize {
@@ -4065,6 +4114,69 @@ mod tests {
         assert_eq!(replay.membership(), Some(membership));
         assert_eq!(broker.membership_count(), 1);
         assert_eq!(broker.usage().replay_hits, 1);
+    }
+
+    #[test]
+    fn incarnation_rotation_requires_retirement_and_replaces_the_replay_domain() {
+        let mut broker = broker();
+        let original = broker.incarnation();
+        let next = id(
+            |value| SemanticSessionIncarnationV1::new(value).unwrap(),
+            41,
+        );
+        assert_eq!(
+            broker.try_rotate_incarnation(original),
+            Err(SemanticBrokerIncarnationRotationRefusalV1::SameIncarnation)
+        );
+
+        let ctx = context(SemanticSessionRolesV1::query());
+        let membership = joined(broker.command(ctx, join(6)));
+        assert_eq!(
+            broker.try_rotate_incarnation(next),
+            Err(SemanticBrokerIncarnationRotationRefusalV1::NotQuiescent)
+        );
+        let leave = SemanticSessionCommandV1::LeaveSession {
+            exchange: id(|value| SemanticExchangeRefV1::new(value).unwrap(), 42),
+            operation: id(
+                |value| SemanticSessionOperationRefV1::new(value).unwrap(),
+                43,
+            ),
+            incarnation: original,
+            membership,
+        };
+        let SemanticBrokerDecisionV1::Reply(retired) = broker.command(ctx, leave) else {
+            panic!("empty membership retirement must complete synchronously")
+        };
+        assert_eq!(retired.outcome(), &SemanticSessionOutcomeV1::Accepted);
+        assert!(broker.usage().replay_intent_bytes > 0);
+        broker.provider.epoch = 9;
+        let provider_observation = broker.provider.observation;
+        let provider_provenance = broker.provider.provenance.clone();
+        // Released request remappings are incarnation-scoped replay history,
+        // not live provider work, and retire atomically with this domain.
+        broker.reverse_requests.insert(
+            SemanticRequestRefV1::new([45; 16]),
+            (membership, SemanticRequestRefV1::new([46; 16])),
+        );
+
+        broker.try_rotate_incarnation(next).unwrap();
+        assert_eq!(broker.incarnation(), next);
+        assert_eq!(broker.membership_count(), 0);
+        assert!(broker.reverse_requests.is_empty());
+        assert_eq!(broker.usage(), SemanticBrokerUsageV1::default());
+        assert_eq!(broker.provider.epoch, 9);
+        assert_eq!(broker.provider.observation, provider_observation);
+        assert_eq!(broker.provider.provenance, provider_provenance);
+
+        let SemanticBrokerDecisionV1::Reply(description) = broker.command(
+            ctx,
+            SemanticSessionCommandV1::Describe {
+                exchange: id(|value| SemanticExchangeRefV1::new(value).unwrap(), 44),
+            },
+        ) else {
+            panic!("fresh incarnation must remain describable")
+        };
+        assert_eq!(description.incarnation(), next);
     }
 
     #[test]

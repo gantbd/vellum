@@ -434,9 +434,9 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes external filesystem watching, bounded broker-incarnation rotation
-or separately specified global replay-ledger compaction, and extraction of the
-MCP peer into its sibling repository. Membership-local operation exhaustion now
+work includes external filesystem watching, bounded same-connection reconnect
+at global replay exhaustion, and extraction of the MCP peer into its sibling
+repository. Membership-local operation exhaustion now
 rolls over without consuming the broker/client retirement tail; historical
 global replay evidence is still never silently deleted.
 
@@ -446,6 +446,17 @@ drives retirement between clients, preventing a disconnected or malformed peer
 from indefinitely retaining membership capacity or synchronization ownership.
 The content-safe admission/completion observation makes refusal explicit; it is
 not evidence that provider cache or historical replay state was erased.
+
+Before accepting the next authenticated client, the service then uses an OS-
+CSPRNG identity and a trusted actor control to rotate the broker only after the
+old incarnation is quiescent and the provider port reports no cleanup
+obligations. Rotation atomically drops the fully retired replay domain, resets
+broker-local session identities, and preserves the current provider epoch and
+projection. Same-incarnation, active-membership, queued-command and external-
+obligation cases refuse without partial compaction. Actor usage records
+content-safe rotation/refusal totals. A single persistent connection can still
+exhaust the global broker ledger; bounded reconnect at that definitive boundary
+remains separate connector work.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

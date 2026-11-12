@@ -15,16 +15,17 @@ use std::thread::{self, JoinHandle};
 use vellum_host::authority::{AuthoritySessionRefV1, AuthoritySubjectRefV1};
 use vellum_host::semantic::{SemanticRequestRefV1, SemanticRequestV1, SemanticTargetV1};
 use vellum_semantic_protocol::{
-    SemanticExchangeDispositionV1, SemanticSessionCommandV1, SemanticSessionReplyV1,
-    SemanticSessionSnapshotV1,
+    SemanticExchangeDispositionV1, SemanticSessionCommandV1, SemanticSessionIncarnationV1,
+    SemanticSessionReplyV1, SemanticSessionSnapshotV1,
 };
 use vellum_semantic_session_broker::{
     SemanticBrokerCancellationReportV1, SemanticBrokerContextV1, SemanticBrokerDecisionV1,
     SemanticBrokerEffectV1, SemanticBrokerEventV1, SemanticBrokerExpiryDriveV1,
-    SemanticBrokerOpenReportV1, SemanticBrokerProviderDriveDispositionV1,
-    SemanticBrokerProviderDriveFailureClassV1, SemanticBrokerProviderDriveFailureReportV1,
-    SemanticBrokerProviderDriveReportV1, SemanticBrokerSourceReportV1,
-    SemanticBrokerSubmissionReportV1, SemanticBrokerUsageV1, SemanticSessionBrokerV1,
+    SemanticBrokerIncarnationRotationRefusalV1, SemanticBrokerOpenReportV1,
+    SemanticBrokerProviderDriveDispositionV1, SemanticBrokerProviderDriveFailureClassV1,
+    SemanticBrokerProviderDriveFailureReportV1, SemanticBrokerProviderDriveReportV1,
+    SemanticBrokerSourceReportV1, SemanticBrokerSubmissionReportV1, SemanticBrokerUsageV1,
+    SemanticSessionBrokerV1,
 };
 
 pub const MAX_SEMANTIC_ACTOR_COMMANDS_V1: usize = 4_096;
@@ -88,6 +89,8 @@ pub struct SemanticSessionActorUsageV1 {
     pub provider_events: u64,
     pub policy_events: u64,
     pub retirement_drives: u64,
+    pub incarnation_rotations: u64,
+    pub incarnation_rotation_refusals: u64,
     pub outcome_unknown: u64,
     pub quarantined: u64,
     pub worker_panics: u64,
@@ -840,6 +843,18 @@ impl SemanticSessionActorOwnerV1 {
             .map_err(|failure| failure.0)
     }
 
+    /// Replaces a quiescent broker replay domain under a fresh incarnation.
+    /// The trusted composition must hold all command-producing connection
+    /// owners while this control is in flight.
+    pub fn try_rotate_incarnation(
+        &self,
+        next: SemanticSessionIncarnationV1,
+    ) -> Result<SemanticSessionActorControlTicketV1, SemanticSessionActorControlRefusalV1> {
+        let (ack, receiver) = mpsc::sync_channel(1);
+        self.try_control(Control::RotateIncarnation { next, ack }, receiver)
+            .map_err(|failure| failure.0)
+    }
+
     pub fn begin_drain(&self) -> bool {
         let mut shared = lock_shared(&self.shared);
         if shared.phase != SemanticSessionActorPhaseV1::Running {
@@ -1133,6 +1148,10 @@ enum Control {
     DriveRetirement {
         ack: SyncSender<SemanticSessionActorControlCompletionV1>,
     },
+    RotateIncarnation {
+        next: SemanticSessionIncarnationV1,
+        ack: SyncSender<SemanticSessionActorControlCompletionV1>,
+    },
     Stop(SyncSender<Result<(), SemanticSessionActorControlRefusalV1>>),
 }
 
@@ -1349,6 +1368,31 @@ fn apply_control<P: SemanticBrokerEffectPortV1>(
             if fatal {
                 return true;
             }
+        }
+        Control::RotateIncarnation { next, ack } => {
+            let commands_queued = lock_shared(shared).usage.queued_commands != 0;
+            let completion = if commands_queued || !port.obligations().is_empty() {
+                let mut state = lock_shared(shared);
+                bump_usage(&mut state.usage, Counter::IncarnationRotationRefusals);
+                SemanticSessionActorControlCompletionV1::Quarantined
+            } else {
+                match broker.try_rotate_incarnation(next) {
+                    Ok(()) => {
+                        let mut state = lock_shared(shared);
+                        bump_usage(&mut state.usage, Counter::IncarnationRotations);
+                        SemanticSessionActorControlCompletionV1::Applied
+                    }
+                    Err(
+                        SemanticBrokerIncarnationRotationRefusalV1::SameIncarnation
+                        | SemanticBrokerIncarnationRotationRefusalV1::NotQuiescent,
+                    ) => {
+                        let mut state = lock_shared(shared);
+                        bump_usage(&mut state.usage, Counter::IncarnationRotationRefusals);
+                        SemanticSessionActorControlCompletionV1::Quarantined
+                    }
+                }
+            };
+            let _ = ack.send(completion);
         }
         Control::Stop(reply) => {
             let queued = lock_shared(shared).usage.queued_commands;
@@ -1642,6 +1686,8 @@ enum Counter {
     ProviderEvents,
     PolicyEvents,
     RetirementDrives,
+    IncarnationRotations,
+    IncarnationRotationRefusals,
     OutcomeUnknown,
     Quarantined,
     WorkerPanics,
@@ -1677,6 +1723,8 @@ fn bump_usage(usage: &mut SemanticSessionActorUsageV1, counter: Counter) {
         Counter::ProviderEvents => &mut usage.provider_events,
         Counter::PolicyEvents => &mut usage.policy_events,
         Counter::RetirementDrives => &mut usage.retirement_drives,
+        Counter::IncarnationRotations => &mut usage.incarnation_rotations,
+        Counter::IncarnationRotationRefusals => &mut usage.incarnation_rotation_refusals,
         Counter::OutcomeUnknown => &mut usage.outcome_unknown,
         Counter::Quarantined => &mut usage.quarantined,
         Counter::WorkerPanics => &mut usage.worker_panics,
@@ -2684,6 +2732,34 @@ mod tests {
             SemanticSessionOutcomeV1::Description(_)
         ));
         assert_eq!(sender.usage().commands_admitted, 1);
+        assert!(owner.begin_drain());
+        owner.try_stop().unwrap();
+        assert_eq!(
+            recover(recovery).termination(),
+            SemanticSessionActorTerminationV1::Clean
+        );
+    }
+
+    #[test]
+    fn trusted_control_rotates_only_a_quiescent_replay_domain() {
+        let (owner, sender, recovery) = ready_actor();
+        assert_eq!(
+            owner
+                .try_rotate_incarnation(SemanticSessionIncarnationV1::new([3; 16]).unwrap())
+                .unwrap()
+                .receive(),
+            SemanticSessionActorControlCompletionV1::Quarantined
+        );
+        let next = SemanticSessionIncarnationV1::new([41; 16]).unwrap();
+        assert_eq!(
+            owner.try_rotate_incarnation(next).unwrap().receive(),
+            SemanticSessionActorControlCompletionV1::Applied
+        );
+        let reply = exchange(&sender, describe(42));
+        assert_eq!(reply.incarnation(), next);
+        assert_eq!(owner.usage().incarnation_rotations, 1);
+        assert_eq!(owner.usage().incarnation_rotation_refusals, 1);
+
         assert!(owner.begin_drain());
         owner.try_stop().unwrap();
         assert_eq!(

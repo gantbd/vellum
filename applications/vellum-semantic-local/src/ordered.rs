@@ -2015,6 +2015,13 @@ impl<P, C> LocalOrderedManagedTimedSemanticActorV1<P, C> {
         self.owner.try_drive_retirement()
     }
 
+    pub fn try_rotate_incarnation(
+        &self,
+        next: SemanticSessionIncarnationV1,
+    ) -> Result<SemanticSessionActorControlTicketV1, SemanticSessionActorControlRefusalV1> {
+        self.owner.try_rotate_incarnation(next)
+    }
+
     pub fn begin_drain(&self) -> bool {
         self.owner.begin_drain()
     }
@@ -3220,6 +3227,13 @@ impl<P> LocalOrderedManagedSemanticActorV1<P> {
         &self,
     ) -> Result<SemanticSessionActorControlTicketV1, SemanticSessionActorControlRefusalV1> {
         self.owner.try_drive_retirement()
+    }
+
+    pub fn try_rotate_incarnation(
+        &self,
+        next: SemanticSessionIncarnationV1,
+    ) -> Result<SemanticSessionActorControlTicketV1, SemanticSessionActorControlRefusalV1> {
+        self.owner.try_rotate_incarnation(next)
     }
 
     pub fn begin_drain(&self) -> bool {

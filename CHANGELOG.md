@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Made semantic connection retirement and replay-domain rotation explicit.
+  Every authenticated disconnect now projects exact authority loss and drives
+  bounded cleanup; before another client is accepted, a quiescence-gated actor
+  control installs a fresh OS-random session incarnation while preserving the
+  live provider epoch/projection. Historical session replay state is retired
+  only at that boundary, never silently evicted in place.
 - Extended the production LSP adapter with bounded definition, references,
   implementations and type-at-point queries. Results must resolve to exact
   open Vellum snapshots; foreign provider URIs and unsupported capabilities
