@@ -46,6 +46,7 @@ const locations = new Map([
   ['vellum', '/distribution/'],
   ['vellum-sdk-embedded', '/sdk/'],
   ['vellum-sdk-client', '/sdk/'],
+  ['vellum-sdk-semantic-client', '/sdk/'],
 ]);
 
 for (const [name, location] of locations) {
@@ -242,8 +243,7 @@ requireEdges(
   'vellum-semantic-mcp',
   [
     'vellum-sdk-client',
-    'vellum-semantic-client',
-    'vellum-semantic-service',
+    'vellum-sdk-semantic-client',
     'vellum-adapter-local-authentication',
   ],
   false,
@@ -259,6 +259,11 @@ forbidEdges(
     'vellum-session',
     'vellum-service',
     'vellum-semantic-local',
+    'vellum-semantic-client',
+    'vellum-semantic-protocol',
+    'vellum-semantic-service',
+    'vellum-semantic-session-client',
+    'vellum-semantic-transport',
   ],
   false,
 );
@@ -280,6 +285,16 @@ requireEdges('vellum-sdk-embedded', ['vellum-host', 'vellum-session', 'vellum-ed
 requireEdges(
   'vellum-sdk-client',
   ['vellum-client', 'vellum-protocol', 'vellum-wire', 'vellum-transport'],
+);
+requireEdges(
+  'vellum-sdk-semantic-client',
+  [
+    'vellum-semantic-client',
+    'vellum-semantic-protocol',
+    'vellum-semantic-service',
+    'vellum-semantic-session-client',
+    'vellum-semantic-transport',
+  ],
 );
 requireEdges('vellum', ['vellum-daemon', 'vellum-mcp'], false);
 forbidEdges(
@@ -427,5 +442,5 @@ if (failures.length !== 0) {
   process.exit(1);
 }
 process.stdout.write(
-  `Vellum boundaries closed; ${packages.size} crates, 2 zero-authority SDK facades, 4 adapter-selecting composition roots, 3 standalone qualification packages\n`,
+  `Vellum boundaries closed; ${packages.size} crates, 3 zero-authority SDK facades, 4 adapter-selecting composition roots, 3 standalone qualification packages\n`,
 );

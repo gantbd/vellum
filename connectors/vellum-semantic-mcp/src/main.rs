@@ -4,6 +4,11 @@ use std::{ffi::OsString, process::ExitCode};
 
 use serde_json::json;
 use tokio::io::BufReader;
+use vellum_sdk_semantic_client::{
+    client as vellum_semantic_client, protocol as vellum_semantic_protocol,
+    service as vellum_semantic_service, session as vellum_semantic_session_client,
+    transport as vellum_semantic_transport,
+};
 use vellum_semantic_client::{
     SemanticCapabilitySetV1, SemanticClientRefV1, SemanticProviderProvenanceV1,
     SemanticProviderRefV1, SemanticProviderStateV1, SemanticRequestRefV1, SemanticRequestV1,

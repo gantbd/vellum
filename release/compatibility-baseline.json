@@ -32,6 +32,7 @@
       "protocol/vellum-wire",
       "sdk/client",
       "sdk/embedded",
+      "sdk/semantic-client",
       "service/vellum-semantic-apply",
       "service/vellum-semantic-service",
       "service/vellum-semantic-session-actor",
@@ -448,6 +449,30 @@
       }
     },
     {
+      "manifest": "sdk/semantic-client/Cargo.toml",
+      "name": "vellum-sdk-semantic-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_sdk_semantic_client",
+          "path": "sdk/semantic-client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "sdk/semantic-client/src",
+        "fileCount": 1,
+        "sha256": "3c43779ba153aa64aeedab6ed49a16506532a0de8bc51401d081b721b20fdded"
+      }
+    },
+    {
       "manifest": "service/vellum-semantic-apply/Cargo.toml",
       "name": "vellum-semantic-apply-service",
       "version": "0.1.0",
@@ -550,7 +575,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-semantic-mcp/src",
         "fileCount": 4,
-        "sha256": "88a0c5c1765575cdd028be3f2b3ae0dd38258791fe02f9f2f21e98591e037eed"
+        "sha256": "b35a3f27dfd69f2ce0c1873bc7bc7c3347725f149d48a93f0d11961704db104d"
       }
     },
     {

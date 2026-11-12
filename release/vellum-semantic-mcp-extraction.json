@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "targetRepository": "https://github.com/gantbd/vellum-semantic-mcp",
+  "targetSibling": "../vellum-semantic-mcp",
+  "archiveRoot": "vellum-semantic-mcp",
+  "sourceRevisionPolicy": "exact committed Vellum revision at extraction",
+  "vellumDependencies": [
+    {
+      "package": "vellum-adapter-local-authentication",
+      "role": "private-file credential provider only; never authority"
+    },
+    {
+      "package": "vellum-sdk-client",
+      "role": "native workspace snapshot and change client"
+    },
+    {
+      "package": "vellum-sdk-semantic-client",
+      "role": "zero-authority semantic protocol, session, service and transport facade"
+    }
+  ],
+  "sourceRepository": "https://github.com/gantbd/vellum",
+  "qualifiedImmutableDependencies": [
+    {
+      "repository": "https://github.com/gantbd/keystone",
+      "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+      "packages": [
+        "keystone-codec",
+        "keystone-lifecycle",
+        "keystone-observe",
+        "keystone-replay"
+      ]
+    }
+  ],
+  "normalDependencies": [
+    "getrandom",
+    "serde",
+    "serde_json",
+    "tokio",
+    "vellum-adapter-local-authentication",
+    "vellum-sdk-client",
+    "vellum-sdk-semantic-client"
+  ],
+  "copy": [
+    { "from": "connectors/vellum-semantic-mcp/src/lib.rs", "to": "src/lib.rs" },
+    { "from": "connectors/vellum-semantic-mcp/src/main.rs", "to": "src/main.rs" },
+    { "from": "connectors/vellum-semantic-mcp/src/stdio.rs", "to": "src/stdio.rs" },
+    { "from": "connectors/vellum-semantic-mcp/src/tests.rs", "to": "src/tests.rs" },
+    { "from": "connectors/vellum-semantic-mcp/tests/stdio_peer.rs", "to": "tests/stdio_peer.rs" },
+    { "from": "connectors/vellum-semantic-mcp/README.md", "to": "README.md" },
+    { "from": "connectors/vellum-semantic-mcp/CHANGELOG.md", "to": "CHANGELOG.md" },
+    { "from": "connectors/vellum-semantic-mcp/SECURITY.md", "to": "SECURITY.md" },
+    { "from": "LICENSE-APACHE", "to": "LICENSE-APACHE" },
+    { "from": "LICENSE-MIT", "to": "LICENSE-MIT" },
+    { "from": "rust-toolchain.toml", "to": "rust-toolchain.toml" }
+  ],
+  "retainedVellumQualification": [
+    "applications/vellum-semantic-local",
+    "qualification/semantic-lsp-provider"
+  ],
+  "protocol": {
+    "version": "2026-07-28",
+    "compatibilityOwner": "vellum-semantic-mcp",
+    "semanticContractOwner": "vellum-sdk-semantic-client",
+    "nativeContractOwner": "vellum-sdk-client",
+    "tools": [
+      "vellum.semantic.symbols",
+      "vellum.semantic.definition",
+      "vellum.semantic.references",
+      "vellum.semantic.implementations",
+      "vellum.semantic.diagnostics",
+      "vellum.semantic.type_at_point",
+      "vellum.semantic.plan_rename",
+      "vellum.semantic.release_request"
+    ]
+  },
+  "publication": "none"
+}

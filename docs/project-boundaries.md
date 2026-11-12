@@ -157,6 +157,12 @@ out-of-order reply routing. `vellum-semantic-client` adds an asynchronous,
 zero-authority port already bound to one composition-selected client partition;
 its ordinary API cannot retarget another partition and projects no provider
 identity. Exact expiry and one bounded pump are a distinct trusted driver port.
+`vellum-sdk-semantic-client` is the zero-authority distribution facade for
+semantic peers. It groups the semantic client, session protocol/client,
+bounded transport and sovereign service used by explicit embedded
+qualification compositions without adding behavior or granting roles. The
+semantic MCP peer depends on this facade rather than importing those
+implementation crates directly.
 `vellum-semantic-session-client` is the separate transport-neutral client for
 the background session protocol. It models `NotSent | Reply | OutcomeUnknown`,
 retains one exact source-bearing mutation for explicit replay only, validates

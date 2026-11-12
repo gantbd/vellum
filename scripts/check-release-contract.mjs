@@ -21,6 +21,7 @@ const requiredFiles = [
   'rust-toolchain.toml',
   'docs/release-policy.md',
   'docs/mcp-extraction.md',
+  'docs/semantic-mcp-extraction.md',
   'docs/security-threat-model.md',
   'docs/supply-chain.md',
   'docs/compatibility-baseline.md',
@@ -39,6 +40,9 @@ const requiredFiles = [
   'release/vellum-mcp-extraction.json',
   'scripts/verify-mcp-extraction.mjs',
   'scripts/emit-mcp-peer-source.mjs',
+  'release/vellum-semantic-mcp-extraction.json',
+  'scripts/verify-semantic-mcp-extraction.mjs',
+  'scripts/emit-semantic-mcp-peer-source.mjs',
   'scripts/build-release-candidate.mjs',
   'scripts/build-release-candidate.test.mjs',
   'scripts/release-candidate-lib.mjs',
@@ -345,6 +349,66 @@ if (mcpExtraction !== undefined) {
     || !retained.has('connectors/vellum-mcp/tests/live_daemon.rs')
   ) {
     fail('the real-daemon MCP test must remain Vellum-owned qualification');
+  }
+}
+
+let semanticMcpExtraction;
+try {
+  semanticMcpExtraction = JSON.parse(read('release/vellum-semantic-mcp-extraction.json'));
+} catch (error) {
+  fail(`release/vellum-semantic-mcp-extraction.json is invalid JSON: ${error.message}`);
+}
+if (semanticMcpExtraction !== undefined) {
+  const dependencies = semanticMcpExtraction.vellumDependencies ?? [];
+  const dependencyNames = dependencies.map((dependency) => dependency.package).sort();
+  const copied = new Set((semanticMcpExtraction.copy ?? []).map((entry) => entry.from));
+  const immutable = semanticMcpExtraction.qualifiedImmutableDependencies ?? [];
+  if (
+    semanticMcpExtraction.schema !== 1
+    || semanticMcpExtraction.archiveRoot !== 'vellum-semantic-mcp'
+    || semanticMcpExtraction.targetSibling !== '../vellum-semantic-mcp'
+    || semanticMcpExtraction.sourceRepository !== sourcePolicy?.vellumRepository
+    || dependencyNames.join(',')
+      !== [
+        'vellum-adapter-local-authentication',
+        'vellum-sdk-client',
+        'vellum-sdk-semantic-client',
+      ].join(',')
+    || semanticMcpExtraction.publication !== 'none'
+  ) {
+    fail('semantic MCP extraction must remain a non-publishing SDK-facade peer');
+  }
+  if (
+    immutable.length !== 1
+    || immutable[0]?.repository !== sourcePolicy?.keystone?.repository
+    || immutable[0]?.revision !== sourcePolicy?.keystone?.revision
+    || (immutable[0]?.packages ?? []).sort().join(',')
+      !== 'keystone-codec,keystone-lifecycle,keystone-observe,keystone-replay'
+  ) {
+    fail('semantic MCP extraction must retain the exact Keystone source closure');
+  }
+  for (const source of [
+    'connectors/vellum-semantic-mcp/CHANGELOG.md',
+    'connectors/vellum-semantic-mcp/README.md',
+    'connectors/vellum-semantic-mcp/SECURITY.md',
+    'connectors/vellum-semantic-mcp/src/lib.rs',
+    'connectors/vellum-semantic-mcp/src/main.rs',
+    'connectors/vellum-semantic-mcp/src/stdio.rs',
+    'connectors/vellum-semantic-mcp/src/tests.rs',
+    'connectors/vellum-semantic-mcp/tests/stdio_peer.rs',
+  ]) {
+    if (!copied.has(source)) fail(`semantic MCP extraction is missing portable source ${source}`);
+  }
+  const directImplementationDependencies = (semanticMcpExtraction.normalDependencies ?? [])
+    .filter((dependency) => [
+      'vellum-semantic-client',
+      'vellum-semantic-protocol',
+      'vellum-semantic-service',
+      'vellum-semantic-session-client',
+      'vellum-semantic-transport',
+    ].includes(dependency));
+  if (directImplementationDependencies.length !== 0) {
+    fail('semantic MCP extraction bypasses the semantic SDK facade');
   }
 }
 

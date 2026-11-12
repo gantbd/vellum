@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-distribution check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -26,6 +26,14 @@ qualify-github-source:
 check-launchd-distribution:
 	node --check distribution/launchd/render-plist.mjs
 	node distribution/launchd/render-plist.test.mjs
+
+check-mcp-extraction:
+	node --check scripts/verify-mcp-extraction.mjs
+	node --check scripts/emit-mcp-peer-source.mjs
+	node --check scripts/verify-semantic-mcp-extraction.mjs
+	node --check scripts/emit-semantic-mcp-peer-source.mjs
+	node scripts/verify-mcp-extraction.mjs
+	node scripts/verify-semantic-mcp-extraction.mjs
 
 check-boundaries:
 	node scripts/check-project-boundaries.mjs

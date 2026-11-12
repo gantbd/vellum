@@ -1,6 +1,7 @@
 use std::io;
 
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+use vellum_sdk_semantic_client::client as vellum_semantic_client;
 use vellum_semantic_client::SemanticServicePortV1;
 
 use crate::SemanticMcpServerV1;

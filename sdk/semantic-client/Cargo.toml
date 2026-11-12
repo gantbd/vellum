@@ -1,0 +1,19 @@
+[package]
+name = "vellum-sdk-semantic-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Transport-neutral semantic client SDK distribution facade"
+
+[dependencies]
+vellum-semantic-client = { version = "=0.1.0", path = "../../client/vellum-semantic-client" }
+vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
+vellum-semantic-service = { version = "=0.1.0", path = "../../service/vellum-semantic-service" }
+vellum-semantic-session-client = { version = "=0.1.0", path = "../../client/vellum-semantic-session-client" }
+vellum-semantic-transport = { version = "=0.1.0", path = "../../transport/vellum-semantic-transport" }
+
+[lints]
+workspace = true

@@ -19,6 +19,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value, json};
+use vellum_sdk_semantic_client::{
+    client as vellum_semantic_client, session as vellum_semantic_session_client,
+};
 use vellum_semantic_client::{
     MAX_SEMANTIC_LABEL_BYTES_V1, MAX_SEMANTIC_QUERY_BYTES_V1, SemanticCapabilityV1,
     SemanticClientV1, SemanticDeliveryOutcomeV1, SemanticDiagnosticSeverityV1,

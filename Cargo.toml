@@ -31,6 +31,7 @@ members = [
     "distribution/cargo-install",
     "sdk/embedded",
     "sdk/client",
+    "sdk/semantic-client",
 ]
 resolver = "3"
 exclude = [

@@ -442,9 +442,11 @@ joins actor recovery, retires retained client source, and drives the provider
 through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
-same-user process boundary into principal authentication. Remaining delivery
-work includes external filesystem watching and extraction of the MCP peer into
-its sibling repository. Membership-local operation exhaustion rolls over
+same-user process boundary into principal authentication. The semantic MCP
+source is now closed behind the zero-authority semantic and native SDK facades,
+and its deterministic sibling extraction is qualified without publication.
+Remaining synchronization work excludes automatic external-file merging:
+native Vellum workspace state remains authoritative. Membership-local operation exhaustion rolls over
 without consuming the broker/client retirement tail, and definitive global
 replay exhaustion reconnects through a fresh service incarnation without
 ending MCP stdio; historical global replay evidence is still never silently

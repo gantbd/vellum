@@ -875,6 +875,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-sdk-semantic-client"
+version = "0.1.0"
+dependencies = [
+ "vellum-semantic-client",
+ "vellum-semantic-protocol",
+ "vellum-semantic-service",
+ "vellum-semantic-session-client",
+ "vellum-semantic-transport",
+]
+
+[[package]]
 name = "vellum-semantic-apply-service"
 version = "0.1.0"
 dependencies = [
@@ -930,11 +941,7 @@ dependencies = [
  "tokio",
  "vellum-adapter-local-authentication",
  "vellum-sdk-client",
- "vellum-semantic-client",
- "vellum-semantic-protocol",
- "vellum-semantic-service",
- "vellum-semantic-session-client",
- "vellum-semantic-transport",
+ "vellum-sdk-semantic-client",
 ]
 
 [[package]]

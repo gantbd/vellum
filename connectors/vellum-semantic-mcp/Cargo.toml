@@ -15,11 +15,7 @@ serde_json = "=1.0.151"
 tokio = { version = "1", features = ["io-util", "io-std", "rt"] }
 vellum-adapter-local-authentication = { version = "=0.1.0", path = "../../adapters/local-authentication" }
 vellum-sdk-client = { version = "=0.1.0", path = "../../sdk/client" }
-vellum-semantic-client = { version = "=0.1.0", path = "../../client/vellum-semantic-client" }
-vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
-vellum-semantic-session-client = { version = "=0.1.0", path = "../../client/vellum-semantic-session-client" }
-vellum-semantic-service = { version = "=0.1.0", path = "../../service/vellum-semantic-service" }
-vellum-semantic-transport = { version = "=0.1.0", path = "../../transport/vellum-semantic-transport" }
+vellum-sdk-semantic-client = { version = "=0.1.0", path = "../../sdk/semantic-client" }
 
 [lints]
 workspace = true

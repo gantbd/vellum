@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::*;
+use vellum_sdk_semantic_client::client as vellum_semantic_client;
 use vellum_semantic_client::{
     SemanticAdmissionOutcomeV1, SemanticCapabilitySetV1, SemanticDeliveryV1,
     SemanticProviderObservationV1, SemanticProviderProvenanceV1, SemanticProviderRefV1,
