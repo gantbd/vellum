@@ -490,6 +490,9 @@ for (const marker of [
   'tests/payload_contract.rs',
   'payload_manifest_closes_the_repository_tree',
   "crypto.createHash('sha256')",
+  '## Source and payload integrity',
+  'never source\\ncontent, credentials or host paths',
+  'does not publish artifacts, crates, releases or attestations',
 ]) {
   if (!semanticMcpEmitter.includes(marker)) {
     fail(`semantic MCP emitter is missing payload-integrity marker ${marker}`);
