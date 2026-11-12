@@ -1,8 +1,10 @@
 # Vellum semantic MCP repository extraction
 
 Status: public SDK boundary and deterministic isolated extraction are qualified;
-the local sibling repository is materialized only from a committed Vellum tree.
-No remote or publication is configured.
+the local sibling repository was materialized from Vellum
+`25afc5a38af99963c15df4488cb42f93786be3ff` and committed as
+`0c713411c26caefa683cba11ba762fd2b9c72ce7`. No remote or publication is
+configured.
 
 `vellum-semantic-mcp` is an inbound peer beside the native MCP, TUI and GUI. It
 depends on three Vellum distribution boundaries only:
