@@ -900,11 +900,13 @@ dependencies = [
 name = "vellum-semantic-local"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "processkit",
  "rustix",
  "sha2",
  "tokio",
  "tokio-util",
+ "vellum-adapter-local-authentication",
  "vellum-adapter-semantic-lsp",
  "vellum-host",
  "vellum-semantic-client",
@@ -921,11 +923,17 @@ dependencies = [
 name = "vellum-semantic-mcp"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "serde",
  "serde_json",
  "tokio",
+ "vellum-adapter-local-authentication",
+ "vellum-sdk-client",
  "vellum-semantic-client",
+ "vellum-semantic-protocol",
  "vellum-semantic-service",
+ "vellum-semantic-session-client",
+ "vellum-semantic-transport",
 ]
 
 [[package]]

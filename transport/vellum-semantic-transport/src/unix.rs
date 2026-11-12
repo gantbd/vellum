@@ -56,6 +56,40 @@ pub enum UnixSemanticFrameBuildRefusalV1 {
     InvalidDeadlines,
 }
 
+/// Content-safe refusal from the application-installed authentication
+/// mechanism. Authentication bytes are connection setup, not semantic command
+/// bytes; refusal therefore leaves the attempted semantic command `NotSent`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnixSemanticAuthenticationRefusalV1 {
+    Refused,
+    Io,
+}
+
+/// Connection-local authentication installed by trusted composition.
+///
+/// The transport owns when this effect runs: exactly once after private-path
+/// connect and deadline installation, before any semantic frame is written.
+/// The port owns the handshake schema and credential mechanism. It must not
+/// read or write a semantic frame.
+pub trait UnixSemanticAuthenticationPortV1: Send {
+    fn authenticate(
+        &mut self,
+        stream: &mut UnixStream,
+    ) -> Result<(), UnixSemanticAuthenticationRefusalV1>;
+}
+
+impl<F> UnixSemanticAuthenticationPortV1 for F
+where
+    F: FnMut(&mut UnixStream) -> Result<(), UnixSemanticAuthenticationRefusalV1> + Send,
+{
+    fn authenticate(
+        &mut self,
+        stream: &mut UnixStream,
+    ) -> Result<(), UnixSemanticAuthenticationRefusalV1> {
+        self(stream)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UnixSemanticFrameUsageV1 {
     pub attempts: u64,
@@ -63,6 +97,9 @@ pub struct UnixSemanticFrameUsageV1 {
     pub connect_attempts: u64,
     pub connect_failures: u64,
     pub connections: u64,
+    pub authentication_attempts: u64,
+    pub authentication_completed: u64,
+    pub authentication_refusals: u64,
     pub write_calls: u64,
     pub written_bytes: u64,
     pub read_calls: u64,
@@ -85,11 +122,14 @@ struct SocketIdentity {
     inode: u64,
 }
 
-/// One persistent local byte-frame connection. It performs no authentication,
-/// reconnect, retry, semantic decoding, or membership resumption.
+/// One persistent local byte-frame connection. Authentication is an optional
+/// application-installed connection effect; this type derives no credentials,
+/// roles, or authority. It performs no reconnect-after-uncertainty, retry,
+/// semantic decoding, or membership resumption.
 pub struct UnixSemanticFrameExchangeV1 {
     path: PathBuf,
     deadlines: UnixSemanticFrameDeadlinesV1,
+    authentication: Option<Box<dyn UnixSemanticAuthenticationPortV1>>,
     stream: Option<UnixStream>,
     fenced: bool,
     usage: UnixSemanticFrameUsageV1,
@@ -99,6 +139,7 @@ impl std::fmt::Debug for UnixSemanticFrameExchangeV1 {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("UnixSemanticFrameExchangeV1")
+            .field("authentication", &self.authentication.is_some())
             .field("connected", &self.stream.is_some())
             .field("fenced", &self.fenced)
             .field("usage", &self.usage)
@@ -110,6 +151,25 @@ impl UnixSemanticFrameExchangeV1 {
     pub fn try_new(
         path: PathBuf,
         deadlines: UnixSemanticFrameDeadlinesV1,
+    ) -> Result<Self, UnixSemanticFrameBuildRefusalV1> {
+        Self::try_new_with_authentication(path, deadlines, None)
+    }
+
+    pub fn try_new_authenticated<A>(
+        path: PathBuf,
+        deadlines: UnixSemanticFrameDeadlinesV1,
+        authentication: A,
+    ) -> Result<Self, UnixSemanticFrameBuildRefusalV1>
+    where
+        A: UnixSemanticAuthenticationPortV1 + 'static,
+    {
+        Self::try_new_with_authentication(path, deadlines, Some(Box::new(authentication)))
+    }
+
+    fn try_new_with_authentication(
+        path: PathBuf,
+        deadlines: UnixSemanticFrameDeadlinesV1,
+        authentication: Option<Box<dyn UnixSemanticAuthenticationPortV1>>,
     ) -> Result<Self, UnixSemanticFrameBuildRefusalV1> {
         if !path.is_absolute()
             || path.as_os_str().as_encoded_bytes().is_empty()
@@ -125,6 +185,7 @@ impl UnixSemanticFrameExchangeV1 {
         Ok(Self {
             path,
             deadlines,
+            authentication,
             stream: None,
             fenced: false,
             usage: UnixSemanticFrameUsageV1::default(),
@@ -167,7 +228,7 @@ impl UnixSemanticFrameExchangeV1 {
             return Err(());
         }
         let descriptor: OwnedFd = socket.into();
-        let stream = UnixStream::from(descriptor);
+        let mut stream = UnixStream::from(descriptor);
         if stream
             .set_write_timeout(Some(self.deadlines.write))
             .is_err()
@@ -175,6 +236,23 @@ impl UnixSemanticFrameExchangeV1 {
         {
             bump(&mut self.usage.connect_failures, &mut self.usage.saturated);
             return Err(());
+        }
+        if let Some(authentication) = self.authentication.as_mut() {
+            bump(
+                &mut self.usage.authentication_attempts,
+                &mut self.usage.saturated,
+            );
+            if authentication.authenticate(&mut stream).is_err() {
+                bump(
+                    &mut self.usage.authentication_refusals,
+                    &mut self.usage.saturated,
+                );
+                return Err(());
+            }
+            bump(
+                &mut self.usage.authentication_completed,
+                &mut self.usage.saturated,
+            );
         }
         self.stream = Some(stream);
         bump(&mut self.usage.connections, &mut self.usage.saturated);
@@ -416,6 +494,141 @@ mod tests {
             .write_all(&(bytes.len() as u32).to_be_bytes())
             .unwrap();
         stream.write_all(bytes).unwrap();
+    }
+
+    fn authenticate_server(stream: &mut UnixStream) {
+        let mut hello = [0_u8; 33];
+        hello[0] = 1;
+        hello[1..17].fill(0x41);
+        hello[17..33].fill(0x51);
+        stream.write_all(&hello).unwrap();
+        stream.flush().unwrap();
+        let mut response = [0_u8; 49];
+        stream.read_exact(&mut response).unwrap();
+        assert_eq!(response[0], 1);
+        assert_eq!(response[1..33], hello[1..33]);
+        assert_eq!(response[33..49], [0x61; 16]);
+        stream.write_all(&[1, 1]).unwrap();
+        stream.flush().unwrap();
+    }
+
+    fn client_authentication(
+        stream: &mut UnixStream,
+    ) -> Result<(), UnixSemanticAuthenticationRefusalV1> {
+        let mut hello = [0_u8; 33];
+        stream
+            .read_exact(&mut hello)
+            .map_err(|_| UnixSemanticAuthenticationRefusalV1::Io)?;
+        if hello[0] != 1 {
+            return Err(UnixSemanticAuthenticationRefusalV1::Refused);
+        }
+        let mut response = [0_u8; 49];
+        response[0] = 1;
+        response[1..33].copy_from_slice(&hello[1..33]);
+        response[33..49].fill(0x61);
+        stream
+            .write_all(&response)
+            .and_then(|()| stream.flush())
+            .map_err(|_| UnixSemanticAuthenticationRefusalV1::Io)?;
+        let mut result = [0_u8; 2];
+        stream
+            .read_exact(&mut result)
+            .map_err(|_| UnixSemanticAuthenticationRefusalV1::Io)?;
+        if result == [1, 1] {
+            Ok(())
+        } else {
+            Err(UnixSemanticAuthenticationRefusalV1::Refused)
+        }
+    }
+
+    #[test]
+    fn authenticated_connection_handshakes_once_then_exchanges_persistently() {
+        let (fixture, listener) = SocketFixture::new();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            authenticate_server(&mut stream);
+            assert_eq!(read_frame(&mut stream), b"first");
+            write_frame(&mut stream, b"one");
+            assert_eq!(read_frame(&mut stream), b"second");
+            write_frame(&mut stream, b"two");
+        });
+        let mut exchange = UnixSemanticFrameExchangeV1::try_new_authenticated(
+            fixture.path.clone(),
+            UnixSemanticFrameDeadlinesV1::reference(),
+            client_authentication,
+        )
+        .unwrap();
+        assert_eq!(
+            exchange.exchange(b"first", 16),
+            SemanticExchangeDispositionV1::Reply(b"one".to_vec())
+        );
+        assert_eq!(
+            exchange.exchange(b"second", 16),
+            SemanticExchangeDispositionV1::Reply(b"two".to_vec())
+        );
+        let usage = exchange.usage();
+        assert_eq!(usage.connect_attempts, 1);
+        assert_eq!(usage.authentication_attempts, 1);
+        assert_eq!(usage.authentication_completed, 1);
+        assert_eq!(usage.authentication_refusals, 0);
+        assert_eq!(usage.connections, 1);
+        assert_eq!(usage.replies, 2);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn authentication_refusal_is_not_sent_and_may_reconnect_before_any_command() {
+        let (fixture, listener) = SocketFixture::new();
+        let server = thread::spawn(move || {
+            let (mut first, _) = listener.accept().unwrap();
+            let mut hello = [0_u8; 33];
+            hello[0] = 1;
+            first.write_all(&hello).unwrap();
+            first.flush().unwrap();
+            let mut byte = [0_u8; 1];
+            assert_eq!(first.read(&mut byte).unwrap(), 0);
+
+            let (mut second, _) = listener.accept().unwrap();
+            authenticate_server(&mut second);
+            assert_eq!(read_frame(&mut second), b"command");
+            write_frame(&mut second, b"reply");
+        });
+        let mut attempts = 0_u8;
+        let authentication = move |stream: &mut UnixStream| {
+            attempts = attempts.saturating_add(1);
+            if attempts == 1 {
+                let mut hello = [0_u8; 33];
+                stream
+                    .read_exact(&mut hello)
+                    .map_err(|_| UnixSemanticAuthenticationRefusalV1::Io)?;
+                Err(UnixSemanticAuthenticationRefusalV1::Refused)
+            } else {
+                client_authentication(stream)
+            }
+        };
+        let mut exchange = UnixSemanticFrameExchangeV1::try_new_authenticated(
+            fixture.path.clone(),
+            UnixSemanticFrameDeadlinesV1::reference(),
+            authentication,
+        )
+        .unwrap();
+        assert_eq!(
+            exchange.exchange(b"command", 16),
+            SemanticExchangeDispositionV1::NotSent
+        );
+        assert!(!exchange.is_fenced());
+        assert_eq!(exchange.usage().written_bytes, 0);
+        assert_eq!(
+            exchange.exchange(b"command", 16),
+            SemanticExchangeDispositionV1::Reply(b"reply".to_vec())
+        );
+        let usage = exchange.usage();
+        assert_eq!(usage.authentication_attempts, 2);
+        assert_eq!(usage.authentication_completed, 1);
+        assert_eq!(usage.authentication_refusals, 1);
+        assert_eq!(usage.not_sent, 1);
+        assert_eq!(usage.outcome_unknown, 0);
+        server.join().unwrap();
     }
 
     #[test]

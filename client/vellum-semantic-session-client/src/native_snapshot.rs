@@ -15,9 +15,10 @@ use vellum_sdk_client::protocol::{
     WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryV1,
 };
 use vellum_semantic_protocol::{
-    SemanticExchangeDispositionV1, SemanticExchangeRefV1, SemanticSessionCommandV1,
-    SemanticSessionLimitsV1, SemanticSessionOperationRefV1, SemanticSessionOutcomeV1,
-    SemanticSessionSnapshotV1, SemanticSynchronizationEpochV1, SemanticSynchronizationManifestV1,
+    SemanticExchangeDispositionV1, SemanticExchangeRefV1, SemanticSessionCommandKindV1,
+    SemanticSessionCommandV1, SemanticSessionLimitsV1, SemanticSessionOperationRefV1,
+    SemanticSessionOutcomeV1, SemanticSessionRefusalV1, SemanticSessionSnapshotV1,
+    SemanticSynchronizationEpochV1, SemanticSynchronizationManifestV1,
 };
 
 use crate::{
@@ -118,6 +119,49 @@ pub struct VellumSnapshotSynchronizationUsageV1 {
     pub counter_saturated: bool,
 }
 
+/// Locator- and source-free coordinates for one exact committed
+/// synchronization member. This is the catalog product an agent-facing
+/// projection may publish; it is derived from the same retained snapshot that
+/// established the semantic client's witness seal, never from a second native
+/// inventory pass.
+#[derive(Clone, Eq, PartialEq)]
+pub struct VellumSynchronizedDocumentV1 {
+    workspace_document: WorkspaceDocumentIdV1,
+    target: SemanticTargetV1,
+    witness: VersionWitness,
+    language: String,
+}
+
+impl VellumSynchronizedDocumentV1 {
+    pub const fn workspace_document(&self) -> WorkspaceDocumentIdV1 {
+        self.workspace_document
+    }
+
+    pub const fn target(&self) -> SemanticTargetV1 {
+        self.target
+    }
+
+    pub const fn version_witness(&self) -> VersionWitness {
+        self.witness
+    }
+
+    pub fn language(&self) -> &str {
+        &self.language
+    }
+}
+
+impl fmt::Debug for VellumSynchronizedDocumentV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VellumSynchronizedDocumentV1")
+            .field("workspace_document", &"<redacted>")
+            .field("target", &"<redacted>")
+            .field("witness", &"<redacted>")
+            .field("language", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Clone)]
 struct RetainedNativeSnapshotV1 {
     workspace_document: WorkspaceDocumentIdV1,
@@ -166,7 +210,6 @@ impl RetainedNativeSnapshotV1 {
     fn exact_same_revision(&self, other: &Self) -> bool {
         self.workspace_document == other.workspace_document
             && self.target == other.target
-            && self.witness == other.witness
             && self.language == other.language
             && self.source == other.source
             && self.utf8_boundaries == other.utf8_boundaries
@@ -213,6 +256,20 @@ pub struct VellumSnapshotSynchronizationCoordinatorV1 {
 impl VellumSnapshotSynchronizationCoordinatorV1 {
     pub const fn usage(&self) -> VellumSnapshotSynchronizationUsageV1 {
         self.usage
+    }
+
+    /// Exact committed catalog in semantic-document order. A suspended or
+    /// refused plan never changes this projection.
+    pub fn synchronized_documents(&self) -> Vec<VellumSynchronizedDocumentV1> {
+        self.documents
+            .values()
+            .map(|document| VellumSynchronizedDocumentV1 {
+                workspace_document: document.workspace_document,
+                target: document.target,
+                witness: document.witness,
+                language: document.language.clone(),
+            })
+            .collect()
     }
 
     pub fn plan(
@@ -435,7 +492,10 @@ pub enum VellumSnapshotSynchronizationExecutionRefusalV1 {
     SessionBinding,
     Planning(VellumSnapshotSynchronizationRefusalV1),
     SessionClient(SemanticSessionClientRefusalV1),
-    SemanticRefused,
+    SemanticRefused {
+        command: SemanticSessionCommandKindV1,
+        reason: SemanticSessionRefusalV1,
+    },
 }
 
 #[must_use = "suspended synchronization owns its exact remaining plan"]
@@ -687,9 +747,12 @@ fn drive_plan<P: SemanticSessionExchangePortV1>(
                 );
             }
             Ok(SemanticExchangeDispositionV1::Reply(reply)) => {
-                if matches!(reply.outcome(), SemanticSessionOutcomeV1::Refused(_)) {
+                if let SemanticSessionOutcomeV1::Refused(reason) = reply.outcome() {
                     return VellumSnapshotSynchronizationExecutionV1::Refused(
-                        VellumSnapshotSynchronizationExecutionRefusalV1::SemanticRefused,
+                        VellumSnapshotSynchronizationExecutionRefusalV1::SemanticRefused {
+                            command: plan.commands[next].kind(),
+                            reason: *reason,
+                        },
                     );
                 }
                 next += 1;
@@ -964,6 +1027,22 @@ mod tests {
         assert_eq!(coordinator.usage().commits, 2);
         assert_eq!(coordinator.usage().planned_commands, 5);
         assert_eq!(coordinator.usage().synchronized_documents, 1);
+        let catalog = coordinator.synchronized_documents();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].workspace_document(), document);
+        assert_eq!(
+            catalog[0].target().document,
+            semantic_document_ref(document)
+        );
+        assert_eq!(catalog[0].target().source_revision.get(), 3);
+        assert_eq!(
+            catalog[0].version_witness(),
+            VersionWitness::new(11).unwrap()
+        );
+        assert_eq!(catalog[0].language(), "rust");
+        let debug = format!("{:?}", catalog[0]);
+        assert!(!debug.contains("café"));
+        assert!(!debug.contains("rust"));
         assert_eq!(
             coordinator.usage().synchronized_utf8_bytes,
             u64::try_from("fn café() {}\n".len()).unwrap()
@@ -1022,17 +1101,41 @@ mod tests {
             ),
             Err(VellumSnapshotSynchronizationRefusalV1::StaleRevision)
         ));
-        assert!(matches!(
-            coordinator.plan(
+        let replacement_witness_identities = &identities[..2];
+        let refreshed = coordinator
+            .plan(
                 binding,
                 SemanticSynchronizationEpochV1::new([5; 16]).unwrap(),
                 &inventory,
-                &[product(4, 5, "other")],
+                &[product(4, 5, "one")],
+                replacement_witness_identities,
+                SemanticSessionLimitsV1::reference(),
+            )
+            .unwrap();
+        assert_eq!(refreshed.commands().len(), 2);
+        coordinator.commit(refreshed).unwrap();
+        assert_eq!(
+            coordinator.synchronized_documents()[0].version_witness(),
+            VersionWitness::new(5).unwrap()
+        );
+        assert!(matches!(
+            coordinator.plan(
+                binding,
+                SemanticSynchronizationEpochV1::new([6; 16]).unwrap(),
+                &inventory,
+                &[product(4, 6, "other")],
                 &identities,
                 SemanticSessionLimitsV1::reference(),
             ),
             Err(VellumSnapshotSynchronizationRefusalV1::RevisionConflict)
         ));
+        let catalog = coordinator.synchronized_documents();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].target().source_revision.get(), 4);
+        assert_eq!(
+            catalog[0].version_witness(),
+            VersionWitness::new(5).unwrap()
+        );
     }
 
     #[test]

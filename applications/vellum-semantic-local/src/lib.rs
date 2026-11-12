@@ -17,6 +17,10 @@ mod ordered;
 pub use ordered::*;
 mod authenticated_dispatch;
 pub use authenticated_dispatch::*;
+#[cfg(unix)]
+mod service;
+#[cfg(unix)]
+pub use service::*;
 
 use std::{
     collections::BTreeMap,

@@ -214,22 +214,22 @@ remain pure components. The bounded serialized actor adds only mailbox and
 effect-interpreter ownership: a pre-admission refusal is `NotSent`, while a
 worker or effect failure after admission is `OutcomeUnknown`. Trusted policy
 loss and retirement use a separate bounded control path so command saturation
-cannot suppress revocation. This slice still claims no socket authentication,
-MAC, encryption, durable semantic replay or automatic retry.
+cannot suppress revocation. The local service now owns a private Unix listener
+and one fixed credential challenge/response before semantic framing. This
+establishes local attribution only; it still claims no encryption, remote peer
+identity, durable semantic replay or automatic retry.
 
 `SemanticQuery` and `SemanticSynchronize` are separate closed host authority
-actions. Authentication must not grant either action, and Query must not imply
-Synchronize. A future composition derives semantic roles by meet of the
-operator ceiling, authenticated policy decision and requested attenuation.
-Until that mediation and a persistent authenticated channel exist, the actor
-is not a remotely exposed semantic service.
+actions. Authentication does not grant either action, and Query does not imply
+Synchronize. The local probe composition derives the role ceiling through an
+independent authenticated policy port, then the join request attenuates it. The
+current operator probe grants both roles; dynamic principal policy remains a
+deployment obligation.
 
-The editing daemon's one-request-per-connection authentication profile cannot
-be reused for semantic membership: it creates a fresh authority session for
-each exchange, while every semantic membership is bound to one exact session.
-A future local semantic channel must authenticate once and retain that session
-for a bounded sequential connection. Reconnect is not session resumption, and
-plain Unix-domain transport plus HMAC attribution provides neither
+The editing daemon's one-request-per-connection authentication profile is not
+used as semantic membership: every semantic membership is bound to the one
+authority session retained by its authenticated sequential connection.
+Reconnect is not session resumption, and plain Unix-domain transport plus HMAC attribution provides neither
 confidentiality nor same-user peer isolation.
 
 Ready-to-next-epoch synchronization is a bounded transaction: the client seeds
@@ -253,7 +253,7 @@ erasure of provider, allocator, swap, crash-dump or transport copies.
 
 | Model | Threat at this boundary | V1 control | Residual / nonclaim |
 | --- | --- | --- | --- |
-| STRIDE: spoofing / elevation | Correlation or self-requested roles treated as authority | Opaque identities are evidence only; installed policy attenuates role requests; exact incarnation and membership bind replies | No authentication, peer credential binding or authorization implementation ships in these crates |
+| STRIDE: spoofing / elevation | Correlation or self-requested roles treated as authority | Opaque identities are evidence only; the local channel authenticates once, installed policy independently attenuates role requests, and exact incarnation/membership bind replies | Local HMAC attribution is neither remote identity nor same-user isolation; the operator probe policy is intentionally coarse |
 | STRIDE: tampering / repudiation | Frame mutation, operation ABA or ambiguous lost reply | Canonical strict decoding, exact mutation-intent replay, operation budget, non-reusable request tombstones, transport disposition separated from application outcome | No MAC, signature, durable audit ledger or transport persistence claim |
 | STRIDE: information disclosure | Cross-member request oracle or sensitive values in telemetry | Sovereign request remapping, absent/foreign coalescing, redacted Debug and closed metric-label rule | No transport confidentiality; frame sizes and timing remain observable |
 | STRIDE: denial of service | Oversized frames, counts, text, retained requests or replay state | Exact deployment-narrowed limits, count-before-allocation, operation/request budgets and bounded cleanup | Deliberate capacity exhaustion can still refuse service until orderly retirement |

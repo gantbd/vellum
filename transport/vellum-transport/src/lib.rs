@@ -316,6 +316,12 @@ impl LocalAuthenticationClaimV1 {
     pub const fn new(value: [u8; 16]) -> Self {
         Self(value)
     }
+
+    /// Returns the opaque proof bytes for a transport handshake. They remain
+    /// neither credential material nor authority evidence.
+    pub const fn to_bytes(self) -> [u8; 16] {
+        self.0
+    }
 }
 
 #[cfg(unix)]

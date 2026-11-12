@@ -333,13 +333,15 @@ storage or automatic query retry.
 `vellum-semantic-transport` supplies the client-side local Unix byte exchange.
 It lazily connects to one canonical private socket path, rechecks the
 effective-user-owned socket and owner-private parent identity around connect,
-applies separate connect/write/read deadlines, and exchanges bounded big-endian
+applies separate connect/write/read deadlines, runs one application-installed
+authentication prelude before any semantic byte, and exchanges bounded big-endian
 length-prefixed frames on one persistent stream. Connect and pre-byte write
 failure are `NotSent`; any lost or malformed reply after transmission is
 `OutcomeUnknown` and permanently fences that connection object. A later call
 does not reconnect a possibly live semantic membership. The observations are
-fixed-cardinality logical I/O counters, not authentication, confidentiality,
-peer identity, physical-resource or latency evidence. Path identity remains
+fixed-cardinality logical I/O counters. Private path identity is not
+authentication; the credential adapter establishes local attribution but no
+confidentiality, physical-resource or latency evidence. Path identity remains
 observed-only because pathname connect is not descriptor-anchored.
 
 ## Agent-facing MCP projection
@@ -347,19 +349,27 @@ observed-only because pathname connect is not descriptor-anchored.
 `vellum-semantic-mcp` is a sibling of the native-daemon `vellum-mcp`, not an
 extension of it. It is a bounded protocol projection over an already
 partition-bound `vellum-semantic-client`, plus a sequential newline-delimited
-stdio driver. It is not a remote transport or authentication boundary. Its stable surface mirrors the seven
+stdio driver. The library is not a remote transport or authentication boundary;
+the binary is an explicit composition root over the native SDK, semantic Unix
+transport and local credential adapter. Its stable surface mirrors the seven
 closed query forms and one content-safe capability resource; transient indexing
 changes outcomes, not the catalog. It never depends directly on the editor,
 apply crate or LSP adapter. The library projection and stdio driver remain
-service-neutral; the binary alone depends on the sovereign semantic service to
-construct its explicit unavailable qualification backend. Cancellation and composition-owned deadline
+service-neutral. Cancellation and composition-owned deadline
 expiry retain their distinct outcomes. Rename application stays unadvertised
 until a server-side durable plan handle and outcome-unknown-safe operation
 receipt exist.
 
-The workspace binary refuses a default invocation because no lawful persistent
-semantic-session server/transport currently exists. The explicit
-`--unavailable` mode admits one process-local partition to a real sovereign
+The workspace binary refuses a default invocation and requires explicit private
+semantic/native socket and credential paths plus one registered language. Its
+current real profile authenticates one persistent semantic connection, joins
+with the synchronization/query role product, synchronizes exact public native
+snapshots, waits for pinned-provider readiness, publishes a locator-free
+document catalog, serves stdio MCP, and explicitly leaves on clean EOF. This
+first executable profile intentionally refuses zero or multiple documents and
+supports only the audited rust-analyzer standalone mapping.
+
+The explicit `--unavailable` mode admits one process-local partition to a real sovereign
 service whose provider is permanently unavailable. It is useful for MCP host,
 catalog, framing and failure-path qualification only: capability discovery says
 `unavailable`, no snapshot can be admitted through MCP, and queries fail closed.
@@ -381,12 +391,15 @@ respond to notifications, and treats a nonempty EOF fragment as truncated even
 if the fragment is otherwise valid JSON. Clean EOF is the current graceful stop
 boundary. Optional exit metrics are fixed-cardinality and content-free.
 
-The next concrete bridge is an application-owned persistent semantic-session
-listener/dispatcher that authenticates once, derives the synchronization/query
-role product, and owns the actor and provider runtime. Trusted synchronization
-input must come from composition-owned Vellum snapshot products, not an MCP
-argument or workspace manifest. The connector must not mint the seal, infer
-membership from document ids, or automatically replay an uncertain mutation.
+The persistent listener/dispatcher now authenticates once, derives the
+synchronization/query role product independently, and owns the actor and pinned
+provider runtime. Trusted synchronization input comes from composition-owned
+Vellum snapshot products, not an MCP argument or workspace manifest. The
+connector does not mint the seal, infer membership from document ids, or
+automatically replay an uncertain mutation. Remaining delivery work includes
+live multi-document resynchronization, terminal-request release for long-lived
+MCP processes, graceful semantic-service shutdown, and extraction of the MCP
+peer into its sibling repository.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

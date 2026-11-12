@@ -319,6 +319,34 @@ pub enum SemanticSessionQueryPortBuildRefusalV1 {
     InvalidCorrelationSeed,
 }
 
+/// Affine build refusal retaining the exact semantic session so trusted
+/// composition can leave it explicitly instead of leaking broker membership.
+#[must_use = "query-port build refusal retains semantic-session ownership"]
+pub struct SemanticSessionQueryPortBuildFailureV1<P> {
+    reason: SemanticSessionQueryPortBuildRefusalV1,
+    session: SemanticSessionClientV1<P>,
+}
+
+impl<P> SemanticSessionQueryPortBuildFailureV1<P> {
+    pub const fn reason(&self) -> SemanticSessionQueryPortBuildRefusalV1 {
+        self.reason
+    }
+
+    pub fn into_session(self) -> SemanticSessionClientV1<P> {
+        self.session
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticSessionQueryPortBuildFailureV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticSessionQueryPortBuildFailureV1")
+            .field("reason", &self.reason)
+            .field("session", &"<owned>")
+            .finish()
+    }
+}
+
 /// Query-only projection of a witness-validated persistent semantic session.
 ///
 /// Construction rechecks the granted query role and the session client's
@@ -331,6 +359,15 @@ pub struct SemanticSessionQueryPortV1<P> {
     next_operation: u128,
     pending_request: Option<SemanticRequestV1>,
     collecting: VecDeque<SemanticRequestRefV1>,
+}
+
+/// Clean extraction product for explicit semantic-session retirement. The
+/// next unused correlations are returned with the session so composition does
+/// not guess around identities consumed by MCP queries.
+pub struct SemanticSessionQueryExtractionV1<P> {
+    pub session: SemanticSessionClientV1<P>,
+    pub next_exchange: u128,
+    pub next_operation: u128,
 }
 
 impl<P> sovereign_validation::Sealed for SemanticSessionQueryPortV1<P> where
@@ -347,17 +384,45 @@ pub fn bind_semantic_session_query_v1<P: SemanticSessionExchangePortV1 + Send>(
     correlation_seed: u128,
 ) -> Result<SemanticClientV1<SemanticSessionQueryPortV1<P>>, SemanticSessionQueryPortBuildRefusalV1>
 {
-    let binding = session
-        .binding()
-        .ok_or(SemanticSessionQueryPortBuildRefusalV1::Unbound)?;
+    try_bind_semantic_session_query_v1(session, correlation_seed)
+        .map_err(|failure| failure.reason())
+}
+
+/// Production composition variant that retains the affine session on every
+/// local precondition refusal.
+pub fn try_bind_semantic_session_query_v1<P: SemanticSessionExchangePortV1 + Send>(
+    session: SemanticSessionClientV1<P>,
+    correlation_seed: u128,
+) -> Result<
+    SemanticClientV1<SemanticSessionQueryPortV1<P>>,
+    Box<SemanticSessionQueryPortBuildFailureV1<P>>,
+> {
+    let binding = match session.binding() {
+        Some(binding) => binding,
+        None => {
+            return Err(query_build_failure(
+                SemanticSessionQueryPortBuildRefusalV1::Unbound,
+                session,
+            ));
+        }
+    };
     if !binding.roles.contains(SemanticSessionRolesV1::query()) {
-        return Err(SemanticSessionQueryPortBuildRefusalV1::RoleDenied);
+        return Err(query_build_failure(
+            SemanticSessionQueryPortBuildRefusalV1::RoleDenied,
+            session,
+        ));
     }
     if session.validation_state() != SemanticReplyValidationV1::WitnessValidated {
-        return Err(SemanticSessionQueryPortBuildRefusalV1::Unsealed);
+        return Err(query_build_failure(
+            SemanticSessionQueryPortBuildRefusalV1::Unsealed,
+            session,
+        ));
     }
     if !valid_semantic_session_correlation_seed(correlation_seed) {
-        return Err(SemanticSessionQueryPortBuildRefusalV1::InvalidCorrelationSeed);
+        return Err(query_build_failure(
+            SemanticSessionQueryPortBuildRefusalV1::InvalidCorrelationSeed,
+            session,
+        ));
     }
     Ok(SemanticClientV1::new(SemanticSessionQueryPortV1 {
         session,
@@ -368,11 +433,35 @@ pub fn bind_semantic_session_query_v1<P: SemanticSessionExchangePortV1 + Send>(
     }))
 }
 
+fn query_build_failure<P>(
+    reason: SemanticSessionQueryPortBuildRefusalV1,
+    session: SemanticSessionClientV1<P>,
+) -> Box<SemanticSessionQueryPortBuildFailureV1<P>> {
+    Box::new(SemanticSessionQueryPortBuildFailureV1 { reason, session })
+}
+
 const fn valid_semantic_session_correlation_seed(seed: u128) -> bool {
     seed != 0 && seed <= u128::MAX - 3
 }
 
 impl<P: SemanticSessionExchangePortV1> SemanticSessionQueryPortV1<P> {
+    /// Extracts the owned session only when no caller replay or delivery poll
+    /// remains locally outstanding. Server-side retained request results are
+    /// retired by the caller's subsequent `LeaveSession` command.
+    pub fn try_into_session(self) -> Result<SemanticSessionQueryExtractionV1<P>, Box<Self>> {
+        if self.pending_request.is_some()
+            || !self.collecting.is_empty()
+            || self.session.pending_mutation().is_some()
+        {
+            return Err(Box::new(self));
+        }
+        Ok(SemanticSessionQueryExtractionV1 {
+            session: self.session,
+            next_exchange: self.next_exchange,
+            next_operation: self.next_operation,
+        })
+    }
+
     fn binding(
         &self,
     ) -> Result<

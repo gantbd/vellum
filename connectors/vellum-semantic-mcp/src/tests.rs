@@ -304,16 +304,67 @@ fn discovery_and_resource_catalog_match_the_canonical_golden_values() {
         "jsonrpc":"2.0","id":2,"method":"resources/list","params":{"_meta":meta()}
     }))
     .unwrap();
-    let expected = json!({"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","resources":[{
-        "uri":CAPABILITIES_RESOURCE,
-        "name":"Vellum semantic capabilities",
-        "description":"Content-safe readiness and capability lattice projection.",
-        "mimeType":"application/json"
-    }],"ttlMs":0,"cacheScope":"private","_meta":server_meta()}});
+    let expected = json!({"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","resources":[
+        {
+            "uri":CAPABILITIES_RESOURCE,
+            "name":"Vellum semantic capabilities",
+            "description":"Content-safe readiness and capability lattice projection.",
+            "mimeType":"application/json"
+        },
+        {
+            "uri":DOCUMENTS_RESOURCE,
+            "name":"Vellum semantic documents",
+            "description":"Bounded locator-free native-to-semantic document identity and revision mapping.",
+            "mimeType":"application/json"
+        }
+    ],"ttlMs":0,"cacheScope":"private","_meta":server_meta()}});
     assert_eq!(
         run(server.handle(&resources)).unwrap(),
         serde_json::to_vec(&expected).unwrap()
     );
+}
+
+#[test]
+fn document_resource_exposes_exact_locator_free_query_coordinates() {
+    let port = ModelPort::ready();
+    let limits = SemanticMcpLimitsV1::reference();
+    let document = SemanticMcpDocumentV1::try_new(
+        7,
+        11,
+        SemanticDocumentRefV1::new([0x42; 16]),
+        SemanticSourceRevisionV1::new(13),
+        "rust".to_owned(),
+        limits.semantic,
+    )
+    .unwrap();
+    let mut server = SemanticMcpServerV1::try_new_test_with_documents(
+        SemanticClientV1::new(port),
+        limits,
+        vec![document],
+    )
+    .unwrap();
+    let request = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0","id":1,"method":"resources/read",
+        "params":{"_meta":meta(),"uri":DOCUMENTS_RESOURCE}
+    }))
+    .unwrap();
+    let response = value(&run(server.handle(&request)).unwrap());
+    let text = response
+        .pointer("/result/contents/0/text")
+        .and_then(Value::as_str)
+        .unwrap();
+    let catalog: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(catalog["documents"][0]["native_workspace"], 7);
+    assert_eq!(catalog["documents"][0]["native_document"], 11);
+    assert_eq!(
+        catalog["documents"][0]["document"],
+        "42424242424242424242424242424242"
+    );
+    assert_eq!(catalog["documents"][0]["source_revision"], 13);
+    assert_eq!(catalog["documents"][0]["language"], "rust");
+    assert!(!text.contains("path"));
+    assert!(!text.contains("locator"));
+    assert!(!text.contains("contents"));
 }
 
 #[test]

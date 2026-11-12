@@ -9,10 +9,12 @@ publish.workspace = true
 description = "Local supervised semantic-provider composition for Vellum"
 
 [dependencies]
+getrandom.workspace = true
 processkit = { version = "=3.3.4", features = ["limits"] }
 sha2.workspace = true
 tokio = { version = "1", features = ["io-util", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7"
+vellum-adapter-local-authentication = { version = "=0.1.0", path = "../../adapters/local-authentication" }
 vellum-adapter-semantic-lsp = { version = "=0.1.0", path = "../../adapters/semantic-lsp" }
 vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
 vellum-semantic-client = { version = "=0.1.0", path = "../../client/vellum-semantic-client" }

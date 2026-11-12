@@ -14,7 +14,7 @@ fn meta() -> Value {
 }
 
 #[test]
-fn default_startup_refuses_the_missing_production_composition() {
+fn default_startup_refuses_missing_explicit_remote_composition() {
     let output = Command::new(env!("CARGO_BIN_EXE_vellum-semantic-mcp"))
         .output()
         .unwrap();
@@ -23,7 +23,7 @@ fn default_startup_refuses_the_missing_production_composition() {
     assert!(
         String::from_utf8(output.stderr)
             .unwrap()
-            .contains("no semantic composition selected")
+            .contains("missing semantic socket")
     );
 }
 

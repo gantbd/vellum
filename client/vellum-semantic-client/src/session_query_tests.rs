@@ -208,6 +208,18 @@ fn sealed_query_binding_refuses_wrong_role_unsealed_state_and_exhausted_seed() {
         bind_semantic_session_query_v1(joined_session(SemanticSessionRolesV1::query()), 1),
         Err(SemanticSessionQueryPortBuildRefusalV1::Unsealed)
     ));
+    let failure = match try_bind_semantic_session_query_v1(
+        joined_session(SemanticSessionRolesV1::synchronize()),
+        1,
+    ) {
+        Ok(_) => panic!("synchronize-only session unexpectedly bound for queries"),
+        Err(failure) => failure,
+    };
+    assert_eq!(
+        failure.reason(),
+        SemanticSessionQueryPortBuildRefusalV1::RoleDenied
+    );
+    assert!(failure.into_session().binding().is_some());
 }
 
 #[test]
@@ -331,4 +343,11 @@ fn witness_validated_session_becomes_a_sealed_query_port() {
         delivery.outcome,
         SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Complete(_))
     ));
+    let extracted = match client.into_port().try_into_session() {
+        Ok(extracted) => extracted,
+        Err(_) => panic!("completed query port must extract for explicit leave"),
+    };
+    assert_eq!(extracted.next_exchange, 108);
+    assert_eq!(extracted.next_operation, 103);
+    assert!(extracted.session.binding().is_some());
 }

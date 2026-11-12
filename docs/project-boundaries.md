@@ -19,7 +19,7 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/client/vellum-semantic-session-client` | Transport-neutral phase truth, exact mutation uncertainty, compact synchronization witnesses and witness-backed reply revalidation; exports only content-safe binding facts to trusted composition | Sockets, authentication, grants, broker replay storage, provider selection or automatic retry |
 | `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter plus a bounded private-path Unix client exchange preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Authentication, automatic reconnect/retry, server dispatch, broker/provider ownership, remote TCP or MCP policy |
 | `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
-| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; `vellum-semantic-mcp` owns bounded stdio framing and an explicit unavailable qualification composition | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
+| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; connector binaries may select public SDKs and credential adapters while their libraries retain bounded protocol projections | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
 | `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
 | `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |
@@ -50,6 +50,10 @@ agent/human -> semantic-session client -> semantic frame transport (no socket)
 
 vellum-semantic-local -> process group + bounded stdio transport
         +-------------> vellum-adapter-semantic-lsp (composition supplied)
+
+vellum-semantic-mcp -> vellum-semantic-client -> semantic frame transport
+        +------------> vellum-sdk-client ------> native daemon transport
+        +------------> local-authentication adapter (credential interpretation)
 
 vellum-semantic-apply-service -> vellum-editor -> vellum-session -> vellum-engine
               +--------------> vellum-semantic-service + vellum-host::authority

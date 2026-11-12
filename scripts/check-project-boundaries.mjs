@@ -240,7 +240,12 @@ requireEdges(
 );
 requireEdges(
   'vellum-semantic-mcp',
-  ['vellum-semantic-client', 'vellum-semantic-service'],
+  [
+    'vellum-sdk-client',
+    'vellum-semantic-client',
+    'vellum-semantic-service',
+    'vellum-adapter-local-authentication',
+  ],
   false,
 );
 forbidEdges(
@@ -300,7 +305,12 @@ for (const pkg of packages.values()) {
     if (
       kind !== 'dev' &&
       dependency.name.startsWith('vellum-adapter-') &&
-      !['vellum-daemon', 'vellum-mcp', 'vellum-semantic-local'].includes(pkg.name) &&
+      ![
+        'vellum-daemon',
+        'vellum-mcp',
+        'vellum-semantic-local',
+        'vellum-semantic-mcp',
+      ].includes(pkg.name) &&
       !pkg.name.startsWith('vellum-adapter-')
     ) {
       failures.push(`${pkg.name} has forbidden concrete-adapter dependency on ${dependency.name}`);
@@ -417,5 +427,5 @@ if (failures.length !== 0) {
   process.exit(1);
 }
 process.stdout.write(
-  `Vellum boundaries closed; ${packages.size} crates, 2 zero-authority SDK facades, 2 adapter-selecting composition roots, 3 standalone qualification packages\n`,
+  `Vellum boundaries closed; ${packages.size} crates, 2 zero-authority SDK facades, 4 adapter-selecting composition roots, 3 standalone qualification packages\n`,
 );

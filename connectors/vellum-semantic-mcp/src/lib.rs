@@ -14,7 +14,7 @@
 //! span, or rename-range validation.
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value, json};
@@ -116,6 +116,8 @@ pub const DIAGNOSTICS_TOOL: &str = "vellum.semantic.diagnostics";
 pub const TYPE_AT_POINT_TOOL: &str = "vellum.semantic.type_at_point";
 pub const PLAN_RENAME_TOOL: &str = "vellum.semantic.plan_rename";
 pub const CAPABILITIES_RESOURCE: &str = "vellum-semantic://capabilities";
+pub const DOCUMENTS_RESOURCE: &str = "vellum-semantic://documents";
+pub const MAX_SEMANTIC_MCP_DOCUMENTS_V1: usize = 4_096;
 const MAX_JSON_RPC_ID_BYTES: usize = 128;
 const MAX_IMPLEMENTATION_FIELD_BYTES: usize = 128;
 const MAX_CLIENT_INFO_BYTES: usize = 8 * 1024;
@@ -168,6 +170,61 @@ impl SemanticMcpLimitsV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticMcpBuildRefusalV1 {
     InvalidLimits,
+    InvalidDocuments,
+}
+
+/// Content-free mapping needed to formulate exact semantic queries. Native
+/// ordinals are scoped by the workspace and reveal neither locators nor text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemanticMcpDocumentV1 {
+    native_workspace: u64,
+    native_document: u64,
+    document: SemanticDocumentRefV1,
+    source_revision: SemanticSourceRevisionV1,
+    language: String,
+}
+
+impl SemanticMcpDocumentV1 {
+    pub fn try_new(
+        native_workspace: u64,
+        native_document: u64,
+        document: SemanticDocumentRefV1,
+        source_revision: SemanticSourceRevisionV1,
+        language: String,
+        limits: SemanticLimitsV1,
+    ) -> Option<Self> {
+        (native_workspace > 0
+            && native_document > 0
+            && !language.is_empty()
+            && language.len() <= limits.max_label_bytes)
+            .then_some(Self {
+                native_workspace,
+                native_document,
+                document,
+                source_revision,
+                language,
+            })
+    }
+
+    pub const fn native_workspace(&self) -> u64 {
+        self.native_workspace
+    }
+
+    pub const fn native_document(&self) -> u64 {
+        self.native_document
+    }
+
+    pub const fn document(&self) -> SemanticDocumentRefV1 {
+        self.document
+    }
+
+    pub const fn source_revision(&self) -> SemanticSourceRevisionV1 {
+        self.source_revision
+    }
+
+    pub fn language(&self) -> &str {
+        &self.language
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -198,6 +255,7 @@ struct QueryRecord {
 pub struct SemanticMcpServerV1<P> {
     client: SemanticClientV1<P>,
     limits: SemanticMcpLimitsV1,
+    documents: Vec<SemanticMcpDocumentV1>,
     records: BTreeMap<SemanticRequestRefV1, QueryRecord>,
     usage: SemanticMcpUsageV1,
 }
@@ -207,7 +265,15 @@ impl<P: SovereignValidatedSemanticServicePortV1> SemanticMcpServerV1<P> {
         client: SemanticClientV1<P>,
         limits: SemanticMcpLimitsV1,
     ) -> Result<Self, SemanticMcpBuildRefusalV1> {
-        Self::build(client, limits)
+        Self::build(client, limits, Vec::new())
+    }
+
+    pub fn try_new_with_documents(
+        client: SemanticClientV1<P>,
+        limits: SemanticMcpLimitsV1,
+        documents: Vec<SemanticMcpDocumentV1>,
+    ) -> Result<Self, SemanticMcpBuildRefusalV1> {
+        Self::build(client, limits, documents)
     }
 }
 
@@ -215,13 +281,30 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
     fn build(
         client: SemanticClientV1<P>,
         limits: SemanticMcpLimitsV1,
+        mut documents: Vec<SemanticMcpDocumentV1>,
     ) -> Result<Self, SemanticMcpBuildRefusalV1> {
         if !limits.is_valid() {
             return Err(SemanticMcpBuildRefusalV1::InvalidLimits);
         }
+        documents.sort_by_key(|value| (value.native_workspace, value.native_document));
+        let semantic_documents: BTreeSet<_> =
+            documents.iter().map(|value| value.document).collect();
+        if documents.len() > MAX_SEMANTIC_MCP_DOCUMENTS_V1
+            || semantic_documents.len() != documents.len()
+            || documents.windows(2).any(|pair| {
+                pair[0].native_workspace == pair[1].native_workspace
+                    && pair[0].native_document == pair[1].native_document
+            })
+            || documents
+                .iter()
+                .any(|value| value.language.len() > limits.semantic.max_label_bytes)
+        {
+            return Err(SemanticMcpBuildRefusalV1::InvalidDocuments);
+        }
         Ok(Self {
             client,
             limits,
+            documents,
             records: BTreeMap::new(),
             usage: SemanticMcpUsageV1::default(),
         })
@@ -232,7 +315,16 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
         client: SemanticClientV1<P>,
         limits: SemanticMcpLimitsV1,
     ) -> Result<Self, SemanticMcpBuildRefusalV1> {
-        Self::build(client, limits)
+        Self::build(client, limits, Vec::new())
+    }
+
+    #[cfg(test)]
+    fn try_new_test_with_documents(
+        client: SemanticClientV1<P>,
+        limits: SemanticMcpLimitsV1,
+        documents: Vec<SemanticMcpDocumentV1>,
+    ) -> Result<Self, SemanticMcpBuildRefusalV1> {
+        Self::build(client, limits, documents)
     }
 
     pub const fn usage(&self) -> SemanticMcpUsageV1 {
@@ -510,7 +602,39 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
     }
 
     async fn read_resource(&mut self, id: Value, params: &Map<String, Value>) -> Value {
-        if params.get("uri").and_then(Value::as_str) != Some(CAPABILITIES_RESOURCE) {
+        let Some(uri) = params.get("uri").and_then(Value::as_str) else {
+            return self.protocol_error(id, -32602, "unknown resource");
+        };
+        if uri == DOCUMENTS_RESOURCE {
+            let documents: Vec<_> = self
+                .documents
+                .iter()
+                .map(|document| {
+                    json!({
+                        "native_workspace":document.native_workspace,
+                        "native_document":document.native_document,
+                        "document":hex_ref(document.document.as_bytes()),
+                        "source_revision":document.source_revision.get(),
+                        "language":document.language
+                    })
+                })
+                .collect();
+            return success(
+                id,
+                json!({
+                    "resultType":"complete",
+                    "contents":[{
+                        "uri":DOCUMENTS_RESOURCE,
+                        "mimeType":"application/json",
+                        "text":serde_json::to_string(&json!({"documents":documents}))
+                            .expect("JSON value serializes")
+                    }],
+                    "ttlMs":0,
+                    "cacheScope":"private"
+                }),
+            );
+        }
+        if uri != CAPABILITIES_RESOURCE {
             return self.protocol_error(id, -32602, "unknown resource");
         }
         let observed = self.client.observe_provider().await;
@@ -947,12 +1071,20 @@ fn offset_schema() -> Value {
 }
 
 fn resources_result() -> Value {
-    json!({"resultType":"complete","resources":[{
-        "uri":CAPABILITIES_RESOURCE,
-        "name":"Vellum semantic capabilities",
-        "description":"Content-safe readiness and capability lattice projection.",
-        "mimeType":"application/json"
-    }],"ttlMs":0,"cacheScope":"private"})
+    json!({"resultType":"complete","resources":[
+        {
+            "uri":CAPABILITIES_RESOURCE,
+            "name":"Vellum semantic capabilities",
+            "description":"Content-safe readiness and capability lattice projection.",
+            "mimeType":"application/json"
+        },
+        {
+            "uri":DOCUMENTS_RESOURCE,
+            "name":"Vellum semantic documents",
+            "description":"Bounded locator-free native-to-semantic document identity and revision mapping.",
+            "mimeType":"application/json"
+        }
+    ],"ttlMs":0,"cacheScope":"private"})
 }
 
 fn tool_outcome(outcome: Value, is_error: bool) -> Value {
