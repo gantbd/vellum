@@ -54,8 +54,11 @@ The following gaps are release-blocking for that public surface:
    `RebindSource` checks into raw `Some(true)` values would erase provenance.
 2. The service has no installed destination-policy interpreter. A locator carried by
    an untrusted command cannot authorize its own overwrite. `vellum-host` now owns
-   `SaveAsDestinationPolicyV1`, its exact path/effect request, and non-cloneable
-   request-bound evidence. This is a prerequisite, not an exposed Save As command.
+   an affine `SaveAsAuthorityRequestV1` product over exact Persist, Rebind, source
+   version, and overwrite-existing destination decisions. Its authorized plan accepts
+   the engine capture only after the complete product is validated, and its adapter
+   handoff retains a congruent one-use destination object. This closes the portable
+   authority mechanism, not the retained service lifecycle or an exposed command.
 3. The workspace wrapper retains ordinary saves but does not yet retain source-export
    preparations, reservations, tasks, or the postwrite activation outcome. On any
    error after dispatch it must keep enough state to distinguish a terminal

@@ -13,6 +13,7 @@ pub mod authority;
 pub mod export_copy;
 pub mod request_journal;
 pub mod resource;
+pub mod save_as;
 pub mod semantic;
 pub mod unicode;
 pub mod workspace;
