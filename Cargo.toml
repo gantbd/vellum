@@ -26,6 +26,7 @@ members = [
     "adapters/annotation-json",
     "adapters/unicode-icu",
     "adapters/semantic-lsp",
+    "adapters/semantic-helper-xpc-macos",
     "adapters/clipboard-macos",
     "connectors/vellum-mcp",
     "connectors/vellum-semantic-mcp",

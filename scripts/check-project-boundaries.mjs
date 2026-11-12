@@ -41,6 +41,7 @@ const locations = new Map([
   ['vellum-adapter-annotation-json', '/adapters/'],
   ['vellum-adapter-unicode-icu', '/adapters/'],
   ['vellum-adapter-semantic-lsp', '/adapters/'],
+  ['vellum-adapter-semantic-helper-xpc-macos', '/adapters/'],
   ['vellum-adapter-clipboard-macos', '/adapters/'],
   ['vellum-mcp', '/connectors/'],
   ['vellum-semantic-mcp', '/connectors/'],
@@ -259,6 +260,14 @@ requireEdges(
   'vellum-semantic-local',
   ['vellum-adapter-semantic-lsp', 'vellum-host'],
   false,
+);
+requireEdges(
+  'vellum-adapter-semantic-helper-xpc-macos',
+  ['vellum-semantic-helper-protocol', 'vellum-semantic-helper-wire'],
+);
+forbidEdges(
+  'vellum-adapter-semantic-helper-xpc-macos',
+  ['vellum-engine', 'vellum-host', 'vellum-editor', 'vellum-service', 'vellum-semantic-local'],
 );
 forbidEdges(
   'vellum-semantic-local',
