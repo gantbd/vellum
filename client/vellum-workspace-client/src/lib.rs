@@ -9,8 +9,8 @@
 use vellum_client::Client;
 use vellum_protocol::{
     OutcomeV1, RefusalV1, ReplyV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
-    SnapshotV1, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1,
-    WorkspaceInventoryV1,
+    SnapshotV1, VersionWitness, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1,
+    WorkspaceIdV1, WorkspaceInventoryV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,6 +18,14 @@ pub enum ProjectionFreshnessV1 {
     Absent,
     Current,
     Stale,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PersistenceProjectionV1 {
+    Unknown,
+    Clean,
+    Dirty,
+    Indeterminate,
 }
 
 /// Content-safe client-local projection facts. Source bytes remain available
@@ -30,6 +38,7 @@ pub struct WorkspaceProjectionV1 {
     selected: Option<WorkspaceDocumentIdV1>,
     snapshot: Option<SnapshotV1>,
     snapshot_freshness: ProjectionFreshnessV1,
+    persistence: PersistenceProjectionV1,
     change_cursor: Option<vellum_protocol::WorkspaceChangeCursorV1>,
 }
 
@@ -42,6 +51,7 @@ impl Default for WorkspaceProjectionV1 {
             selected: None,
             snapshot: None,
             snapshot_freshness: ProjectionFreshnessV1::Absent,
+            persistence: PersistenceProjectionV1::Unknown,
             change_cursor: None,
         }
     }
@@ -63,6 +73,7 @@ impl std::fmt::Debug for WorkspaceProjectionV1 {
             .field("selected", &self.selected)
             .field("snapshot", &self.snapshot.as_ref().map(|_| "<redacted>"))
             .field("snapshot_freshness", &self.snapshot_freshness)
+            .field("persistence", &self.persistence)
             .field("change_cursor", &self.change_cursor)
             .finish()
     }
@@ -91,6 +102,10 @@ impl WorkspaceProjectionV1 {
 
     pub const fn snapshot_freshness(&self) -> ProjectionFreshnessV1 {
         self.snapshot_freshness
+    }
+
+    pub const fn persistence(&self) -> PersistenceProjectionV1 {
+        self.persistence
     }
 }
 
@@ -182,8 +197,14 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
 
     pub fn open_view(&mut self) -> Result<(), WorkspaceClientErrorV1> {
         match self.client.open_view()? {
-            ReplyV1::Accepted(OutcomeV1::ViewOpened(_)) => {
+            ReplyV1::Accepted(OutcomeV1::ViewOpened(receipt)) => {
                 self.projection.view_open = true;
+                if self.projection.selected != Some(receipt.document) {
+                    self.projection.selected = Some(receipt.document);
+                    self.projection.snapshot = None;
+                    self.projection.snapshot_freshness = ProjectionFreshnessV1::Absent;
+                    self.projection.persistence = PersistenceProjectionV1::Unknown;
+                }
                 Ok(())
             }
             ReplyV1::Refused(reason) => Err(WorkspaceClientErrorV1::Refused(reason)),
@@ -206,6 +227,14 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
         }
     }
 
+    pub fn admit_file(&mut self, locator: String) -> Result<(), WorkspaceClientErrorV1> {
+        self.admit(locator, false)
+    }
+
+    pub fn admit_directory(&mut self, locator: String) -> Result<(), WorkspaceClientErrorV1> {
+        self.admit(locator, true)
+    }
+
     pub fn select_document(
         &mut self,
         document: WorkspaceDocumentIdV1,
@@ -225,6 +254,7 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
                 self.projection.selected = Some(document);
                 self.projection.snapshot = None;
                 self.projection.snapshot_freshness = ProjectionFreshnessV1::Absent;
+                self.projection.persistence = PersistenceProjectionV1::Unknown;
                 Ok(())
             }
             ReplyV1::Refused(reason) => Err(WorkspaceClientErrorV1::Refused(reason)),
@@ -244,12 +274,76 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
             ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)) => {
                 self.projection.snapshot = Some(snapshot);
                 self.projection.snapshot_freshness = ProjectionFreshnessV1::Current;
+                self.projection.persistence = PersistenceProjectionV1::Unknown;
                 Ok(())
             }
             ReplyV1::Refused(reason) => Err(WorkspaceClientErrorV1::Refused(reason)),
             ReplyV1::Accepted(_) => Err(WorkspaceClientErrorV1::Projection(
                 WorkspaceProjectionRefusalV1::UnexpectedReply,
             )),
+        }
+    }
+
+    pub fn replace(
+        &mut self,
+        start: u64,
+        end: u64,
+        inserted: String,
+    ) -> Result<(), WorkspaceClientErrorV1> {
+        let witness = self.current_witness()?;
+        match self.client.replace(witness, start, end, inserted) {
+            Ok(ReplyV1::Accepted(OutcomeV1::Replaced(snapshot))) => {
+                self.projection.snapshot = Some(snapshot);
+                self.projection.snapshot_freshness = ProjectionFreshnessV1::Current;
+                self.projection.persistence = PersistenceProjectionV1::Dirty;
+                Ok(())
+            }
+            Ok(ReplyV1::Refused(reason)) => {
+                if reason == RefusalV1::Stale {
+                    self.mark_snapshot_stale();
+                }
+                Err(WorkspaceClientErrorV1::Refused(reason))
+            }
+            Ok(ReplyV1::Accepted(_)) => Err(WorkspaceClientErrorV1::Projection(
+                WorkspaceProjectionRefusalV1::UnexpectedReply,
+            )),
+            Err(error) => {
+                if error == ServiceAccessErrorV1::OutcomeUnknown {
+                    self.mark_snapshot_indeterminate();
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    pub fn save(&mut self) -> Result<(), WorkspaceClientErrorV1> {
+        let witness = self.current_witness()?;
+        match self.client.save(witness) {
+            Ok(ReplyV1::Accepted(OutcomeV1::Saved(receipt))) => {
+                self.projection.persistence = if receipt.baseline_published {
+                    PersistenceProjectionV1::Clean
+                } else if receipt.outcome_unknown {
+                    PersistenceProjectionV1::Indeterminate
+                } else {
+                    PersistenceProjectionV1::Dirty
+                };
+                Ok(())
+            }
+            Ok(ReplyV1::Refused(reason)) => {
+                if reason == RefusalV1::Stale {
+                    self.mark_snapshot_stale();
+                }
+                Err(WorkspaceClientErrorV1::Refused(reason))
+            }
+            Ok(ReplyV1::Accepted(_)) => Err(WorkspaceClientErrorV1::Projection(
+                WorkspaceProjectionRefusalV1::UnexpectedReply,
+            )),
+            Err(error) => {
+                if error == ServiceAccessErrorV1::OutcomeUnknown {
+                    self.mark_snapshot_indeterminate();
+                }
+                Err(error.into())
+            }
         }
     }
 
@@ -274,6 +368,7 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
                 if self.projection.snapshot.is_some() {
                     self.projection.snapshot_freshness = ProjectionFreshnessV1::Stale;
                 }
+                self.projection.persistence = PersistenceProjectionV1::Unknown;
                 Ok(WorkspaceChangePollV1::Gap {
                     requested_after: gap.requested_after,
                     observed_head: gap.observed_head,
@@ -321,6 +416,7 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
             self.projection.selected = None;
             self.projection.snapshot = None;
             self.projection.snapshot_freshness = ProjectionFreshnessV1::Absent;
+            self.projection.persistence = PersistenceProjectionV1::Unknown;
             self.projection.change_cursor = None;
         } else if self
             .projection
@@ -330,6 +426,7 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
             self.projection.selected = None;
             self.projection.snapshot = None;
             self.projection.snapshot_freshness = ProjectionFreshnessV1::Absent;
+            self.projection.persistence = PersistenceProjectionV1::Unknown;
         }
         self.projection.inventory = Some(inventory);
         self.projection.inventory_freshness = ProjectionFreshnessV1::Current;
@@ -337,10 +434,20 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
 
     fn apply_change(&mut self, change: WorkspaceChangeKindV1) {
         match change {
-            WorkspaceChangeKindV1::DocumentChanged { document, .. } => {
-                if self.projection.selected == Some(document) && self.projection.snapshot.is_some()
+            WorkspaceChangeKindV1::DocumentChanged {
+                document,
+                source_revision,
+            } => {
+                if self.projection.selected == Some(document)
+                    && self.projection.snapshot.is_some()
+                    && self
+                        .projection
+                        .snapshot
+                        .as_ref()
+                        .is_none_or(|snapshot| snapshot.revision != source_revision)
                 {
                     self.projection.snapshot_freshness = ProjectionFreshnessV1::Stale;
+                    self.projection.persistence = PersistenceProjectionV1::Unknown;
                 }
             }
             WorkspaceChangeKindV1::DocumentRemoved(document) => {
@@ -349,6 +456,7 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
                     self.projection.selected = None;
                     self.projection.snapshot = None;
                     self.projection.snapshot_freshness = ProjectionFreshnessV1::Absent;
+                    self.projection.persistence = PersistenceProjectionV1::Unknown;
                 }
             }
             WorkspaceChangeKindV1::DocumentAdded(_)
@@ -358,6 +466,67 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
             }
         }
     }
+
+    fn admit(&mut self, locator: String, directory: bool) -> Result<(), WorkspaceClientErrorV1> {
+        let reply = if directory {
+            self.client.add_directory(locator)
+        } else {
+            self.client.add_file(locator)
+        };
+        match reply {
+            Ok(ReplyV1::Accepted(
+                OutcomeV1::FileAdded(inventory) | OutcomeV1::DirectoryAdded(inventory),
+            )) => {
+                self.install_inventory(inventory);
+                Ok(())
+            }
+            Ok(ReplyV1::Accepted(OutcomeV1::FileAdmitted(_) | OutcomeV1::DirectoryAdmitted(_))) => {
+                self.projection.inventory_freshness = ProjectionFreshnessV1::Stale;
+                Ok(())
+            }
+            Ok(ReplyV1::Refused(reason)) => Err(WorkspaceClientErrorV1::Refused(reason)),
+            Ok(ReplyV1::Accepted(_)) => Err(WorkspaceClientErrorV1::Projection(
+                WorkspaceProjectionRefusalV1::UnexpectedReply,
+            )),
+            Err(error) => {
+                if error == ServiceAccessErrorV1::OutcomeUnknown {
+                    self.projection.inventory_freshness = ProjectionFreshnessV1::Stale;
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    fn current_witness(&self) -> Result<VersionWitness, WorkspaceClientErrorV1> {
+        match (
+            self.projection.snapshot.as_ref(),
+            self.projection.snapshot_freshness,
+        ) {
+            (Some(snapshot), ProjectionFreshnessV1::Current) => Ok(snapshot.witness),
+            (Some(snapshot), _)
+                if self.projection.persistence == PersistenceProjectionV1::Indeterminate =>
+            {
+                Ok(snapshot.witness)
+            }
+            _ => Err(WorkspaceClientErrorV1::Projection(
+                WorkspaceProjectionRefusalV1::SelectionRequired,
+            )),
+        }
+    }
+
+    fn mark_snapshot_stale(&mut self) {
+        if self.projection.snapshot.is_some() {
+            self.projection.snapshot_freshness = ProjectionFreshnessV1::Stale;
+        }
+        self.projection.persistence = PersistenceProjectionV1::Unknown;
+    }
+
+    fn mark_snapshot_indeterminate(&mut self) {
+        if self.projection.snapshot.is_some() {
+            self.projection.snapshot_freshness = ProjectionFreshnessV1::Stale;
+        }
+        self.projection.persistence = PersistenceProjectionV1::Indeterminate;
+    }
 }
 
 #[cfg(test)]
@@ -365,8 +534,8 @@ mod tests {
     use super::*;
     use std::{collections::VecDeque, sync::Arc};
     use vellum_protocol::{
-        ClientId, RequestV1, VersionWitness, WorkspaceChangeCursorV1, WorkspaceChangePageV1,
-        WorkspaceChangeV1,
+        ClientId, RequestV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
+        VersionWitness, WorkspaceChangeCursorV1, WorkspaceChangePageV1, WorkspaceChangeV1,
     };
 
     #[derive(Debug)]
@@ -458,6 +627,112 @@ mod tests {
     }
 
     #[test]
+    fn opening_a_view_projects_the_service_selected_document() {
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::ViewOpened(
+                vellum_protocol::ViewOpenReceiptV1 {
+                    document: document(),
+                    status: vellum_protocol::ViewOpenStatusV1::Opened,
+                },
+            ))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.open_view().unwrap();
+        assert!(controller.projection().view_open());
+        assert_eq!(controller.projection().selected(), Some(document()));
+        assert_eq!(controller.projection().snapshot(), None);
+    }
+
+    #[test]
+    fn witnessed_replace_and_save_project_dirty_then_clean() {
+        let initial = SnapshotV1 {
+            witness: VersionWitness::new(3).unwrap(),
+            revision: 4,
+            text: Arc::from("source"),
+        };
+        let successor = SnapshotV1 {
+            witness: VersionWitness::new(5).unwrap(),
+            revision: 5,
+            text: Arc::from("sXurce"),
+        };
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(initial))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Replaced(successor.clone()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Saved(SaveReceiptV1 {
+                application: SaveApplicationV1::Written,
+                synchronization: SaveSynchronizationV1::Succeeded,
+                no_future_effects: true,
+                quiescent: true,
+                adapter_failure: false,
+                cleanup_failed: false,
+                baseline_published: true,
+                outcome_unknown: false,
+            }))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.select_document(document()).unwrap();
+        controller.refresh_snapshot().unwrap();
+        controller.replace(1, 1, "X".into()).unwrap();
+        assert_eq!(controller.projection().snapshot(), Some(&successor));
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Dirty
+        );
+        controller.save().unwrap();
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Clean
+        );
+    }
+
+    #[test]
+    fn uncertain_replace_is_stale_but_exactly_resumable() {
+        let initial = SnapshotV1 {
+            witness: VersionWitness::new(3).unwrap(),
+            revision: 4,
+            text: Arc::from("source"),
+        };
+        let successor = SnapshotV1 {
+            witness: VersionWitness::new(5).unwrap(),
+            revision: 5,
+            text: Arc::from("sXurce"),
+        };
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(initial))),
+            Err(ServiceAccessErrorV1::OutcomeUnknown),
+            Ok(ReplyV1::Accepted(OutcomeV1::Replaced(successor.clone()))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.select_document(document()).unwrap();
+        controller.refresh_snapshot().unwrap();
+        assert_eq!(
+            controller.replace(1, 1, "X".into()),
+            Err(WorkspaceClientErrorV1::Access(
+                ServiceAccessErrorV1::OutcomeUnknown
+            ))
+        );
+        assert_eq!(
+            controller.projection().snapshot_freshness(),
+            ProjectionFreshnessV1::Stale
+        );
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Indeterminate
+        );
+        controller.replace(1, 1, "X".into()).unwrap();
+        assert_eq!(controller.projection().snapshot(), Some(&successor));
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Dirty
+        );
+    }
+
+    #[test]
     fn selected_document_change_marks_only_the_snapshot_stale() {
         let snapshot = SnapshotV1 {
             witness: VersionWitness::new(3).unwrap(),
@@ -503,6 +778,44 @@ mod tests {
         assert_eq!(
             controller.projection().snapshot_freshness(),
             ProjectionFreshnessV1::Stale
+        );
+    }
+
+    #[test]
+    fn already_projected_change_feed_revision_does_not_stale_own_edit() {
+        let snapshot = SnapshotV1 {
+            witness: VersionWitness::new(3).unwrap(),
+            revision: 5,
+            text: Arc::from("source"),
+        };
+        let change = WorkspaceChangeV1::new(
+            1,
+            WorkspaceChangeKindV1::DocumentChanged {
+                document: document(),
+                source_revision: 5,
+            },
+        )
+        .unwrap();
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+            Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(
+                WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+                    workspace: workspace(),
+                    observed_head: 1,
+                    changes: vec![change],
+                    next: WorkspaceChangeCursorV1::new(workspace(), 2, 1).unwrap(),
+                }),
+            ))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.select_document(document()).unwrap();
+        controller.refresh_snapshot().unwrap();
+        controller.poll_changes().unwrap();
+        assert_eq!(
+            controller.projection().snapshot_freshness(),
+            ProjectionFreshnessV1::Current
         );
     }
 
