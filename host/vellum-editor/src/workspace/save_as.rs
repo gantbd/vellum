@@ -10,8 +10,10 @@ use vellum_engine::{
 use vellum_host::{
     authority::{AuthorityRequestV1, SaveAsDestinationRequestV1},
     save_as::{
-        AuthorizedSaveAsV1, SaveAsAttachmentRefusalV1, SaveAsAuthorityPortV1, SaveAsEvidenceV1,
-        SaveAsPersistenceV1,
+        AuthorizedSaveAsV1, SaveAsAttachmentRefusalV1, SaveAsAuthorityPortV1,
+        SaveAsBindingUnknownReasonV1, SaveAsEvidenceV1, SaveAsFenceReasonV1, SaveAsFenceSetV1,
+        SaveAsLifecycleV1, SaveAsNotActivatedReasonV1, SaveAsNotDurableReasonV1,
+        SaveAsPersistenceV1, SaveAsPhysicalUnknownReasonV1, SaveAsReceiptV1,
     },
 };
 use vellum_session::host::{
@@ -92,6 +94,7 @@ pub(super) struct RetainedWorkspaceSaveAs {
     destination: PathBuf,
     binding_destination: Option<PathBuf>,
     operation: RetainedSourceSaveAsV1<WorkspaceSaveAsTokens>,
+    evidence: Option<SaveAsEvidenceV1>,
     binding_committed: bool,
 }
 
@@ -410,6 +413,7 @@ impl Workspace {
             destination,
             binding_destination: Some(binding_destination),
             operation,
+            evidence: None,
             binding_committed: false,
         };
         if slot == self.save_as_transactions.len() {
@@ -452,14 +456,13 @@ impl Workspace {
         let transaction = transactions[index]
             .as_mut()
             .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?;
-        transaction
-            .operation
-            .service(&mut ServicePort {
-                host,
-                expected_destination: &transaction.destination,
-                facts,
-            })
-            .map_err(map_port)
+        let result = transaction.operation.service(&mut ServicePort {
+            host,
+            expected_destination: &transaction.destination,
+            facts,
+        });
+        transaction.retain_receipt_evidence();
+        result.map_err(map_port)
     }
 
     pub fn reconcile_document_save_as_write(
@@ -472,14 +475,13 @@ impl Workspace {
         let transaction = transactions[index]
             .as_mut()
             .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?;
-        transaction
-            .operation
-            .reconcile_write(&mut ServicePort {
-                host,
-                expected_destination: &transaction.destination,
-                facts,
-            })
-            .map_err(map_port)
+        let result = transaction.operation.reconcile_write(&mut ServicePort {
+            host,
+            expected_destination: &transaction.destination,
+            facts,
+        });
+        transaction.retain_receipt_evidence();
+        result.map_err(map_port)
     }
 
     pub fn activate_document_save_as(
@@ -570,6 +572,68 @@ impl Workspace {
         })
     }
 
+    /// Projects only retained native evidence. Before the one-use authority
+    /// carrier has entered the native attempt there is no receipt to return.
+    /// A non-complete operation is explicitly fenced by its retained task;
+    /// this method never treats an in-flight state as terminal replayability.
+    pub fn document_save_as_receipt(
+        &self,
+        id: &WorkspaceSaveAsIdV1,
+    ) -> Result<Option<SaveAsReceiptV1>, WorkspaceSaveAsErrorV1> {
+        let index = self.save_as_index(id)?;
+        let transaction = self.save_as_transactions[index]
+            .as_ref()
+            .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?;
+        Ok(transaction.receipt())
+    }
+
+    /// Content-free bounded usage and outcome gauges for the retained
+    /// workspace Save As product. These are current-state gauges, not request
+    /// rates, latency samples, physical byte counts, or durable audit records.
+    pub fn save_as_usage(&self) -> WorkspaceSaveAsUsageV1 {
+        let mut usage = WorkspaceSaveAsUsageV1 {
+            capacity: self.max_save_as_transactions,
+            issued_lifetime: self.next_save_as_transaction.saturating_sub(1),
+            ..WorkspaceSaveAsUsageV1::default()
+        };
+        for transaction in self.save_as_transactions.iter().flatten() {
+            usage.retained += 1;
+            let stage = transaction.operation.stage();
+            if stage != RetainedSourceSaveAsStageV1::Complete {
+                usage.live += 1;
+            }
+            if matches!(
+                stage,
+                RetainedSourceSaveAsStageV1::AdmissionFenced
+                    | RetainedSourceSaveAsStageV1::WriteFenced
+                    | RetainedSourceSaveAsStageV1::ActivationFenced
+                    | RetainedSourceSaveAsStageV1::ReleaseFenced
+                    | RetainedSourceSaveAsStageV1::RetirementFenced
+            ) {
+                usage.fenced += 1;
+            }
+            match transaction.operation.persistence() {
+                SaveAsPersistenceV1::Durable => usage.durable += 1,
+                SaveAsPersistenceV1::NotDurable => usage.not_durable += 1,
+                SaveAsPersistenceV1::Unknown => usage.physical_unknown += 1,
+                SaveAsPersistenceV1::NotAttempted => usage.not_attempted += 1,
+            }
+            match transaction.operation.binding() {
+                vellum_host::save_as::SaveAsBindingV1::Activated => usage.activated += 1,
+                vellum_host::save_as::SaveAsBindingV1::NotActivated => {
+                    usage.not_activated += 1;
+                }
+                vellum_host::save_as::SaveAsBindingV1::Unknown => {
+                    usage.binding_unknown += 1;
+                }
+            }
+            if stage == RetainedSourceSaveAsStageV1::Complete {
+                usage.complete += 1;
+            }
+        }
+        usage
+    }
+
     pub(super) fn document_has_live_save_as(&self, document: &WorkspaceDocumentId) -> bool {
         self.save_as_transactions
             .iter()
@@ -651,6 +715,108 @@ impl Workspace {
         entry.document = activation.document;
         transaction.binding_committed = true;
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WorkspaceSaveAsUsageV1 {
+    pub capacity: usize,
+    pub issued_lifetime: u64,
+    pub retained: usize,
+    pub live: usize,
+    pub fenced: usize,
+    pub durable: usize,
+    pub not_durable: usize,
+    pub physical_unknown: usize,
+    pub not_attempted: usize,
+    pub activated: usize,
+    pub not_activated: usize,
+    pub binding_unknown: usize,
+    pub complete: usize,
+}
+
+impl RetainedWorkspaceSaveAs {
+    fn retain_receipt_evidence(&mut self) {
+        if self.evidence.is_none() {
+            self.evidence = self
+                .operation
+                .attempt()
+                .and_then(|attempt| attempt.evidence.clone());
+        }
+    }
+
+    fn receipt(&self) -> Option<SaveAsReceiptV1> {
+        let evidence = self.evidence.clone()?;
+        let stage = self.operation.stage();
+        let lifecycle = lifecycle_for_stage(stage);
+        match self.operation.persistence() {
+            SaveAsPersistenceV1::Durable => match self.operation.binding() {
+                vellum_host::save_as::SaveAsBindingV1::Activated => {
+                    Some(SaveAsReceiptV1::durable_activated(evidence, lifecycle))
+                }
+                vellum_host::save_as::SaveAsBindingV1::NotActivated => {
+                    let reason = if stage == RetainedSourceSaveAsStageV1::Written {
+                        SaveAsNotActivatedReasonV1::NotAttempted
+                    } else {
+                        SaveAsNotActivatedReasonV1::ObservedNotApplied
+                    };
+                    Some(SaveAsReceiptV1::durable_not_activated(
+                        evidence, reason, lifecycle,
+                    ))
+                }
+                vellum_host::save_as::SaveAsBindingV1::Unknown => {
+                    Some(SaveAsReceiptV1::durable_binding_unknown(
+                        evidence,
+                        SaveAsBindingUnknownReasonV1::TaskStateUnavailable,
+                        fence_for_stage(stage),
+                    ))
+                }
+            },
+            SaveAsPersistenceV1::NotDurable => Some(SaveAsReceiptV1::not_durable(
+                evidence,
+                SaveAsNotDurableReasonV1::Conflict,
+                lifecycle,
+            )),
+            SaveAsPersistenceV1::Unknown => Some(SaveAsReceiptV1::physical_unknown(
+                evidence,
+                SaveAsPhysicalUnknownReasonV1::EvidenceIncomplete,
+                fence_for_stage(stage),
+            )),
+            SaveAsPersistenceV1::NotAttempted => None,
+        }
+    }
+}
+
+fn lifecycle_for_stage(stage: RetainedSourceSaveAsStageV1) -> SaveAsLifecycleV1 {
+    if stage == RetainedSourceSaveAsStageV1::Complete {
+        SaveAsLifecycleV1::TerminalReplayable
+    } else {
+        SaveAsLifecycleV1::Fenced(fence_for_stage(stage))
+    }
+}
+
+fn fence_for_stage(stage: RetainedSourceSaveAsStageV1) -> SaveAsFenceSetV1 {
+    let retained = SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::RetainedTask);
+    match stage {
+        RetainedSourceSaveAsStageV1::WriteFenced => retained.join(SaveAsFenceSetV1::singleton(
+            SaveAsFenceReasonV1::PhysicalUncertainty,
+        )),
+        RetainedSourceSaveAsStageV1::ActivationFenced => retained.join(
+            SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::BindingUncertainty),
+        ),
+        RetainedSourceSaveAsStageV1::ReleaseFenced
+        | RetainedSourceSaveAsStageV1::RetirementFenced => retained.join(
+            SaveAsFenceSetV1::singleton(SaveAsFenceReasonV1::ReleaseUncertainty),
+        ),
+        RetainedSourceSaveAsStageV1::Ready
+        | RetainedSourceSaveAsStageV1::Prepared
+        | RetainedSourceSaveAsStageV1::AdmissionFenced
+        | RetainedSourceSaveAsStageV1::Queued
+        | RetainedSourceSaveAsStageV1::Written
+        | RetainedSourceSaveAsStageV1::Activated
+        | RetainedSourceSaveAsStageV1::CompletionPending
+        | RetainedSourceSaveAsStageV1::Released
+        | RetainedSourceSaveAsStageV1::Complete => retained,
     }
 }
 

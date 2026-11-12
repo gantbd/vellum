@@ -79,9 +79,16 @@ The following gaps are release-blocking for that public surface:
    NotAttempted` physical and `Activated | NotActivated | Unknown` binding
    projections. Invalid products are unrepresentable, every unknown installs an
    explicit fence, and only `Durable + Activated` permits a stable binding change.
-   The retained session/workspace coordinator retains recovery obligations across
-   activation errors, but must still construct this receipt from actual native
-   outcomes before service or protocol projection.
+   The workspace now retains the locator-free authority evidence across native task
+   retirement and constructs this receipt from the retained operation's actual
+   physical, binding, and lifecycle state. In-flight work always carries a retained
+   task fence; write or activation uncertainty adds its corresponding fence; only
+   release plus retirement produces `TerminalReplayable`. A changed destination is
+   covered by a target-neutral test that observes the original task without retrying
+   the write or changing the binding. Content-free workspace gauges expose bounded
+   capacity, issued/retained/live/fenced tasks, physical and binding classes, and
+   completion. Service-level RED counters and stage latency remain required before
+   protocol projection.
 5. The durable request journal must encode the eventual command and receipt before
    wire publication. A crash after the external write but before a completed journal
    record must replay/fence as unknown; it must never repeat the overwrite under a

@@ -518,11 +518,14 @@ pub enum SaveAsNotDurableReasonV1 {
 pub enum SaveAsPhysicalUnknownReasonV1 {
     Io,
     Cleanup,
+    EvidenceIncomplete,
     TaskStateUnavailable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SaveAsNotActivatedReasonV1 {
+    NotAttempted,
+    ObservedNotApplied,
     Refused,
     Unavailable,
     DestinationChanged,

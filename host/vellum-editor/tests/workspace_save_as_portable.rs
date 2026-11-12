@@ -7,7 +7,8 @@ use std::{
 use vellum_editor::{Workspace, reference_workspace_profile};
 use vellum_engine::{
     coordinator::{
-        TrustedSourceExportControlV1, TrustedSourceExportFactsV1, TrustedSourceSaveAsFactsV1,
+        DocumentVersion, TrustedSourceExportControlV1, TrustedSourceExportFactsV1,
+        TrustedSourceSaveAsFactsV1,
     },
     instrumentation::Recorder,
     resource::{
@@ -27,7 +28,10 @@ use vellum_host::{
         AdapterFailure, AnnotationReadCompletion as HostAnnotationReadCompletion,
         ErasedPathResourceAdapterFactory, ResourceAdapter, ResourceAdapterFactory, WriteCompletion,
     },
-    save_as::{FixedSaveAsAuthorityV1, SaveAsAuthorityRequestV1},
+    save_as::{
+        FixedSaveAsAuthorityV1, SaveAsAuthorityRequestV1, SaveAsFailureV1, SaveAsFenceReasonV1,
+        SaveAsLifecycleV1, SaveAsNotActivatedReasonV1, SaveAsPhysicalUnknownReasonV1,
+    },
 };
 
 type Resources = Arc<Mutex<BTreeMap<PathBuf, (Vec<u8>, u64)>>>;
@@ -249,26 +253,15 @@ fn activation_facts() -> TrustedSourceSaveAsFactsV1 {
     }
 }
 
-#[test]
-fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_binding() {
-    let base = std::env::temp_dir().join("vellum-portable-memory");
-    let source = base.join("source");
-    let destination = base.join("destination");
-    let resources = Arc::new(Mutex::new(BTreeMap::from([
-        (source.clone(), (b"alpha".to_vec(), 1)),
-        (destination.clone(), (b"old".to_vec(), 1)),
-    ])));
-    let mut profile = reference_workspace_profile(ErasedPathResourceAdapterFactory::new(
-        MemoryFactory(resources.clone()),
-    ));
-    profile.engine.resources.as_mut().unwrap().max_key_bytes = 4096;
-    let mut workspace = Workspace::open(std::slice::from_ref(&source), profile).unwrap();
-    let view = workspace.open_view().unwrap();
-    let before_inventory = workspace.inventory().unwrap();
-    let document = before_inventory.documents[0].clone();
-    let before_generation = workspace.inventory_generation();
-    let source_version = workspace.document_version(&document).unwrap();
-
+fn authority_for(
+    source: &DocumentVersion,
+    destination: PathBuf,
+) -> (
+    AuthorityRequestV1,
+    AuthorityRequestV1,
+    SaveAsDestinationRequestV1,
+    FixedSaveAsAuthorityV1,
+) {
     let context = AuthorityContextV1 {
         subject: AuthoritySubjectRefV1::new([7; 16]),
         session: None,
@@ -290,18 +283,39 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         destination.clone(),
         SaveAsDestinationEffectV1::OverwriteExisting,
     );
-    let authority_request = SaveAsAuthorityRequestV1::new(
-        persist,
-        rebind,
-        source_version.clone(),
-        destination_request.clone(),
-    )
-    .unwrap();
-    let mut authority = FixedSaveAsAuthorityV1::install(
+    let authority_request =
+        SaveAsAuthorityRequestV1::new(persist, rebind, source.clone(), destination_request.clone())
+            .unwrap();
+    let authority = FixedSaveAsAuthorityV1::install(
         authority_request,
-        SaveAsDestinationObjectV1::install(destination_request.clone(), destination.clone()),
+        SaveAsDestinationObjectV1::install(destination_request.clone(), destination),
     )
     .unwrap();
+    (persist, rebind, destination_request, authority)
+}
+
+#[test]
+fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_binding() {
+    let base = std::env::temp_dir().join("vellum-portable-memory");
+    let source = base.join("source");
+    let destination = base.join("destination");
+    let resources = Arc::new(Mutex::new(BTreeMap::from([
+        (source.clone(), (b"alpha".to_vec(), 1)),
+        (destination.clone(), (b"old".to_vec(), 1)),
+    ])));
+    let mut profile = reference_workspace_profile(ErasedPathResourceAdapterFactory::new(
+        MemoryFactory(resources.clone()),
+    ));
+    profile.engine.resources.as_mut().unwrap().max_key_bytes = 4096;
+    let mut workspace = Workspace::open(std::slice::from_ref(&source), profile).unwrap();
+    let view = workspace.open_view().unwrap();
+    let before_inventory = workspace.inventory().unwrap();
+    let document = before_inventory.documents[0].clone();
+    let before_generation = workspace.inventory_generation();
+    let source_version = workspace.document_version(&document).unwrap();
+
+    let (persist, rebind, destination_request, mut authority) =
+        authority_for(&source_version, destination.clone());
 
     let operation = workspace
         .begin_document_save_as(
@@ -326,12 +340,38 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
     workspace
         .service_document_save_as(&operation, &export_facts())
         .unwrap();
+    let written = workspace
+        .document_save_as_receipt(&operation)
+        .unwrap()
+        .unwrap();
+    assert!(!written.changes_stable_binding());
+    assert_eq!(
+        written.failure(),
+        Some(SaveAsFailureV1::NotActivated(
+            SaveAsNotActivatedReasonV1::NotAttempted
+        ))
+    );
+    assert!(matches!(
+        written.lifecycle(),
+        SaveAsLifecycleV1::Fenced(fence)
+            if fence.contains(SaveAsFenceReasonV1::RetainedTask)
+    ));
     workspace
         .activate_document_save_as(&operation, 1, &activation_facts())
         .unwrap();
 
     let status = workspace.document_save_as_status(&operation).unwrap();
     assert!(status.binding_committed);
+    let activated = workspace
+        .document_save_as_receipt(&operation)
+        .unwrap()
+        .unwrap();
+    assert!(activated.changes_stable_binding());
+    assert!(matches!(
+        activated.lifecycle(),
+        SaveAsLifecycleV1::Fenced(fence)
+            if fence.contains(SaveAsFenceReasonV1::RetainedTask)
+    ));
     assert_eq!(workspace.inventory_generation(), before_generation);
     assert_eq!(workspace.inventory().unwrap(), before_inventory);
     assert_eq!(view.active_document_id(), &document);
@@ -371,4 +411,101 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
     workspace
         .retire_document_save_as(&operation, &control_facts())
         .unwrap();
+    let complete = workspace
+        .document_save_as_receipt(&operation)
+        .unwrap()
+        .unwrap();
+    assert!(complete.changes_stable_binding());
+    assert_eq!(complete.lifecycle(), SaveAsLifecycleV1::TerminalReplayable);
+    let usage = workspace.save_as_usage();
+    assert_eq!(usage.issued_lifetime, 1);
+    assert_eq!(usage.retained, 1);
+    assert_eq!(usage.live, 0);
+    assert_eq!(usage.durable, 1);
+    assert_eq!(usage.activated, 1);
+    assert_eq!(usage.complete, 1);
+}
+
+#[test]
+fn changed_destination_fences_the_original_attempt_without_retry_or_binding_change() {
+    let base = std::env::temp_dir().join("vellum-portable-memory-conflict");
+    let source = base.join("source");
+    let destination = base.join("destination");
+    let resources = Arc::new(Mutex::new(BTreeMap::from([
+        (source.clone(), (b"alpha".to_vec(), 1)),
+        (destination.clone(), (b"old".to_vec(), 1)),
+    ])));
+    let mut profile = reference_workspace_profile(ErasedPathResourceAdapterFactory::new(
+        MemoryFactory(resources.clone()),
+    ));
+    profile.engine.resources.as_mut().unwrap().max_key_bytes = 4096;
+    let mut workspace = Workspace::open(std::slice::from_ref(&source), profile).unwrap();
+    let document = workspace.inventory().unwrap().documents[0].clone();
+    let source_version = workspace.document_version(&document).unwrap();
+    let (persist, rebind, destination_request, mut authority) =
+        authority_for(&source_version, destination.clone());
+    let operation = workspace
+        .begin_document_save_as(
+            &document,
+            source_version.revision,
+            &mut authority,
+            persist,
+            rebind,
+            destination_request,
+        )
+        .unwrap();
+    workspace
+        .admit_document_save_as(
+            &operation,
+            SaveRequirements {
+                protection: Protection::BestEffort,
+                acknowledgment: Acknowledgment::Synchronized,
+            },
+            &export_facts(),
+        )
+        .unwrap();
+    resources
+        .lock()
+        .unwrap()
+        .insert(destination.clone(), (b"external".to_vec(), 2));
+
+    assert!(
+        workspace
+            .service_document_save_as(&operation, &export_facts())
+            .is_err()
+    );
+    let receipt = workspace
+        .document_save_as_receipt(&operation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        receipt.failure(),
+        Some(SaveAsFailureV1::PhysicalUnknown(
+            SaveAsPhysicalUnknownReasonV1::EvidenceIncomplete
+        ))
+    );
+    assert!(matches!(
+        receipt.lifecycle(),
+        SaveAsLifecycleV1::Fenced(fence)
+            if fence.contains(SaveAsFenceReasonV1::PhysicalUncertainty)
+                && fence.contains(SaveAsFenceReasonV1::RetainedTask)
+    ));
+    assert!(
+        !workspace
+            .reconcile_document_save_as_write(&operation, &export_facts())
+            .unwrap()
+    );
+    assert_eq!(
+        workspace.binding_inventory().unwrap().documents[0].locator,
+        source
+    );
+    let state = resources.lock().unwrap();
+    assert_eq!(state[&source].0, b"alpha");
+    assert_eq!(state[&destination].0, b"external");
+    drop(state);
+    let usage = workspace.save_as_usage();
+    assert_eq!(usage.live, 1);
+    assert_eq!(usage.fenced, 1);
+    assert_eq!(usage.physical_unknown, 1);
+    assert_eq!(usage.activated, 0);
 }
