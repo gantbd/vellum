@@ -23,6 +23,7 @@ const locations = new Map([
   ['vellum-wire', '/protocol/'],
   ['vellum-semantic-protocol', '/protocol/'],
   ['vellum-semantic-helper-protocol', '/protocol/'],
+  ['vellum-semantic-helper-wire', '/protocol/'],
   ['vellum-semantic-wire', '/protocol/'],
   ['vellum-service', '/service/'],
   ['vellum-semantic-service', '/service/'],
@@ -97,6 +98,14 @@ for (const dependency of dependencies('vellum-semantic-helper-protocol')) {
     failures.push(`semantic helper protocol has forbidden dependency on ${dependency}`);
   }
 }
+requireEdges('vellum-semantic-helper-wire', [
+  'keystone-codec',
+  'vellum-semantic-helper-protocol',
+]);
+forbidEdges(
+  'vellum-semantic-helper-wire',
+  ['vellum-engine', 'vellum-host', 'vellum-editor', 'vellum-service'],
+);
 forbidEdges(
   'vellum-client',
   ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service'],

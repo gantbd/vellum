@@ -1,0 +1,16 @@
+[package]
+name = "vellum-semantic-helper-wire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Canonical bounded wire encoding for Vellum semantic isolation helpers"
+
+[dependencies]
+keystone-codec = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "3486252cdbaeb2d784756076f43ef6157ed0b7f8" }
+vellum-semantic-helper-protocol = { version = "=0.1.0", path = "../vellum-semantic-helper-protocol" }
+
+[lints]
+workspace = true

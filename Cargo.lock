@@ -938,6 +938,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-semantic-helper-wire"
+version = "0.1.0"
+dependencies = [
+ "keystone-codec",
+ "vellum-semantic-helper-protocol",
+]
+
+[[package]]
 name = "vellum-semantic-local"
 version = "0.1.0"
 dependencies = [

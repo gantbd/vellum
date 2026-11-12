@@ -8,6 +8,7 @@ members = [
     "protocol/vellum-wire",
     "protocol/vellum-semantic-protocol",
     "protocol/vellum-semantic-helper-protocol",
+    "protocol/vellum-semantic-helper-wire",
     "protocol/vellum-semantic-wire",
     "service/vellum-service",
     "service/vellum-semantic-service",
