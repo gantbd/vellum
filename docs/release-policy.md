@@ -19,6 +19,10 @@ Status: source distribution only; no crates.io publication is authorized.
   object is not evidence that the commit is retrievable from GitHub.
 - `vellum-tui` and `vellum-gui-macos` are independent presentation
   repositories and are outside this release unit.
+- `vellum-semantic-mcp` is likewise an independently materialized peer. Its
+  exact-Git source shape is qualified in coordinated CI, but it remains outside
+  the first daemon/native-MCP release candidate while semantic-local provider
+  confinement is unclosed.
 - A GitHub tag or source archive is not, by itself, a production-support or
   compatibility promise.
 
@@ -36,6 +40,10 @@ Cargo metadata, dependency/effect-boundary, compatibility-baseline,
 supply-chain/SBOM, formatting, lint, test, and documentation checks. The
 source-policy gate additionally inspects a local copy of the pinned Keystone
 object when one is available.
+Coordinated CI also verifies both MCP extraction closures and materializes the
+semantic MCP peer from one committed Vellum tree, then exercises its locked
+tests, strict lint and exact-revision Git installation through local URL
+rewrites. This proves the distribution shape without creating a remote.
 The supply-chain gate and its explicit nonclaims are documented in
 [`supply-chain.md`](supply-chain.md).
 

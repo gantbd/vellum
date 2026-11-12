@@ -11,7 +11,9 @@ will follow Semantic Versioning once a public release contract is selected.
 - Added the zero-authority semantic client SDK facade and moved the semantic MCP
   peer off direct semantic implementation-crate dependencies. A deterministic
   extraction contract now builds, tests, lints, installs and smokes the copied
-  peer as an independent non-published Git-source package.
+  peer as an independent non-published Git-source package. Coordinated CI now
+  repeats both extraction closures and the exact-revision semantic peer Git
+  installation from committed source.
 - Kept one semantic MCP stdio lifetime alive across definitive global replay
   exhaustion. The connector now retires and closes the old authenticated
   session, reconnects through a fresh quiescent service incarnation, fully
