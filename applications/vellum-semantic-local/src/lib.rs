@@ -15,6 +15,8 @@ mod runtime;
 pub use runtime::*;
 mod ordered;
 pub use ordered::*;
+mod authenticated_dispatch;
+pub use authenticated_dispatch::*;
 
 use std::{
     collections::BTreeMap,

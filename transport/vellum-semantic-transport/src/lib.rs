@@ -1,11 +1,16 @@
 //! Phase-aware, transport-neutral semantic-session exchange adapter.
 //!
-//! This crate owns no socket, authentication, retry, identity allocation,
+//! The portable core owns no socket, authentication, retry, identity allocation,
 //! provider, clock, or server authority. It converts one canonical semantic
 //! command into one bounded frame exchange and admits a reply only after exact
 //! canonical and command-binding validation. Once an exchange is called, an
 //! untrustworthy response is conservatively `OutcomeUnknown`, never `NotSent`.
 #![forbid(unsafe_code)]
+
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+pub use unix::*;
 
 use vellum_semantic_protocol::{
     SemanticExchangeDispositionV1, SemanticSessionCommandV1, SemanticSessionReplyV1,

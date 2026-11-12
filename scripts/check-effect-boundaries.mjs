@@ -33,10 +33,12 @@ const trusted = new Map([
     'applications/vellum-semantic-local/src/lib.rs',
     'qualification/semantic-lsp-provider/src/lib.rs',
     'qualification/semantic-lsp-provider/src/scenario.rs',
+    'transport/vellum-semantic-transport/src/unix.rs',
   ])],
   ['local-network', new Set([
     'applications/vellum-daemon/src/lib.rs',
     'transport/vellum-transport/src/lib.rs',
+    'transport/vellum-semantic-transport/src/unix.rs',
   ])],
   ['process-launch', new Set([
     // Test-only FIFO construction lives in the production module's cfg(test)

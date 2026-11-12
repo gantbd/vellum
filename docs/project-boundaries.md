@@ -17,7 +17,7 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/service/vellum-semantic-session-broker` | Pure authenticated-context reducer, replay/request ledgers and typed affine semantic effects | Provider ownership, polling, sockets, authentication or filesystem effects |
 | `vellum/service/vellum-semantic-session-actor` | Bounded serialized mailbox, private affine-effect interpretation, trusted control completion and volatile drain/stop lifecycle | Sockets, authentication, role policy, provider selection, persistence, clocks or connector behavior |
 | `vellum/client/vellum-semantic-session-client` | Transport-neutral phase truth, exact mutation uncertainty, compact synchronization witnesses and witness-backed reply revalidation; exports only content-safe binding facts to trusted composition | Sockets, authentication, grants, broker replay storage, provider selection or automatic retry |
-| `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Sockets, authentication, reconnect, retry, server dispatch, broker/provider ownership or MCP policy |
+| `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter plus a bounded private-path Unix client exchange preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Authentication, automatic reconnect/retry, server dispatch, broker/provider ownership, remote TCP or MCP policy |
 | `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
 | `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; `vellum-semantic-mcp` owns bounded stdio framing and an explicit unavailable qualification composition | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
 | `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
@@ -179,12 +179,14 @@ Recovery is cleanup ownership, not client/provider retirement evidence. A future
 Synchronize roles from separate closed authority actions and retain one exact
 authenticated session across the persistent channel.
 `vellum-semantic-transport` is the zero-authority byte-frame adapter for that
-future channel. It canonicalizes one command, delegates exactly one exchange,
+channel. It canonicalizes one command, delegates exactly one exchange,
 and admits only a canonical reply bound to the command's kind, exchange,
 operation, incarnation and membership. Local encoding/capacity refusal is
 `NotSent`; every untrustworthy result after delegation is `OutcomeUnknown`.
-The underlying frame port remains responsible for proving that its own
-`NotSent` means no request byte reached the peer.
+Its Unix client frame port checks a private canonical socket path, applies
+connect/write/read deadlines and permanently fences after post-send
+uncertainty. Other injected frame ports remain responsible for proving that
+their own `NotSent` means no request byte reached the peer.
 `vellum-adapter-semantic-lsp` supplies bounded framing, virtual-document
 synchronization, readiness-gated diagnostics and document symbols plus strict
 rename planning over an already-owned byte transport. Its composition-owned

@@ -912,6 +912,9 @@ dependencies = [
  "vellum-semantic-service",
  "vellum-semantic-session-actor",
  "vellum-semantic-session-broker",
+ "vellum-semantic-session-client",
+ "vellum-semantic-transport",
+ "vellum-semantic-wire",
 ]
 
 [[package]]
@@ -962,6 +965,7 @@ name = "vellum-semantic-session-client"
 version = "0.1.0"
 dependencies = [
  "vellum-host",
+ "vellum-sdk-client",
  "vellum-semantic-protocol",
 ]
 
@@ -969,6 +973,8 @@ dependencies = [
 name = "vellum-semantic-transport"
 version = "0.1.0"
 dependencies = [
+ "rustix",
+ "socket2",
  "vellum-semantic-protocol",
  "vellum-semantic-session-client",
  "vellum-semantic-wire",

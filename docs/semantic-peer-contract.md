@@ -330,6 +330,18 @@ membership, canonical decoding or opaque document identity as the seal. The
 session client still implements no wire codec, socket, authentication, broker
 storage or automatic query retry.
 
+`vellum-semantic-transport` supplies the client-side local Unix byte exchange.
+It lazily connects to one canonical private socket path, rechecks the
+effective-user-owned socket and owner-private parent identity around connect,
+applies separate connect/write/read deadlines, and exchanges bounded big-endian
+length-prefixed frames on one persistent stream. Connect and pre-byte write
+failure are `NotSent`; any lost or malformed reply after transmission is
+`OutcomeUnknown` and permanently fences that connection object. A later call
+does not reconnect a possibly live semantic membership. The observations are
+fixed-cardinality logical I/O counters, not authentication, confidentiality,
+peer identity, physical-resource or latency evidence. Path identity remains
+observed-only because pathname connect is not descriptor-anchored.
+
 ## Agent-facing MCP projection
 
 `vellum-semantic-mcp` is a sibling of the native-daemon `vellum-mcp`, not an

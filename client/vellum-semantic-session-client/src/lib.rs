@@ -26,6 +26,9 @@ use vellum_semantic_protocol::{
     SemanticSynchronizationManifestV1, semantic_session_result_reservation_bytes_v1,
 };
 
+mod native_snapshot;
+pub use native_snapshot::*;
+
 pub const MAX_REPLAY_INTENT_BYTES_V1: usize = 8 * 1024 * 1024;
 pub const MAX_WITNESS_BYTES_V1: usize = 32 * 1024 * 1024;
 pub const MAX_RESULT_RESERVATION_V1: u64 = 16 * 1024 * 1024;

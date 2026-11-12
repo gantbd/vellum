@@ -13,5 +13,9 @@ vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-s
 vellum-semantic-session-client = { version = "=0.1.0", path = "../../client/vellum-semantic-session-client" }
 vellum-semantic-wire = { version = "=0.1.0", path = "../../protocol/vellum-semantic-wire" }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "=1.1.4", features = ["process"] }
+socket2 = "=0.6.5"
+
 [lints]
 workspace = true
