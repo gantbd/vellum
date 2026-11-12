@@ -115,8 +115,11 @@ fixture has only local exact-Git dependencies and proves
 the isolation, exact binary closure, adversarial filesystem checks and process
 behavior—not third-party retrieval. Before calling a bundle remotely
 reproducible, also run `--verify-remote`, which requires network access and
-proves that GitHub advertises both the selected Vellum commit and the pinned
-Keystone commit:
+proves that GitHub returns both the selected Vellum commit and the pinned
+Keystone commit through exact shallow fetches. The qualifier always probes both
+repositories before refusing, reports the complete closed set of unavailable
+source owners, and does not relay remote transport diagnostics into its
+content-safe result:
 
 ```sh
 node scripts/qualify-github-source.mjs --vellum-ref=RELEASE_COMMIT --verify-remote

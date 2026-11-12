@@ -185,6 +185,36 @@ try {
     throw new Error('qualifier did not preserve the remote-retrievability nonclaim');
   }
 
+  // Remote qualification must inspect both sovereign source repositories in
+  // one pass. A first failure cannot hide a second blocker or leak transport
+  // diagnostics into the maintained content-safe result.
+  const policyPath = path.join(vellum, 'release/github-source.json');
+  const compatiblePolicy = fs.readFileSync(policyPath, 'utf8');
+  const unavailableVellum = path.join(fixture, 'unavailable-vellum.git');
+  const unavailableKeystone = path.join(fixture, 'unavailable-keystone.git');
+  run('git', ['init', '--bare', '-q', unavailableVellum], fixture);
+  run('git', ['init', '--bare', '-q', unavailableKeystone], fixture);
+  const unavailablePolicy = JSON.parse(compatiblePolicy);
+  unavailablePolicy.vellumRepository = pathToFileURL(unavailableVellum).href;
+  unavailablePolicy.keystone.repository = pathToFileURL(unavailableKeystone).href;
+  fs.writeFileSync(policyPath, `${JSON.stringify(unavailablePolicy, null, 2)}\n`);
+  try {
+    const unavailable = spawnSync(
+      'node', [qualifier, `--vellum-ref=${vellumRevision}`, '--verify-remote'],
+      { cwd: vellum, env: { ...process.env, KEYSTONE_SOURCE: keystone }, encoding: 'utf8' },
+    );
+    const evidence = `${unavailable.stdout ?? ''}\n${unavailable.stderr ?? ''}`;
+    if (
+      unavailable.status === 0
+      || !evidence.includes('GitHub remote did not return pinned commit(s): [vellum, keystone]')
+      || evidence.includes('not our ref')
+    ) {
+      throw new Error('qualifier did not aggregate content-safe remote blockers');
+    }
+  } finally {
+    fs.writeFileSync(policyPath, compatiblePolicy);
+  }
+
   // A manifest at the pin is package-presence evidence, not API closure. Keep
   // both manifests while removing the required public surface and prove the
   // qualifier refuses the resulting pinned revision before any success claim.
@@ -192,8 +222,6 @@ try {
   fs.rmSync(path.join(keystone, 'crates/keystone-observe/src/saturation.rs'));
   write(keystone, 'crates/keystone-observe/src/lib.rs', 'pub const MANIFEST_ONLY: bool = true;\n');
   const manifestOnlyRevision = commit(keystone);
-  const policyPath = path.join(vellum, 'release/github-source.json');
-  const compatiblePolicy = fs.readFileSync(policyPath, 'utf8');
   const manifestOnlyPolicy = JSON.parse(compatiblePolicy);
   manifestOnlyPolicy.keystone.revision = manifestOnlyRevision;
   fs.writeFileSync(policyPath, `${JSON.stringify(manifestOnlyPolicy, null, 2)}\n`);

@@ -158,19 +158,30 @@ requirePinnedKeystoneClosure(
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'vellum-github-source-'));
 try {
   if (verifyRemote) {
+    const unavailable = [];
     for (const [name, repository, revision] of [
       ['vellum', policy.vellumRepository, vellumRevision],
       ['keystone', policy.keystone.repository, policy.keystone.revision],
     ]) {
       const remoteProbe = path.join(temporary, `${name}-remote.git`);
       run('git', ['init', '--bare', remoteProbe]);
-      run('git', [
-        '-C', remoteProbe, 'fetch', '--depth=1', repository, revision,
-      ]);
+      const fetch = spawnSync(
+        'git', ['-C', remoteProbe, 'fetch', '--depth=1', repository, revision],
+        { cwd: root, encoding: 'utf8', env: process.env },
+      );
+      if (fetch.status !== 0) {
+        unavailable.push(name);
+        continue;
+      }
       const fetched = run('git', ['-C', remoteProbe, 'rev-parse', 'FETCH_HEAD']);
       if (fetched !== revision) {
-        throw new Error(`the GitHub remote did not return the pinned ${name} commit`);
+        unavailable.push(name);
       }
+    }
+    if (unavailable.length !== 0) {
+      throw new Error(
+        `GitHub remote did not return pinned commit(s): [${unavailable.join(', ')}]`,
+      );
     }
   }
 

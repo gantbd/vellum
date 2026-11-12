@@ -14,6 +14,10 @@ will follow Semantic Versioning once a public release contract is selected.
   source content, limits, or adapter text. Shipped daemon/MCP qualification now
   preserves terminal status and redacted stderr when readiness fails instead
   of collapsing the failure to an empty readiness line.
+- GitHub source qualification now probes both exact Vellum and Keystone
+  revisions before deciding remote availability. A failed first fetch no
+  longer hides the second source owner; the failure reports one closed list of
+  unavailable repositories without relaying raw Git transport diagnostics.
 - Added a maintained exact clean-source candidate qualifier. It clones the
   selected Vellum and coordinated Keystone commits into private detached
   checkouts, keeps Cargo offline, builds the locked candidate twice, refuses
