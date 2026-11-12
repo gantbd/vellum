@@ -11,6 +11,8 @@ description = "Zero-authority facade for the Vellum semantic service"
 [dependencies]
 vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
 vellum-semantic-service = { version = "=0.1.0", path = "../../service/vellum-semantic-service" }
+vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
+vellum-semantic-session-client = { version = "=0.1.0", path = "../vellum-semantic-session-client" }
 
 [lints]
 workspace = true

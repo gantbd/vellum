@@ -891,7 +891,9 @@ name = "vellum-semantic-client"
 version = "0.1.0"
 dependencies = [
  "vellum-host",
+ "vellum-semantic-protocol",
  "vellum-semantic-service",
+ "vellum-semantic-session-client",
 ]
 
 [[package]]

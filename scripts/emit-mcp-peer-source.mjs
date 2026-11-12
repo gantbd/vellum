@@ -94,6 +94,46 @@ try {
     retainedUpstreamQualification: contract.retainedVellumQualification,
   }, null, 2)}\n`);
   fs.appendFileSync(path.join(staged, 'README.md'), `\n## Source installation\n\nThis peer source is bound to Vellum commit \`${revision}\` and Keystone commit\n\`${keystone.revision}\`. After a reviewed release commit exists here:\n\n\`\`\`sh\ncargo install --locked --git ${contract.targetRepository} --rev RELEASE_COMMIT vellum-mcp\n\`\`\`\n\nBuild and test locally with \`cargo test --locked\`. Coordinated live-daemon\nqualification remains in Vellum; this peer owns only the MCP projection.\n`);
+  fs.appendFileSync(path.join(staged, 'README.md'), `\n## Distribution boundary\n\nThe supported distribution is source installation from a reviewed, exact Git\ncommit with the committed lockfile. There is no crates.io package, release\narchive, container image, or floating-branch install contract. Changes to the\nVellum or Keystone revisions must update \`Cargo.toml\`, \`Cargo.lock\`, and\n\`release/source.json\` together and pass the source-contract test.\n`);
+  fs.appendFileSync(path.join(staged, 'SECURITY.md'), `\n## Source dependency integrity\n\nGitHub source distribution is supported only by exact commit. Review changes to\nthe Vellum and transitive Keystone revisions as security-sensitive changes; the\nmanifest, lockfile, and \`release/source.json\` receipt must agree. CI has\nread-only repository permission and does not publish artifacts, crates, releases,\nor attestations. Report a mismatched or unreachable revision as a supply-chain\nissue.\n`);
+  fs.writeFileSync(path.join(staged, 'CONTRIBUTING.md'), `# Contributing\n\nUse Rust 1.95 and keep changes within the bounded MCP projection. Run:\n\n\`\`\`sh\ncargo fmt --check\ncargo test --locked --all-targets\ncargo clippy --locked --all-targets -- -D warnings\n\`\`\`\n\nDo not add daemon authority, filesystem access, credential interpretation, or\nprivate Vellum crates here. The public SDK and credential adapter are the only\nVellum production boundaries. Coordinated daemon qualification belongs in the\nVellum repository. Never commit credentials, real document content, private\npaths, or captured transcripts.\n\nDependency changes must be exact and reviewed. Update the manifest, lockfile,\nand source receipt in one change; the source-contract test must remain closed.\n`);
+
+  const sourceContractTest = `use std::{fs, path::Path};\n\nfn read(root: &Path, relative: &str) -> String {\n    fs::read_to_string(root.join(relative)).unwrap_or_else(|error| {\n        panic!("failed to read {relative}: {error}")\n    })\n}\n\nfn full_lower_hex(value: &str) -> bool {\n    value.len() == 40\n        && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))\n}\n\n#[test]\nfn manifest_lock_and_source_receipt_form_one_revision_contract() {\n    let root = Path::new(env!("CARGO_MANIFEST_DIR"));\n    let receipt: serde_json::Value = serde_json::from_str(&read(root, "release/source.json"))\n        .expect("source receipt must be valid JSON");\n    assert_eq!(receipt["schema"], 1);\n    assert_eq!(receipt["publication"], "none");\n    assert_eq!(receipt["source"]["repository"], "https://github.com/gantbd/vellum");\n    let vellum = receipt["source"]["revision"]\n        .as_str()\n        .expect("Vellum revision must be a string");\n    assert!(full_lower_hex(vellum), "Vellum revision must be full lowercase hex");\n    let immutable = receipt["immutableDependencies"]\n        .as_array()\n        .expect("immutable dependency closure must be an array");\n    let keystone = immutable\n        .iter()\n        .find(|entry| entry["dependency"] == "keystone-codec")\n        .expect("Keystone codec must be in the immutable closure")["revision"]\n        .as_str()\n        .expect("Keystone revision must be a string");\n    assert!(full_lower_hex(keystone), "Keystone revision must be full lowercase hex");\n\n    let manifest = read(root, "Cargo.toml");\n    assert_eq!(manifest.matches(&format!("rev = \\\"{vellum}\\\"")).count(), 2);\n    assert_eq!(manifest.matches("git = \\\"https://github.com/gantbd/vellum\\\"").count(), 2);\n    assert!(manifest.contains("publish = false"));\n\n    let lock = read(root, "Cargo.lock");\n    let vellum_source = format!("git+https://github.com/gantbd/vellum?rev={vellum}#{vellum}");\n    let keystone_source =\n        format!("git+https://github.com/gantbd/keystone?rev={keystone}#{keystone}");\n    assert!(lock.contains(&vellum_source), "lockfile lost exact Vellum source");\n    assert!(lock.contains(&keystone_source), "lockfile lost exact Keystone source");\n}\n`;
+  fs.writeFileSync(path.join(staged, 'tests/source_contract.rs'), sourceContractTest);
+  const workflow = [
+    'name: Rust CI',
+    '',
+    'on:',
+    '  pull_request:',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'permissions:',
+    '  contents: read',
+    '',
+    'concurrency:',
+    '  group: rust-ci-${{ github.workflow }}-${{ github.ref }}',
+    '  cancel-in-progress: true',
+    '',
+    'jobs:',
+    '  locked-source:',
+    '    runs-on: ubuntu-latest',
+    '    timeout-minutes: 20',
+    '    steps:',
+    '      - name: Check out exact source',
+    '        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
+    '        with:',
+    '          persist-credentials: false',
+    '      - name: Check formatting',
+    '        run: cargo fmt --check',
+    '      - name: Test locked source',
+    '        run: cargo test --locked --all-targets',
+    '      - name: Lint locked source',
+    '        run: cargo clippy --locked --all-targets -- -D warnings',
+    '',
+  ].join('\n');
+  fs.mkdirSync(path.join(staged, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(staged, '.github/workflows/ci.yml'), workflow);
 
   const keystoneRoot = path.resolve(root, '../keystone');
   if (!fs.existsSync(path.join(keystoneRoot, '.git'))) {
@@ -110,6 +150,7 @@ try {
   // Fetches are URL-rewritten to the two local checkouts. This populates Cargo's
   // canonical Git source cache without contacting either remote.
   run('cargo', ['generate-lockfile'], { cwd: staged, env });
+  run('cargo', ['fmt'], { cwd: staged, env });
   const metadata = JSON.parse(run(
     'cargo', ['metadata', '--offline', '--locked', '--no-deps', '--format-version', '1'],
     { cwd: staged, env },
@@ -122,7 +163,11 @@ try {
     }
   }
   const target = path.join(temporary, 'target');
+  run('cargo', ['fmt', '--check'], { cwd: staged, env });
   run('cargo', ['test', '--locked', '--target-dir', target], { cwd: staged, env });
+  run('cargo', [
+    'clippy', '--locked', '--all-targets', '--target-dir', target, '--', '-D', 'warnings',
+  ], { cwd: staged, env });
 
   // Initialize a disposable peer Git repository so the qualification exercises
   // cargo install --git, not the weaker path-install approximation.

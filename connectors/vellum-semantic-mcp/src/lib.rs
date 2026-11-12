@@ -191,6 +191,7 @@ pub struct SemanticMcpUsageV1 {
 struct QueryRecord {
     request: SemanticRequestV1,
     outcome: Option<Value>,
+    outcome_unknown: bool,
 }
 
 /// One MCP session over one already-bound semantic client partition.
@@ -395,17 +396,21 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
                     ),
                 );
             }
-            bump(&mut self.usage.query_replays, &mut self.usage.saturated);
-            let outcome = record
-                .outcome
-                .clone()
-                .unwrap_or_else(|| json!({"status":"pending"}));
-            return success(
-                id,
-                tool_outcome(outcome.clone(), outcome_is_error(&outcome)),
-            );
+            if !record.outcome_unknown {
+                bump(&mut self.usage.query_replays, &mut self.usage.saturated);
+                let outcome = record
+                    .outcome
+                    .clone()
+                    .unwrap_or_else(|| json!({"status":"pending"}));
+                return success(
+                    id,
+                    tool_outcome(outcome.clone(), outcome_is_error(&outcome)),
+                );
+            }
         }
-        if self.records.len() == self.limits.max_retained_requests {
+        if !self.records.contains_key(&request_ref)
+            && self.records.len() == self.limits.max_retained_requests
+        {
             bump(&mut self.usage.refused, &mut self.usage.saturated);
             return success(
                 id,
@@ -413,19 +418,33 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
             );
         }
 
+        let replaying_unknown = self.records.contains_key(&request_ref);
+        if replaying_unknown {
+            bump(&mut self.usage.query_replays, &mut self.usage.saturated);
+        }
         let submission = self.client.submit(request.clone()).await;
         bump(&mut self.usage.queries_submitted, &mut self.usage.saturated);
-        let outcome = match submission {
-            SemanticSubmitOutcomeV1::Accepted => None,
-            SemanticSubmitOutcomeV1::Unsupported(kind) => {
-                Some(json!({"status":"unsupported","query":query_kind(kind)}))
+        let (outcome, outcome_unknown) = match submission {
+            SemanticSubmitOutcomeV1::Accepted => (None, false),
+            SemanticSubmitOutcomeV1::OutcomeUnknown => {
+                (Some(json!({"status":"outcome_unknown"})), true)
             }
-            SemanticSubmitOutcomeV1::Stale => Some(json!({"status":"stale"})),
-            SemanticSubmitOutcomeV1::Unavailable => Some(json!({"status":"unavailable"})),
-            SemanticSubmitOutcomeV1::Refused(refusal) => Some(service_refusal(refusal)),
+            SemanticSubmitOutcomeV1::Unsupported(kind) => (
+                Some(json!({"status":"unsupported","query":query_kind(kind)})),
+                false,
+            ),
+            SemanticSubmitOutcomeV1::Stale => (Some(json!({"status":"stale"})), false),
+            SemanticSubmitOutcomeV1::Unavailable => (Some(json!({"status":"unavailable"})), false),
+            SemanticSubmitOutcomeV1::Refused(refusal) => (Some(service_refusal(refusal)), false),
         };
-        self.records
-            .insert(request_ref, QueryRecord { request, outcome });
+        self.records.insert(
+            request_ref,
+            QueryRecord {
+                request,
+                outcome,
+                outcome_unknown,
+            },
+        );
         if let Err(refusal) = self.drain_deliveries().await {
             bump(&mut self.usage.refused, &mut self.usage.saturated);
             return success(id, tool_outcome(refusal, true));
@@ -485,6 +504,7 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
                     json!({"status":"timed_out"})
                 }
             });
+            record.outcome_unknown = false;
             bump(&mut self.usage.completed, &mut self.usage.saturated);
         }
     }
@@ -756,6 +776,8 @@ fn location(value: SemanticLocationV1) -> Value {
 fn service_refusal(refusal: SemanticServiceRefusalV1) -> Value {
     let reason = match refusal {
         SemanticServiceRefusalV1::InvalidLimits => "invalid_limits",
+        SemanticServiceRefusalV1::AuthorityDenied => "authority_denied",
+        SemanticServiceRefusalV1::SynchronizationRequired => "synchronization_required",
         SemanticServiceRefusalV1::UnknownClient => "unknown_client",
         SemanticServiceRefusalV1::ClientRetiring => "client_retiring",
         SemanticServiceRefusalV1::ClientIsolation => "client_isolation",

@@ -232,6 +232,13 @@ pub struct SemanticSessionClientV1<P> {
     usage: SemanticSessionClientUsageV1,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SemanticSessionClientBindingV1 {
+    pub incarnation: SemanticSessionIncarnationV1,
+    pub membership: SemanticMembershipRefV1,
+    pub roles: SemanticSessionRolesV1,
+}
+
 impl<P> SemanticSessionClientV1<P> {
     pub fn try_new(
         port: P,
@@ -261,6 +268,24 @@ impl<P> SemanticSessionClientV1<P> {
             .as_ref()
             .map_or(SemanticReplyValidationV1::Unsealed, |state| {
                 state.validation
+            })
+    }
+
+    /// Content-safe session observation needed by trusted composition adapters.
+    pub const fn description(&self) -> Option<SemanticSessionDescriptionV1> {
+        self.description
+    }
+
+    /// Exact active binding. Correlation values remain neither credentials nor
+    /// authority; the granted role product is included so adapters cannot infer
+    /// query authority from membership possession.
+    pub fn binding(&self) -> Option<SemanticSessionClientBindingV1> {
+        self.membership
+            .as_ref()
+            .map(|state| SemanticSessionClientBindingV1 {
+                incarnation: state.incarnation,
+                membership: state.membership,
+                roles: state.roles,
             })
     }
 

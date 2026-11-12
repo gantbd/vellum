@@ -218,6 +218,8 @@ pub trait SemanticProviderPortV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticServiceRefusalV1 {
     InvalidLimits,
+    AuthorityDenied,
+    SynchronizationRequired,
     UnknownClient,
     ClientRetiring,
     ClientIsolation,
@@ -242,6 +244,10 @@ pub enum SemanticAdmissionOutcomeV1 {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SemanticSubmitOutcomeV1 {
     Accepted,
+    /// Exchange began but no trustworthy definitive session reply arrived.
+    /// Embedded sovereign services never emit this; a validated session bridge
+    /// retains the exact mutation and permits only caller-initiated replay.
+    OutcomeUnknown,
     Unsupported(SemanticQueryKindV1),
     Stale,
     Unavailable,

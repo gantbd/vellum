@@ -197,6 +197,33 @@ fn provenance() -> SemanticProviderProvenanceV1 {
     .unwrap()
 }
 
+#[test]
+fn outcome_unknown_requires_identical_caller_replay_before_resubmission() {
+    let (mut server, port) = server();
+    port.0.lock().unwrap().submit_outcomes.extend([
+        SemanticSubmitOutcomeV1::OutcomeUnknown,
+        SemanticSubmitOutcomeV1::Accepted,
+    ]);
+    let request = call(DIAGNOSTICS_TOOL, common_arguments());
+    let first = run(server.handle(&request)).unwrap();
+    assert_eq!(status(&first), "outcome_unknown");
+
+    let mut changed = common_arguments();
+    changed["language"] = json!("other");
+    let conflict = run(server.handle(&call(DIAGNOSTICS_TOOL, changed))).unwrap();
+    assert_eq!(status(&conflict), "refused");
+    assert_eq!(
+        value(&conflict)["result"]["structuredContent"]["reason"],
+        "request_conflict"
+    );
+    assert_eq!(port.0.lock().unwrap().submissions.len(), 1);
+
+    let replay = run(server.handle(&request)).unwrap();
+    assert_eq!(status(&replay), "pending");
+    assert_eq!(port.0.lock().unwrap().submissions.len(), 2);
+    assert_eq!(server.usage().query_replays, 1);
+}
+
 fn symbols_result(target: SemanticTargetV1, count: usize) -> SemanticResultV1 {
     SemanticResultV1::try_symbols(
         (0..count)

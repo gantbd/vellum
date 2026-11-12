@@ -147,7 +147,12 @@ forbidEdges(
   ],
   false,
 );
-requireEdges('vellum-semantic-client', ['vellum-host', 'vellum-semantic-service']);
+requireEdges('vellum-semantic-client', [
+  'vellum-host',
+  'vellum-semantic-service',
+  'vellum-semantic-protocol',
+  'vellum-semantic-session-client',
+]);
 requireEdges('vellum-semantic-session-client', ['vellum-host', 'vellum-semantic-protocol']);
 forbidEdges(
   'vellum-semantic-session-client',

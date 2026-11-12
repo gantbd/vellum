@@ -320,10 +320,15 @@ composition supplies a separate expectation.
 
 A query-only client is explicitly unsealed unless trusted composition installs a
 same-incarnation, exact-ready-epoch witness store into a query-capable
-membership. Even witness validation cannot mint the embedded semantic client's
-private sovereign-validation seal; that bridge remains a later trusted
-composition concern. This crate implements no wire codec, socket,
-authentication, broker storage or automatic query retry.
+membership. `vellum-semantic-client` now owns the only bridge from that
+witness-validated session product into its private sovereign-validation seal.
+The bridge rechecks the granted query role and validation state, exposes no
+synchronization methods, retains transport-unknown Submit intent for identical
+caller-initiated replay, and admits complete deliveries only after the session
+client's nested source/span validation. It does not treat authentication,
+membership, canonical decoding or opaque document identity as the seal. The
+session client still implements no wire codec, socket, authentication, broker
+storage or automatic query retry.
 
 ## Agent-facing MCP projection
 
@@ -366,10 +371,10 @@ boundary. Optional exit metrics are fixed-cardinality and content-free.
 
 The next concrete bridge is an application-owned persistent semantic-session
 listener/dispatcher that authenticates once, derives the synchronization/query
-role product, owns the actor and provider runtime, and exposes a transport
-client that independently revalidates the committed witness store before
-entering the sealed MCP client boundary. The connector must not mint that seal,
-open snapshots from MCP query arguments, or infer membership from document ids.
+role product, and owns the actor and provider runtime. Trusted synchronization
+input must come from composition-owned Vellum snapshot products, not an MCP
+argument or workspace manifest. The connector must not mint the seal, infer
+membership from document ids, or automatically replay an uncertain mutation.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

@@ -7,8 +7,19 @@
 //! transport, discovers a provider, or controls a provider process.
 #![forbid(unsafe_code)]
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
+
+use vellum_semantic_protocol::{
+    SemanticExchangeDispositionV1, SemanticExchangeRefV1, SemanticProviderReadinessProjectionV1,
+    SemanticSessionCommandV1, SemanticSessionOperationRefV1, SemanticSessionOutcomeV1,
+    SemanticSessionPendingV1, SemanticSessionRolesV1,
+};
+use vellum_semantic_session_client::{
+    SemanticReplyValidationV1, SemanticSessionClientRefusalV1, SemanticSessionClientV1,
+    SemanticSessionExchangePortV1,
+};
 
 pub use vellum_host::semantic::{
     MAX_SEMANTIC_DETAIL_BYTES_V1, MAX_SEMANTIC_LABEL_BYTES_V1, MAX_SEMANTIC_QUERY_BYTES_V1,
@@ -40,6 +51,9 @@ pub struct SemanticProviderObservationV1 {
     readiness: SemanticProviderReadinessV1,
     capabilities: SemanticCapabilitySetV1,
 }
+
+#[cfg(test)]
+mod session_query_tests;
 
 impl SemanticProviderObservationV1 {
     /// Constructs a transport projection from already composition-owned state.
@@ -295,6 +309,354 @@ impl<T: SemanticRuntimeDriverPortV1 + ?Sized> SemanticRuntimeDriverPortV1 for &m
 /// Application-facing handle fixed to one composition-provided partition.
 pub struct SemanticClientV1<P> {
     port: P,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticSessionQueryPortBuildRefusalV1 {
+    Unbound,
+    RoleDenied,
+    Unsealed,
+    InvalidCorrelationSeed,
+}
+
+/// Query-only projection of a witness-validated persistent semantic session.
+///
+/// Construction rechecks the granted query role and the session client's
+/// source/UTF-8 witness seal. Synchronization remains composition-owned and is
+/// deliberately absent from this port. A transport-unknown Submit is retained
+/// by the session client and may be replayed only by an identical later Submit.
+pub struct SemanticSessionQueryPortV1<P> {
+    session: SemanticSessionClientV1<P>,
+    next_exchange: u128,
+    next_operation: u128,
+    pending_request: Option<SemanticRequestV1>,
+    collecting: VecDeque<SemanticRequestRefV1>,
+}
+
+impl<P> sovereign_validation::Sealed for SemanticSessionQueryPortV1<P> where
+    P: SemanticSessionExchangePortV1 + Send
+{
+}
+impl<P> SovereignValidatedSemanticServicePortV1 for SemanticSessionQueryPortV1<P> where
+    P: SemanticSessionExchangePortV1 + Send
+{
+}
+
+pub fn bind_semantic_session_query_v1<P: SemanticSessionExchangePortV1 + Send>(
+    session: SemanticSessionClientV1<P>,
+    correlation_seed: u128,
+) -> Result<SemanticClientV1<SemanticSessionQueryPortV1<P>>, SemanticSessionQueryPortBuildRefusalV1>
+{
+    let binding = session
+        .binding()
+        .ok_or(SemanticSessionQueryPortBuildRefusalV1::Unbound)?;
+    if !binding.roles.contains(SemanticSessionRolesV1::query()) {
+        return Err(SemanticSessionQueryPortBuildRefusalV1::RoleDenied);
+    }
+    if session.validation_state() != SemanticReplyValidationV1::WitnessValidated {
+        return Err(SemanticSessionQueryPortBuildRefusalV1::Unsealed);
+    }
+    if !valid_semantic_session_correlation_seed(correlation_seed) {
+        return Err(SemanticSessionQueryPortBuildRefusalV1::InvalidCorrelationSeed);
+    }
+    Ok(SemanticClientV1::new(SemanticSessionQueryPortV1 {
+        session,
+        next_exchange: correlation_seed,
+        next_operation: correlation_seed + 1,
+        pending_request: None,
+        collecting: VecDeque::new(),
+    }))
+}
+
+const fn valid_semantic_session_correlation_seed(seed: u128) -> bool {
+    seed != 0 && seed <= u128::MAX - 3
+}
+
+impl<P: SemanticSessionExchangePortV1> SemanticSessionQueryPortV1<P> {
+    fn binding(
+        &self,
+    ) -> Result<
+        vellum_semantic_session_client::SemanticSessionClientBindingV1,
+        SemanticServiceRefusalV1,
+    > {
+        self.session
+            .binding()
+            .ok_or(SemanticServiceRefusalV1::UnknownClient)
+    }
+
+    fn exchange(&mut self) -> Result<SemanticExchangeRefV1, SemanticServiceRefusalV1> {
+        let value = self.next_exchange;
+        self.next_exchange = self
+            .next_exchange
+            .checked_add(2)
+            .ok_or(SemanticServiceRefusalV1::Capacity)?;
+        SemanticExchangeRefV1::new(value.to_be_bytes()).ok_or(SemanticServiceRefusalV1::Capacity)
+    }
+
+    fn operation(&mut self) -> Result<SemanticSessionOperationRefV1, SemanticServiceRefusalV1> {
+        let value = self.next_operation;
+        self.next_operation = self
+            .next_operation
+            .checked_add(2)
+            .ok_or(SemanticServiceRefusalV1::Capacity)?;
+        SemanticSessionOperationRefV1::new(value.to_be_bytes())
+            .ok_or(SemanticServiceRefusalV1::Capacity)
+    }
+
+    fn map_refusal(refusal: SemanticSessionClientRefusalV1) -> SemanticServiceRefusalV1 {
+        match refusal {
+            SemanticSessionClientRefusalV1::RoleDenied
+            | SemanticSessionClientRefusalV1::UnsealedValidation => {
+                SemanticServiceRefusalV1::AuthorityDenied
+            }
+            SemanticSessionClientRefusalV1::Capacity => SemanticServiceRefusalV1::Capacity,
+            SemanticSessionClientRefusalV1::RequestState => {
+                SemanticServiceRefusalV1::DuplicateRequest
+            }
+            _ => SemanticServiceRefusalV1::ClientIsolation,
+        }
+    }
+
+    fn map_session_refusal(
+        refusal: vellum_semantic_protocol::SemanticSessionRefusalV1,
+    ) -> SemanticServiceRefusalV1 {
+        use vellum_semantic_protocol::SemanticSessionRefusalV1 as R;
+        match refusal {
+            R::RoleDenied => SemanticServiceRefusalV1::AuthorityDenied,
+            R::InputLimit => SemanticServiceRefusalV1::InputLimit,
+            R::Capacity => SemanticServiceRefusalV1::Capacity,
+            R::AbsentOrForeign => SemanticServiceRefusalV1::UnknownDocument,
+            R::ClientRetiring => SemanticServiceRefusalV1::ClientRetiring,
+            R::ProviderRefused => SemanticServiceRefusalV1::ProviderRefused,
+            R::ProtocolViolation => SemanticServiceRefusalV1::MalformedProviderReply,
+            R::SynchronizationRequired => SemanticServiceRefusalV1::SynchronizationRequired,
+            R::InvalidSession | R::UnknownMembership => SemanticServiceRefusalV1::UnknownClient,
+            R::SynchronizationConflict => SemanticServiceRefusalV1::ClientIsolation,
+        }
+    }
+}
+
+impl<P: SemanticSessionExchangePortV1 + Send> SemanticServicePortV1
+    for SemanticSessionQueryPortV1<P>
+{
+    fn observe_provider(&self) -> SemanticFutureV1<'_, SemanticProviderObservationV1> {
+        // This is the last witness-validated Describe projection, not a live
+        // provider poll. Zero-TTL callers must refresh the session description
+        // before constructing a replacement port; every query is still checked
+        // by the authoritative session and may return stale/unavailable.
+        let observed = self.session.description().map(|description| {
+            let provider = description.provider();
+            let readiness = match provider.readiness() {
+                SemanticProviderReadinessProjectionV1::Unavailable => {
+                    SemanticProviderReadinessV1::Unavailable
+                }
+                SemanticProviderReadinessProjectionV1::Indexing => {
+                    SemanticProviderReadinessV1::Indexing
+                }
+                SemanticProviderReadinessProjectionV1::Ready { generation } => {
+                    SemanticProviderReadinessV1::Ready { generation }
+                }
+            };
+            SemanticProviderObservationV1::from_parts(readiness, provider.capabilities())
+        });
+        Box::pin(std::future::ready(observed.unwrap_or_else(|| {
+            SemanticProviderObservationV1::from_parts(
+                SemanticProviderReadinessV1::Unavailable,
+                SemanticCapabilitySetV1::bottom(),
+            )
+        })))
+    }
+
+    fn open_snapshot(
+        &mut self,
+        _snapshot: SemanticSnapshotV1,
+    ) -> SemanticFutureV1<'_, SemanticAdmissionOutcomeV1> {
+        Box::pin(std::future::ready(SemanticAdmissionOutcomeV1::Refused(
+            SemanticServiceRefusalV1::AuthorityDenied,
+        )))
+    }
+
+    fn change_snapshot(
+        &mut self,
+        _snapshot: SemanticSnapshotV1,
+    ) -> SemanticFutureV1<'_, SemanticAdmissionOutcomeV1> {
+        Box::pin(std::future::ready(SemanticAdmissionOutcomeV1::Refused(
+            SemanticServiceRefusalV1::AuthorityDenied,
+        )))
+    }
+
+    fn close_snapshot(
+        &mut self,
+        _target: SemanticTargetV1,
+    ) -> SemanticFutureV1<'_, SemanticAdmissionOutcomeV1> {
+        Box::pin(std::future::ready(SemanticAdmissionOutcomeV1::Refused(
+            SemanticServiceRefusalV1::AuthorityDenied,
+        )))
+    }
+
+    fn submit(
+        &mut self,
+        request: SemanticRequestV1,
+    ) -> SemanticFutureV1<'_, SemanticSubmitOutcomeV1> {
+        Box::pin(async move {
+            let replaying = self.pending_request.is_some();
+            let result = if let Some(pending) = self.pending_request.as_ref() {
+                if pending != &request {
+                    return SemanticSubmitOutcomeV1::Refused(
+                        SemanticServiceRefusalV1::DuplicateRequest,
+                    );
+                }
+                let exchange = match self.exchange() {
+                    Ok(exchange) => exchange,
+                    // Correlation exhaustion prevents this replay attempt, but
+                    // cannot make the earlier exchange definitive.
+                    Err(_) => return SemanticSubmitOutcomeV1::OutcomeUnknown,
+                };
+                match self.session.replay_pending(exchange) {
+                    Ok(disposition) => Ok(disposition),
+                    // The session ledger still owns the uncertain mutation.
+                    // A local preflight refusal cannot turn it into a terminal
+                    // application outcome.
+                    Err(_) => return SemanticSubmitOutcomeV1::OutcomeUnknown,
+                }
+            } else {
+                let binding = match self.binding() {
+                    Ok(binding) => binding,
+                    Err(refusal) => return SemanticSubmitOutcomeV1::Refused(refusal),
+                };
+                let exchange = match self.exchange() {
+                    Ok(exchange) => exchange,
+                    Err(refusal) => return SemanticSubmitOutcomeV1::Refused(refusal),
+                };
+                let operation = match self.operation() {
+                    Ok(operation) => operation,
+                    Err(refusal) => return SemanticSubmitOutcomeV1::Refused(refusal),
+                };
+                self.session.attempt(SemanticSessionCommandV1::Submit {
+                    exchange,
+                    operation,
+                    incarnation: binding.incarnation,
+                    membership: binding.membership,
+                    request: request.clone(),
+                })
+            };
+            let disposition = match result {
+                Ok(disposition) => disposition,
+                Err(refusal) => {
+                    return SemanticSubmitOutcomeV1::Refused(Self::map_refusal(refusal));
+                }
+            };
+            match disposition {
+                SemanticExchangeDispositionV1::NotSent if replaying => {
+                    // The earlier exchange may still have applied. A replay
+                    // that was definitely not sent cannot erase that fact.
+                    SemanticSubmitOutcomeV1::OutcomeUnknown
+                }
+                SemanticExchangeDispositionV1::NotSent => SemanticSubmitOutcomeV1::Unavailable,
+                SemanticExchangeDispositionV1::OutcomeUnknown => {
+                    self.pending_request = Some(request);
+                    SemanticSubmitOutcomeV1::OutcomeUnknown
+                }
+                SemanticExchangeDispositionV1::Reply(reply) => {
+                    self.pending_request = None;
+                    match reply.outcome() {
+                        SemanticSessionOutcomeV1::Accepted => {
+                            if !self.collecting.contains(&request.request) {
+                                self.collecting.push_back(request.request);
+                            }
+                            SemanticSubmitOutcomeV1::Accepted
+                        }
+                        SemanticSessionOutcomeV1::Unsupported(kind) => {
+                            SemanticSubmitOutcomeV1::Unsupported(*kind)
+                        }
+                        SemanticSessionOutcomeV1::Stale => SemanticSubmitOutcomeV1::Stale,
+                        SemanticSessionOutcomeV1::Unavailable => {
+                            SemanticSubmitOutcomeV1::Unavailable
+                        }
+                        SemanticSessionOutcomeV1::Refused(refusal) => {
+                            SemanticSubmitOutcomeV1::Refused(Self::map_session_refusal(*refusal))
+                        }
+                        SemanticSessionOutcomeV1::RequestConflict => {
+                            SemanticSubmitOutcomeV1::Refused(
+                                SemanticServiceRefusalV1::DuplicateRequest,
+                            )
+                        }
+                        SemanticSessionOutcomeV1::ReplayCapacity => {
+                            SemanticSubmitOutcomeV1::Refused(SemanticServiceRefusalV1::Capacity)
+                        }
+                        _ => SemanticSubmitOutcomeV1::Refused(
+                            SemanticServiceRefusalV1::MalformedProviderReply,
+                        ),
+                    }
+                }
+            }
+        })
+    }
+
+    fn cancel(
+        &mut self,
+        _request: SemanticRequestRefV1,
+    ) -> SemanticFutureV1<'_, Result<bool, SemanticServiceRefusalV1>> {
+        Box::pin(std::future::ready(Err(
+            SemanticServiceRefusalV1::AuthorityDenied,
+        )))
+    }
+
+    fn take_delivery(
+        &mut self,
+    ) -> SemanticFutureV1<'_, Result<Option<SemanticDeliveryV1>, SemanticServiceRefusalV1>> {
+        Box::pin(async move {
+            let Some(request) = self.collecting.pop_front() else {
+                return Ok(None);
+            };
+            let binding = self.binding()?;
+            let command = SemanticSessionCommandV1::Collect {
+                exchange: self.exchange()?,
+                incarnation: binding.incarnation,
+                membership: binding.membership,
+                request,
+            };
+            let disposition = self.session.attempt(command).map_err(Self::map_refusal)?;
+            let reply = match disposition {
+                SemanticExchangeDispositionV1::NotSent
+                | SemanticExchangeDispositionV1::OutcomeUnknown => {
+                    self.collecting.push_back(request);
+                    return Ok(None);
+                }
+                SemanticExchangeDispositionV1::Reply(reply) => reply,
+            };
+            let outcome = match reply.outcome() {
+                SemanticSessionOutcomeV1::Pending(SemanticSessionPendingV1::Request(pending))
+                    if *pending == request =>
+                {
+                    self.collecting.push_back(request);
+                    return Ok(None);
+                }
+                SemanticSessionOutcomeV1::Complete(reply) => {
+                    SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Complete(reply.clone()))
+                }
+                SemanticSessionOutcomeV1::Unsupported(kind) => {
+                    SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Unsupported(*kind))
+                }
+                SemanticSessionOutcomeV1::Stale => {
+                    SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Stale)
+                }
+                SemanticSessionOutcomeV1::Unavailable => {
+                    SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Unavailable)
+                }
+                SemanticSessionOutcomeV1::Cancelled => SemanticDeliveryOutcomeV1::Cancelled,
+                SemanticSessionOutcomeV1::TimedOut => SemanticDeliveryOutcomeV1::TimedOut,
+                SemanticSessionOutcomeV1::PeerRefused(refusal) => {
+                    SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Refused(*refusal))
+                }
+                SemanticSessionOutcomeV1::Refused(refusal) => {
+                    return Err(Self::map_session_refusal(*refusal));
+                }
+                _ => return Err(SemanticServiceRefusalV1::MalformedProviderReply),
+            };
+            Ok(Some(SemanticDeliveryV1 { request, outcome }))
+        })
+    }
 }
 
 impl<P: SemanticServicePortV1> SemanticClientV1<P> {

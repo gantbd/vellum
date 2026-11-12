@@ -3754,6 +3754,9 @@ where
         let translated = self.translate(&report)?;
         let outcome = match report.outcome() {
             SemanticSubmitOutcomeV1::Accepted => SemanticBrokerSubmissionOutcomeV1::Accepted,
+            SemanticSubmitOutcomeV1::OutcomeUnknown => {
+                return Err(SemanticBrokerEffectFailureV1::Poisoned);
+            }
             SemanticSubmitOutcomeV1::Unsupported(kind) => {
                 SemanticBrokerSubmissionOutcomeV1::Unsupported(*kind)
             }
@@ -5989,6 +5992,11 @@ mod tests {
             .expect("provider poll did not enter");
         assert!(actor.begin_drain());
         let mut ticket = actor.try_begin_stop().unwrap();
+        ticket = match ticket.try_complete() {
+            Err(pending) => *pending,
+            Ok(_) => panic!("blocked provider resolved an admitted stop before release"),
+        };
+        assert_eq!(sender.phase(), SemanticSessionActorPhaseV1::Stopping);
         release_tx.send(()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
@@ -6020,7 +6028,9 @@ mod tests {
         assert!(matches!(
             stopped.stop().terminal(),
             LocalOrderedActorTerminalStopV1::OutcomeUnknown(receipt)
-                if receipt.observed_phase() == SemanticSessionActorPhaseV1::Stopping
+                if receipt.observed_phase() == SemanticSessionActorPhaseV1::Failed
+                    && receipt.usage().worker_panics == 1
+                    && receipt.usage().stop_outcome_unknown == 1
         ));
         let cleanup = loop {
             match stopped.try_advance() {

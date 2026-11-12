@@ -1051,8 +1051,8 @@ where
             run_actor(
                 &mut broker,
                 &mut port,
-                command_rx,
-                control_rx,
+                &command_rx,
+                &control_rx,
                 &worker_shared,
             );
         }));
@@ -1153,8 +1153,8 @@ impl Default for Shared {
 fn run_actor<P: SemanticBrokerEffectPortV1>(
     broker: &mut SemanticSessionBrokerV1,
     port: &mut P,
-    commands: Receiver<CommandEnvelope>,
-    controls: Receiver<ControlEnvelope>,
+    commands: &Receiver<CommandEnvelope>,
+    controls: &Receiver<ControlEnvelope>,
     shared: &Arc<Mutex<Shared>>,
 ) {
     let mut commands_disconnected = false;
@@ -3678,6 +3678,10 @@ mod tests {
         entered_rx.recv().unwrap();
         assert!(owner.begin_drain());
         let mut ticket = owner.try_begin_stop().unwrap();
+        ticket = ticket
+            .try_complete()
+            .expect_err("blocked provider must retain the admitted stop ticket");
+        assert_eq!(sender.phase(), SemanticSessionActorPhaseV1::Stopping);
         release_tx.send(()).unwrap();
         assert_eq!(
             drive.receive(),
@@ -3699,8 +3703,9 @@ mod tests {
         );
         assert_eq!(
             receipt.observed_phase(),
-            SemanticSessionActorPhaseV1::Stopping
+            SemanticSessionActorPhaseV1::Failed
         );
+        assert_eq!(receipt.usage().worker_panics, 1);
         assert_eq!(receipt.usage().stop_outcome_unknown, 1);
         drop(sender);
         let recovered = recover(recovery);
