@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Daemon startup now emits a closed, content-safe binding-refusal class before
+  returning its existing generic CLI error. The classification is exhaustive
+  over typed startup failures and discloses no paths, filesystem identities,
+  source content, limits, or adapter text. Shipped daemon/MCP qualification now
+  preserves terminal status and redacted stderr when readiness fails instead
+  of collapsing the failure to an empty readiness line.
 - Added a maintained exact clean-source candidate qualifier. It clones the
   selected Vellum and coordinated Keystone commits into private detached
   checkouts, keeps Cargo offline, builds the locked candidate twice, refuses

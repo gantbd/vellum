@@ -338,6 +338,43 @@ pub enum DaemonBuildError {
 }
 
 #[cfg(unix)]
+impl DaemonBuildError {
+    /// Closed, content-safe startup classification for operational logs.
+    ///
+    /// The class deliberately omits paths, filesystem identities, limits,
+    /// source content and adapter error text. Adding a build refusal requires
+    /// extending this exhaustive projection before it can reach the CLI.
+    pub const fn operational_class(self) -> &'static str {
+        match self {
+            Self::InvalidLimits => "invalid_limits",
+            Self::ParentMissing => "parent_missing",
+            Self::ParentNotDirectory => "parent_not_directory",
+            Self::ParentPermissions => "parent_permissions",
+            Self::ParentOwnership => "parent_ownership",
+            Self::LockUnsafe => "lock_unsafe",
+            Self::LockBusy => "lock_busy",
+            Self::LockLost => "lock_lost",
+            Self::SocketExists => "socket_exists",
+            Self::Inspection => "inspection",
+            Self::Bind(io::ErrorKind::AddrInUse) => "bind_address_in_use",
+            Self::Bind(io::ErrorKind::InvalidInput) => "bind_invalid_input",
+            Self::Bind(io::ErrorKind::PermissionDenied) => "bind_permission_denied",
+            Self::Bind(io::ErrorKind::OutOfMemory) => "bind_out_of_memory",
+            Self::Bind(io::ErrorKind::StorageFull) => "bind_storage_full",
+            Self::Bind(io::ErrorKind::NotFound) => "bind_parent_missing",
+            Self::Bind(_) => "bind_other",
+            Self::SocketPermissions => "socket_permissions",
+            Self::SocketOwnership => "socket_ownership",
+            Self::WorkspaceIdentityReservation => "workspace_identity_reservation",
+            Self::WorkspaceIdentity(_) => "workspace_identity",
+            Self::RequestJournal(_) => "request_journal",
+            Self::StaleSocketUnproven => "stale_socket_unproven",
+            Self::Service(_) => "service",
+        }
+    }
+}
+
+#[cfg(unix)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceIdentityStartupV1 {
     Initial,
@@ -4542,6 +4579,27 @@ mod tests {
     use std::num::NonZeroU64;
 
     struct FailingSink;
+
+    #[test]
+    fn startup_refusals_project_only_closed_content_safe_classes() {
+        assert_eq!(
+            DaemonBuildError::ParentPermissions.operational_class(),
+            "parent_permissions"
+        );
+        assert_eq!(
+            DaemonBuildError::Bind(io::ErrorKind::PermissionDenied).operational_class(),
+            "bind_permission_denied"
+        );
+        assert_eq!(
+            DaemonBuildError::Bind(io::ErrorKind::Unsupported).operational_class(),
+            "bind_other"
+        );
+        assert_eq!(
+            DaemonBuildError::WorkspaceIdentity(WorkspaceIdentityRecoveryRefusalV1::Missing)
+                .operational_class(),
+            "workspace_identity"
+        );
+    }
 
     #[test]
     fn control_status_v2_round_trip_projects_tombstones_and_v1_remains_compatible() {

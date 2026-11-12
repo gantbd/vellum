@@ -300,7 +300,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut daemon = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
         &socket, workspace, limits, actions,
     )
-    .map_err(|_| CliError("daemon binding refused"))?;
+    .map_err(|error| {
+        eprintln!(
+            "vellum-daemon: binding_refused class={}",
+            error.operational_class()
+        );
+        CliError("daemon binding refused")
+    })?;
     if let Some((operation, document, revision, destination)) = export_copy {
         let policy = DaemonExportPolicyV1::exact_create_exclusive(
             operation,

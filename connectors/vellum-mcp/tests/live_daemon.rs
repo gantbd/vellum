@@ -127,7 +127,20 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     let mut daemon_stdout = BufReader::new(daemon.stdout.take().unwrap());
     let mut ready = String::new();
     daemon_stdout.read_line(&mut ready).unwrap();
-    assert_eq!(ready, "vellum-daemon ready\n");
+    if ready != "vellum-daemon ready\n" {
+        let status = daemon.wait().unwrap();
+        let mut daemon_stderr = String::new();
+        daemon
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_string(&mut daemon_stderr)
+            .unwrap();
+        assert!(!daemon_stderr.contains(credential_text.as_ref()));
+        panic!(
+            "daemon readiness failed: status={status:?}; stdout={ready:?}; stderr={daemon_stderr}"
+        );
+    }
 
     let mut mcp = Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
         .arg("--socket")
