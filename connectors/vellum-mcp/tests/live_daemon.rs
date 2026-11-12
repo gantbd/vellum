@@ -223,6 +223,179 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     let _ = fs::remove_file(&socket);
     let _ = fs::remove_file(&control);
     let _ = fs::remove_file(directory.join(".vellum-daemon.lock"));
+    let _ = fs::remove_file(directory.join("workspace-identity-v1"));
+    let _ = fs::remove_dir_all(directory.join(".vellum-workspace-v1"));
+    let _ = fs::remove_dir_all(directory.join(".vellum-request-journal-v1"));
+    let _ = fs::remove_dir_all(directory.join(".vellum-durable-operation-v1"));
+    let _ = fs::remove_dir_all(directory.join(".vellum-durable-operation-v2"));
+    let _ = fs::remove_dir(&directory);
+}
+
+#[test]
+fn shipped_processes_recover_a_lost_durable_reply_after_both_restart() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::path::PathBuf::from("/private/tmp").join(format!(
+        "vellum-mcp-process-restart-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&directory).unwrap();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+    let source = directory.join("source.txt");
+    let socket = directory.join("service.sock");
+    let control = directory.join("control.sock");
+    let credential = directory.join("credential");
+    fs::write(&source, "alpha").unwrap();
+
+    let daemon_binary = built_daemon_binary();
+    assert!(
+        Command::new(&daemon_binary)
+            .arg("--provision-credential")
+            .arg(&credential)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+
+    let spawn_daemon = || {
+        let mut daemon = Command::new(&daemon_binary)
+            .arg("--socket")
+            .arg(&socket)
+            .arg("--control")
+            .arg(&control)
+            .arg("--credential")
+            .arg(&credential)
+            .arg("--allow-edit")
+            .arg("--allow-save")
+            .arg("--")
+            .arg(&source)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdout = BufReader::new(daemon.stdout.take().unwrap());
+        let mut ready = String::new();
+        stdout.read_line(&mut ready).unwrap();
+        if ready != "vellum-daemon ready\n" {
+            let mut stderr = String::new();
+            daemon
+                .stderr
+                .take()
+                .unwrap()
+                .read_to_string(&mut stderr)
+                .unwrap();
+            let status = daemon.wait().unwrap();
+            panic!("daemon startup failed ({status}): {stderr}");
+        }
+        (daemon, stdout)
+    };
+    let shutdown_daemon = |daemon: &mut std::process::Child| {
+        let shutdown = Command::new(&daemon_binary)
+            .arg("--shutdown")
+            .arg(&control)
+            .output()
+            .unwrap();
+        assert!(shutdown.status.success());
+        assert!(daemon.wait().unwrap().success());
+    };
+    let spawn_mcp = || {
+        Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+            .arg("--socket")
+            .arg(&socket)
+            .arg("--credential")
+            .arg(&credential)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+
+    let (mut first_daemon, _first_stdout) = spawn_daemon();
+    let mut first_mcp = spawn_mcp();
+    let mut first_stdin = first_mcp.stdin.take().unwrap();
+    let mut first_stdout = BufReader::new(first_mcp.stdout.take().unwrap());
+    let list = json!({
+        "jsonrpc":"2.0", "id":"resources", "method":"resources/list",
+        "params":{"_meta":meta()}
+    });
+    writeln!(first_stdin, "{list}").unwrap();
+    first_stdin.flush().unwrap();
+    let mut listed = String::new();
+    first_stdout.read_line(&mut listed).unwrap();
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    let document_uri = listed["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|resource| resource["uri"].as_str())
+        .find(|uri| uri.contains("/document/"))
+        .unwrap();
+    let fields: Vec<_> = document_uri.split('/').collect();
+    let intent = json!({
+        "operation_ref": "vdo1.73737373737373737373737373737373",
+        "intent": "replace_document_and_save",
+        "workspace": fields[3].parse::<u64>().unwrap(),
+        "document": fields[5].parse::<u64>().unwrap(),
+        "expected_revision": 0,
+        "start": 0,
+        "end": 5,
+        "inserted": "omega"
+    });
+    let execute = String::from_utf8(durable_call(DURABLE_EXECUTE_TOOL, intent.clone())).unwrap();
+    writeln!(first_stdin, "{execute}").unwrap();
+    first_stdin.flush().unwrap();
+
+    // The effect is observed only through its declared filesystem product.
+    // The harness never consumes the MCP reply and terminates the connector,
+    // so recovery must use the persisted operation reference after both
+    // shipped processes have restarted.
+    let mut applied = false;
+    for _ in 0..200 {
+        if fs::read_to_string(&source).unwrap() == "omega" {
+            applied = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(applied, "durable effect did not reach its declared product");
+    first_mcp.kill().unwrap();
+    assert!(!first_mcp.wait().unwrap().success());
+    drop(first_stdin);
+    drop(first_stdout);
+    shutdown_daemon(&mut first_daemon);
+
+    fs::write(&source, "external").unwrap();
+    let (mut restarted_daemon, _restarted_stdout) = spawn_daemon();
+    let mut restarted_mcp = spawn_mcp();
+    let mut restarted_stdin = restarted_mcp.stdin.take().unwrap();
+    let mut restarted_stdout = BufReader::new(restarted_mcp.stdout.take().unwrap());
+    let lookup = String::from_utf8(durable_call(DURABLE_RECEIPT_TOOL, intent)).unwrap();
+    writeln!(restarted_stdin, "{lookup}").unwrap();
+    restarted_stdin.flush().unwrap();
+    let mut receipt = String::new();
+    restarted_stdout.read_line(&mut receipt).unwrap();
+    let receipt: Value = serde_json::from_str(&receipt).unwrap();
+    assert_eq!(
+        receipt["result"]["structuredContent"]["kind"],
+        "document_replaced_and_saved"
+    );
+    assert_eq!(receipt["result"]["structuredContent"]["text"], "omega");
+    assert_eq!(fs::read_to_string(&source).unwrap(), "external");
+
+    drop(restarted_stdin);
+    assert!(restarted_mcp.wait().unwrap().success());
+    shutdown_daemon(&mut restarted_daemon);
+
+    let _ = fs::remove_file(&credential);
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&socket);
+    let _ = fs::remove_file(&control);
+    let _ = fs::remove_file(directory.join(".vellum-daemon.lock"));
+    let _ = fs::remove_file(directory.join("workspace-identity-v1"));
     let _ = fs::remove_dir_all(directory.join(".vellum-workspace-v1"));
     let _ = fs::remove_dir_all(directory.join(".vellum-request-journal-v1"));
     let _ = fs::remove_dir_all(directory.join(".vellum-durable-operation-v1"));

@@ -118,6 +118,15 @@ const CONTROL_STATUS_UTILIZATION_FIELDS_V1: usize = 13;
 const CONTROL_STATUS_REPLY_BYTES_V1: usize =
     4 + 1 + 4 + CONTROL_STATUS_UTILIZATION_FIELDS_V1 * 8 + 2;
 #[cfg(unix)]
+const CONTROL_PROTOCOL_VERSION_V2: u8 = 2;
+#[cfg(unix)]
+const CONTROL_STATUS_MAGIC_V2: [u8; 4] = *b"VCS2";
+#[cfg(unix)]
+const CONTROL_STATUS_UTILIZATION_FIELDS_V2: usize = 15;
+#[cfg(unix)]
+const CONTROL_STATUS_REPLY_BYTES_V2: usize =
+    4 + 1 + 4 + CONTROL_STATUS_UTILIZATION_FIELDS_V2 * 8 + 2;
+#[cfg(unix)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DaemonLimits {
     pub service: ServiceLimits,
@@ -610,6 +619,37 @@ pub struct DaemonControlStatusV1 {
     pub readiness: DaemonReadiness,
     pub utilization: OperationalUtilization,
     pub saturation: OperationalSaturation,
+}
+
+/// Version-two private-control projection.
+///
+/// V2 preserves every V1 field and additionally exports the content-free
+/// permanent durable-operation tombstone occupancy, capacity and saturation.
+/// It remains a passive sample and carries no operation, principal, path,
+/// request, source, destination, or error identity.
+#[cfg(unix)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DaemonControlStatusV2 {
+    pub liveness: DaemonLiveness,
+    pub lifecycle: DaemonLifecycle,
+    pub health: DaemonHealth,
+    pub readiness: DaemonReadiness,
+    pub utilization: OperationalUtilization,
+    pub saturation: OperationalSaturation,
+}
+
+#[cfg(unix)]
+impl From<DaemonControlStatusV1> for DaemonControlStatusV2 {
+    fn from(status: DaemonControlStatusV1) -> Self {
+        Self {
+            liveness: status.liveness,
+            lifecycle: status.lifecycle,
+            health: status.health,
+            readiness: status.readiness,
+            utilization: status.utilization,
+            saturation: status.saturation,
+        }
+    }
 }
 
 /// Content-free identity persistence evidence. It covers the pre-publication
@@ -3658,6 +3698,158 @@ fn decode_control_status_v1(
 }
 
 #[cfg(unix)]
+fn encode_control_status_v2(status: DaemonControlStatusV2) -> [u8; CONTROL_STATUS_REPLY_BYTES_V2] {
+    let mut encoded = [0_u8; CONTROL_STATUS_REPLY_BYTES_V2];
+    encoded[..4].copy_from_slice(&CONTROL_STATUS_MAGIC_V2);
+    encoded[4] = CONTROL_PROTOCOL_VERSION_V2;
+    encoded[5] = match status.liveness {
+        DaemonLiveness::Live => 1,
+    };
+    encoded[6] = match status.lifecycle {
+        DaemonLifecycle::Running => 1,
+        DaemonLifecycle::Draining => 2,
+        DaemonLifecycle::Stopped => 3,
+        DaemonLifecycle::Fenced => 4,
+    };
+    encoded[7] = match status.health {
+        DaemonHealth::Healthy => 1,
+        DaemonHealth::Fenced => 2,
+    };
+    encoded[8] = match status.readiness {
+        DaemonReadiness::Ready => 1,
+        DaemonReadiness::NotReady => 2,
+    };
+    let utilization = [
+        status.utilization.in_flight_connections,
+        status.utilization.in_flight_capacity,
+        status.utilization.active_clients,
+        status.utilization.client_capacity,
+        status.utilization.issued_clients,
+        status.utilization.issued_client_capacity,
+        status.utilization.retired_clients,
+        status.utilization.retained_requests,
+        status.utilization.request_capacity,
+        status.utilization.retained_witnesses,
+        status.utilization.witness_capacity,
+        status.utilization.durable_receipts,
+        status.utilization.durable_receipt_capacity,
+        status.utilization.retired_durable_operations,
+        status.utilization.retired_durable_operation_capacity,
+    ];
+    let mut offset = 9;
+    for value in utilization {
+        let value = u64::try_from(value).unwrap_or(u64::MAX);
+        encoded[offset..offset + 8].copy_from_slice(&value.to_be_bytes());
+        offset += 8;
+    }
+    let flags = [
+        status.saturation.in_flight,
+        status.saturation.clients,
+        status.saturation.client_lifetime,
+        status.saturation.requests,
+        status.saturation.witnesses,
+        status.saturation.durable_receipts,
+        status.saturation.retired_durable_operations,
+        status.saturation.daemon_counters,
+        status.saturation.service_counters,
+        status.saturation.counters,
+        status.saturation.request_latency,
+        status.saturation.workspace_identity,
+        status.saturation.events,
+        status.saturation.authentication,
+    ];
+    for (index, saturated) in flags.into_iter().enumerate() {
+        if saturated {
+            encoded[offset + index / 8] |= 1 << (index % 8);
+        }
+    }
+    encoded
+}
+
+#[cfg(unix)]
+fn decode_control_status_v2(
+    encoded: &[u8; CONTROL_STATUS_REPLY_BYTES_V2],
+) -> Result<DaemonControlStatusV2, ShutdownControlError> {
+    if encoded[..4] != CONTROL_STATUS_MAGIC_V2
+        || encoded[4] != CONTROL_PROTOCOL_VERSION_V2
+        || encoded[5] != 1
+    {
+        return Err(ShutdownControlError::InvalidRequest);
+    }
+    let lifecycle = match encoded[6] {
+        1 => DaemonLifecycle::Running,
+        2 => DaemonLifecycle::Draining,
+        3 => DaemonLifecycle::Stopped,
+        4 => DaemonLifecycle::Fenced,
+        _ => return Err(ShutdownControlError::InvalidRequest),
+    };
+    let health = match encoded[7] {
+        1 => DaemonHealth::Healthy,
+        2 => DaemonHealth::Fenced,
+        _ => return Err(ShutdownControlError::InvalidRequest),
+    };
+    let readiness = match encoded[8] {
+        1 => DaemonReadiness::Ready,
+        2 => DaemonReadiness::NotReady,
+        _ => return Err(ShutdownControlError::InvalidRequest),
+    };
+    let mut values = [0_usize; CONTROL_STATUS_UTILIZATION_FIELDS_V2];
+    let mut offset = 9;
+    for value in &mut values {
+        let raw = u64::from_be_bytes(
+            encoded[offset..offset + 8]
+                .try_into()
+                .map_err(|_| ShutdownControlError::InvalidRequest)?,
+        );
+        *value = usize::try_from(raw).map_err(|_| ShutdownControlError::InvalidRequest)?;
+        offset += 8;
+    }
+    if encoded[offset + 1] & 0b1100_0000 != 0 {
+        return Err(ShutdownControlError::InvalidRequest);
+    }
+    let flag = |index: usize| encoded[offset + index / 8] & (1 << (index % 8)) != 0;
+    Ok(DaemonControlStatusV2 {
+        liveness: DaemonLiveness::Live,
+        lifecycle,
+        health,
+        readiness,
+        utilization: OperationalUtilization {
+            in_flight_connections: values[0],
+            in_flight_capacity: values[1],
+            active_clients: values[2],
+            client_capacity: values[3],
+            issued_clients: values[4],
+            issued_client_capacity: values[5],
+            retired_clients: values[6],
+            retained_requests: values[7],
+            request_capacity: values[8],
+            retained_witnesses: values[9],
+            witness_capacity: values[10],
+            durable_receipts: values[11],
+            durable_receipt_capacity: values[12],
+            retired_durable_operations: values[13],
+            retired_durable_operation_capacity: values[14],
+        },
+        saturation: OperationalSaturation {
+            in_flight: flag(0),
+            clients: flag(1),
+            client_lifetime: flag(2),
+            requests: flag(3),
+            witnesses: flag(4),
+            durable_receipts: flag(5),
+            retired_durable_operations: flag(6),
+            daemon_counters: flag(7),
+            service_counters: flag(8),
+            counters: flag(9),
+            request_latency: flag(10),
+            workspace_identity: flag(11),
+            events: flag(12),
+            authentication: flag(13),
+        },
+    })
+}
+
+#[cfg(unix)]
 fn connect_control_endpoint(
     control_socket: &Path,
     timeout: Duration,
@@ -3735,9 +3927,7 @@ impl ShutdownControl {
                 }
                 CONTROL_STATUS_REQUEST_V1 => {
                     let mut version = [0_u8; 1];
-                    if stream.read_exact(&mut version).is_err()
-                        || version != [CONTROL_PROTOCOL_VERSION_V1]
-                    {
+                    if stream.read_exact(&mut version).is_err() {
                         let _ = stream.write_all(&[0]);
                         continue;
                     }
@@ -3750,7 +3940,17 @@ impl ShutdownControl {
                         let _ = stream.write_all(&[0]);
                         continue;
                     };
-                    let _ = stream.write_all(&encode_control_status_v1(status));
+                    match version[0] {
+                        CONTROL_PROTOCOL_VERSION_V1 => {
+                            let _ = stream.write_all(&encode_control_status_v1(status));
+                        }
+                        CONTROL_PROTOCOL_VERSION_V2 => {
+                            let _ = stream.write_all(&encode_control_status_v2(status.into()));
+                        }
+                        _ => {
+                            let _ = stream.write_all(&[0]);
+                        }
+                    }
                 }
                 _ => {
                     let _ = stream.write_all(&[0]);
@@ -3800,6 +4000,30 @@ pub fn request_status(
         .read_exact(&mut response)
         .map_err(|_| ShutdownControlError::Io)?;
     decode_control_status_v1(&response)
+}
+
+/// Reads the additive version-two, fixed-size, content-free status reply.
+///
+/// V2 includes permanent durable-operation tombstone occupancy, capacity and
+/// saturation. The sample remains passive and does not probe, authorize, or
+/// alter daemon state.
+#[cfg(unix)]
+pub fn request_status_v2(
+    control_socket: &Path,
+    timeout: Duration,
+) -> Result<DaemonControlStatusV2, ShutdownControlError> {
+    let mut stream = connect_control_endpoint(control_socket, timeout)?;
+    stream
+        .write_all(&[CONTROL_STATUS_REQUEST_V1, CONTROL_PROTOCOL_VERSION_V2])
+        .map_err(|_| ShutdownControlError::Io)?;
+    stream
+        .shutdown(Shutdown::Write)
+        .map_err(|_| ShutdownControlError::Io)?;
+    let mut response = [0_u8; CONTROL_STATUS_REPLY_BYTES_V2];
+    stream
+        .read_exact(&mut response)
+        .map_err(|_| ShutdownControlError::Io)?;
+    decode_control_status_v2(&response)
 }
 
 #[cfg(unix)]
@@ -4268,6 +4492,66 @@ mod tests {
     use std::num::NonZeroU64;
 
     struct FailingSink;
+
+    #[test]
+    fn control_status_v2_round_trip_projects_tombstones_and_v1_remains_compatible() {
+        let status = DaemonControlStatusV1 {
+            liveness: DaemonLiveness::Live,
+            lifecycle: DaemonLifecycle::Draining,
+            health: DaemonHealth::Healthy,
+            readiness: DaemonReadiness::NotReady,
+            utilization: OperationalUtilization {
+                in_flight_connections: 1,
+                in_flight_capacity: 2,
+                active_clients: 3,
+                client_capacity: 4,
+                issued_clients: 5,
+                issued_client_capacity: 6,
+                retired_clients: 7,
+                retained_requests: 8,
+                request_capacity: 9,
+                retained_witnesses: 10,
+                witness_capacity: 11,
+                durable_receipts: 12,
+                durable_receipt_capacity: 13,
+                retired_durable_operations: 14,
+                retired_durable_operation_capacity: 15,
+            },
+            saturation: OperationalSaturation {
+                in_flight: true,
+                clients: false,
+                client_lifetime: true,
+                requests: false,
+                witnesses: true,
+                durable_receipts: false,
+                retired_durable_operations: true,
+                daemon_counters: false,
+                service_counters: true,
+                counters: false,
+                request_latency: true,
+                workspace_identity: false,
+                events: true,
+                authentication: false,
+            },
+        };
+
+        let expected_v2 = DaemonControlStatusV2::from(status);
+        let encoded_v2 = encode_control_status_v2(expected_v2);
+        assert_eq!(decode_control_status_v2(&encoded_v2), Ok(expected_v2));
+
+        let encoded_v1 = encode_control_status_v1(status);
+        let decoded_v1 = decode_control_status_v1(&encoded_v1).unwrap();
+        assert_eq!(decoded_v1.utilization.retired_durable_operations, 0);
+        assert_eq!(decoded_v1.utilization.retired_durable_operation_capacity, 0);
+        assert!(!decoded_v1.saturation.retired_durable_operations);
+
+        let mut noncanonical = encoded_v2;
+        *noncanonical.last_mut().unwrap() |= 0b1000_0000;
+        assert_eq!(
+            decode_control_status_v2(&noncanonical),
+            Err(ShutdownControlError::InvalidRequest)
+        );
+    }
 
     impl OperationalEventSink for FailingSink {
         fn emit(&mut self, _: OperationalEvent) -> Result<(), OperationalEventSinkError> {

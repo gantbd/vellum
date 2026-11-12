@@ -162,9 +162,9 @@ if (sourcePolicy !== undefined) {
   }
   if (
     sourcePolicy.installLockContract
-    !== 'workspace-build-locked; path-install-is-smoke-only'
+    !== 'workspace-build-and-git-install-locked; path-install-local-convenience'
   ) {
-    fail('GitHub source policy must not claim path installation consumes the workspace lock');
+    fail('GitHub source policy must bind the locked Git install and keep path install as local convenience');
   }
   if (!/^[0-9a-f]{40}$/.test(sourcePolicy.keystone?.revision ?? '')) {
     fail('GitHub source policy must pin one full Keystone commit');

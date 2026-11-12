@@ -13,6 +13,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vellum-source-qualifier-t
 const vellum = path.join(fixture, 'vellum');
 const keystone = path.join(fixture, 'keystone');
 const qualifier = path.resolve('scripts/qualify-github-source.mjs');
+const vellumRepository = 'https://github.com/gantbd/vellum';
 const keystoneRepository = 'https://github.com/gantbd/keystone';
 
 const run = (command, args, cwd, env = process.env) => {
@@ -110,8 +111,8 @@ try {
   const sourcePolicy = {
     schema: 1,
     channel: 'github-coordinated-source',
-    installLockContract: 'workspace-build-locked; path-install-is-smoke-only',
-    vellumRepository: 'fixture',
+    installLockContract: 'workspace-build-and-git-install-locked; path-install-local-convenience',
+    vellumRepository,
     keystone: {
       repository: keystoneRepository,
       revision: keystoneRevision,
@@ -177,10 +178,10 @@ try {
       RUSTC_WRAPPER: path.join(fixture, 'ambient-wrapper-must-not-be-used'),
     },
   );
-  if (!output.includes('2 source-install smoke binaries from 1 install package(s); workspace release build locked')) {
+  if (!output.includes('2 immutable-Git install smoke binaries from 1 install package(s); workspace release build locked')) {
     throw new Error('qualifier did not report both fixture binaries');
   }
-  if (!output.includes('reachability was not verified')) {
+  if (!output.includes('Vellum and Keystone GitHub reachability were not verified')) {
     throw new Error('qualifier did not preserve the remote-retrievability nonclaim');
   }
 

@@ -31,7 +31,7 @@ use vellum_daemon::{
     LocalAuthenticationClaimV1, LocalDaemon, OperationalEvent, OperationalEventKind,
     OperationalEventSink, OperationalEventSinkError, OperationalLifecycleEvent,
     OperationalRequestEvent, RequestLatencyProfile, ShutdownControlError, StartupWorkspaceError,
-    compose_startup_workspace, request_shutdown, request_status,
+    compose_startup_workspace, request_shutdown, request_status, request_status_v2,
 };
 use vellum_editor::{Workspace, WorkspaceRootKind};
 use vellum_host::request_journal::{
@@ -2259,6 +2259,16 @@ fn private_control_status_is_passive_bounded_and_tracks_lifecycle() {
     assert_eq!(daemon.operational_snapshot(), before);
     assert_eq!(daemon.usage().operational_probes, 0);
 
+    let running_v2 = request_status_v2(&fixture.control, Duration::from_secs(2)).unwrap();
+    assert_eq!(running_v2.liveness, DaemonLiveness::Live);
+    assert_eq!(running_v2.lifecycle, DaemonLifecycle::Running);
+    assert_eq!(running_v2.health, DaemonHealth::Healthy);
+    assert_eq!(running_v2.readiness, DaemonReadiness::Ready);
+    assert_eq!(running_v2.utilization, before.utilization);
+    assert_eq!(running_v2.saturation, before.saturation);
+    assert_eq!(daemon.operational_snapshot(), before);
+    assert_eq!(daemon.usage().operational_probes, 0);
+
     assert_eq!(daemon.begin_drain(), DrainTransition::Started);
     let draining = request_status(&fixture.control, Duration::from_secs(2)).unwrap();
     assert_eq!(draining.lifecycle, DaemonLifecycle::Draining);
@@ -2745,10 +2755,12 @@ fn installed_status_cli_reads_real_daemon_without_disclosing_workspace_content()
     assert!(status.status.success());
     let body = String::from_utf8(status.stdout).unwrap();
     assert!(body.starts_with(
-        "{\"version\":1,\"liveness\":\"live\",\"lifecycle\":\"running\",\"health\":\"healthy\",\"readiness\":\"ready\""
+        "{\"version\":2,\"liveness\":\"live\",\"lifecycle\":\"running\",\"health\":\"healthy\",\"readiness\":\"ready\""
     ));
     assert!(body.contains("\"utilization\":"));
     assert!(body.contains("\"saturation\":"));
+    assert!(body.contains("\"retired_durable_operations\":"));
+    assert!(body.contains("\"retired_durable_operation_capacity\":"));
     assert!(!body.contains("private-source-sentinel"));
     assert!(!body.contains(fixture.directory.to_string_lossy().as_ref()));
 

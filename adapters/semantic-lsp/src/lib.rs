@@ -1222,6 +1222,12 @@ pub struct LspAdapterV1<
     bridge_failure: Option<SemanticBridgePollFailureV1>,
     next_request_id: u64,
     read_index: bool,
+    diagnostics: bool,
+    symbols: bool,
+    definition: bool,
+    references: bool,
+    implementations: bool,
+    type_at_point: bool,
     rename_plan: bool,
     usage: LspUsageV1,
 }
@@ -1414,6 +1420,12 @@ impl<
             bridge_failure: None,
             next_request_id: 2,
             read_index: false,
+            diagnostics: false,
+            symbols: false,
+            definition: false,
+            references: false,
+            implementations: false,
+            type_at_point: false,
             rename_plan: false,
             usage: LspUsageV1::default(),
         })
@@ -1481,6 +1493,12 @@ impl<
             && self.server_info.is_none()
             && self.next_request_id == 2
             && !self.read_index
+            && !self.diagnostics
+            && !self.symbols
+            && !self.definition
+            && !self.references
+            && !self.implementations
+            && !self.type_at_point
             && !self.rename_plan
             && self.usage == LspUsageV1::default()
             && matches!(
@@ -1590,6 +1608,19 @@ impl<
                 "documentSymbol": {
                     "dynamicRegistration": false,
                     "hierarchicalDocumentSymbolSupport": true
+                },
+                "definition": {
+                    "dynamicRegistration": false,
+                    "linkSupport": false
+                },
+                "references": {"dynamicRegistration": false},
+                "implementation": {
+                    "dynamicRegistration": false,
+                    "linkSupport": false
+                },
+                "hover": {
+                    "dynamicRegistration": false,
+                    "contentFormat": ["plaintext", "markdown"]
                 },
                 "rename": {
                     "dynamicRegistration": false,
@@ -1940,10 +1971,21 @@ impl<
             let capabilities = value
                 .pointer("/result/capabilities")
                 .unwrap_or(&Value::Null);
-            let read_index = matches!(
+            self.diagnostics = matches!(
                 capabilities.get("diagnosticProvider"),
                 Some(Value::Object(_))
-            ) && capability_enabled(capabilities.get("documentSymbolProvider"));
+            );
+            self.symbols = capability_enabled(capabilities.get("documentSymbolProvider"));
+            self.definition = capability_enabled(capabilities.get("definitionProvider"));
+            self.references = capability_enabled(capabilities.get("referencesProvider"));
+            self.implementations = capability_enabled(capabilities.get("implementationProvider"));
+            self.type_at_point = capability_enabled(capabilities.get("hoverProvider"));
+            let read_index = self.diagnostics
+                || self.symbols
+                || self.definition
+                || self.references
+                || self.implementations
+                || self.type_at_point;
             self.read_index = read_index;
             self.rename_plan = capability_enabled(capabilities.get("renameProvider"));
             match self.send_json(&json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}))
@@ -2216,6 +2258,13 @@ impl<
         if !document.opened || document.target != request.target {
             return SemanticOutcomeV1::Stale;
         }
+        if matches!(
+            request.query,
+            vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. }
+        ) && result.is_null()
+        {
+            return SemanticOutcomeV1::Unavailable;
+        }
         let converted = match &request.query {
             vellum_host::semantic::SemanticQueryV1::Diagnostics => {
                 convert_diagnostics(result, document, encoding, self.semantic_limits)
@@ -2223,10 +2272,27 @@ impl<
             vellum_host::semantic::SemanticQueryV1::Symbols { needle } => {
                 convert_symbols(result, document, encoding, needle, self.semantic_limits)
             }
+            vellum_host::semantic::SemanticQueryV1::Definition { .. }
+            | vellum_host::semantic::SemanticQueryV1::Implementations { .. } => convert_locations(
+                result,
+                &self.documents,
+                encoding,
+                self.semantic_limits,
+                true,
+            ),
+            vellum_host::semantic::SemanticQueryV1::References { .. } => convert_locations(
+                result,
+                &self.documents,
+                encoding,
+                self.semantic_limits,
+                false,
+            ),
+            vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. } => {
+                convert_hover(result, self.semantic_limits)
+            }
             vellum_host::semantic::SemanticQueryV1::PlanRename { .. } => {
                 convert_rename_plan(result, &self.documents, encoding, self.semantic_limits)
             }
-            _ => Err(SemanticRefusalV1::InvalidRequest),
         };
         match converted {
             Ok(result) => {
@@ -2502,10 +2568,15 @@ impl<
         };
         let supported = read_index
             && match request.query {
-                vellum_host::semantic::SemanticQueryV1::Diagnostics
-                | vellum_host::semantic::SemanticQueryV1::Symbols { .. } => true,
+                vellum_host::semantic::SemanticQueryV1::Diagnostics => self.diagnostics,
+                vellum_host::semantic::SemanticQueryV1::Symbols { .. } => self.symbols,
+                vellum_host::semantic::SemanticQueryV1::Definition { .. } => self.definition,
+                vellum_host::semantic::SemanticQueryV1::References { .. } => self.references,
+                vellum_host::semantic::SemanticQueryV1::Implementations { .. } => {
+                    self.implementations
+                }
+                vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. } => self.type_at_point,
                 vellum_host::semantic::SemanticQueryV1::PlanRename { .. } => self.rename_plan,
-                _ => false,
             };
         if !supported {
             bump(
@@ -2541,10 +2612,56 @@ impl<
         let method = match request.query {
             vellum_host::semantic::SemanticQueryV1::Diagnostics => "textDocument/diagnostic",
             vellum_host::semantic::SemanticQueryV1::Symbols { .. } => "textDocument/documentSymbol",
+            vellum_host::semantic::SemanticQueryV1::Definition { .. } => "textDocument/definition",
+            vellum_host::semantic::SemanticQueryV1::References { .. } => "textDocument/references",
+            vellum_host::semantic::SemanticQueryV1::Implementations { .. } => {
+                "textDocument/implementation"
+            }
+            vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. } => "textDocument/hover",
             vellum_host::semantic::SemanticQueryV1::PlanRename { .. } => "textDocument/rename",
-            _ => unreachable!("query family checked above"),
         };
         let params = match &request.query {
+            vellum_host::semantic::SemanticQueryV1::Definition { offset }
+            | vellum_host::semantic::SemanticQueryV1::Implementations { offset }
+            | vellum_host::semantic::SemanticQueryV1::TypeAtPoint { offset } => {
+                let Ok(offset) = usize::try_from(*offset) else {
+                    return SemanticProviderSubmissionV1::Refused;
+                };
+                let Ok(position) = byte_offset_to_lsp_position_v1(
+                    &document.source,
+                    offset,
+                    match self.state {
+                        LspSessionStateV1::Ready { encoding, .. } => encoding,
+                        _ => unreachable!("ready state checked above"),
+                    },
+                ) else {
+                    return SemanticProviderSubmissionV1::Refused;
+                };
+                json!({
+                    "textDocument": {"uri": document.uri.0},
+                    "position": {"line": position.line, "character": position.character}
+                })
+            }
+            vellum_host::semantic::SemanticQueryV1::References { offset } => {
+                let Ok(offset) = usize::try_from(*offset) else {
+                    return SemanticProviderSubmissionV1::Refused;
+                };
+                let Ok(position) = byte_offset_to_lsp_position_v1(
+                    &document.source,
+                    offset,
+                    match self.state {
+                        LspSessionStateV1::Ready { encoding, .. } => encoding,
+                        _ => unreachable!("ready state checked above"),
+                    },
+                ) else {
+                    return SemanticProviderSubmissionV1::Refused;
+                };
+                json!({
+                    "textDocument": {"uri": document.uri.0},
+                    "position": {"line": position.line, "character": position.character},
+                    "context": {"includeDeclaration": true}
+                })
+            }
             vellum_host::semantic::SemanticQueryV1::PlanRename { offset, new_name } => {
                 let Ok(offset) = usize::try_from(*offset) else {
                     return SemanticProviderSubmissionV1::Refused;
@@ -2874,6 +2991,78 @@ fn convert_symbols(
         )?;
     }
     SemanticResultV1::try_symbols(symbols, limits).map_err(|_| SemanticRefusalV1::OutputLimit)
+}
+
+fn convert_locations(
+    result: &Value,
+    documents: &BTreeMap<SemanticDocumentRefV1, DocumentState>,
+    encoding: LspPositionEncodingV1,
+    limits: SemanticLimitsV1,
+    allow_single: bool,
+) -> Result<SemanticResultV1, SemanticRefusalV1> {
+    let values: &[Value] = if result.is_null() {
+        &[]
+    } else if let Some(values) = result.as_array() {
+        values
+    } else if allow_single && result.is_object() {
+        std::slice::from_ref(result)
+    } else {
+        return Err(SemanticRefusalV1::MalformedProviderReply);
+    };
+    if values.len() > limits.max_results {
+        return Err(SemanticRefusalV1::OutputLimit);
+    }
+    let mut locations = Vec::with_capacity(values.len());
+    for value in values {
+        let location = value
+            .as_object()
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let uri = location
+            .get("uri")
+            .and_then(Value::as_str)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let document = documents
+            .values()
+            .find(|document| document.opened && document.uri.0 == uri)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        locations.push(SemanticLocationV1 {
+            target: document.target,
+            span: parse_range(location.get("range"), &document.source, encoding)?,
+        });
+    }
+    SemanticResultV1::try_locations(locations, limits).map_err(|_| SemanticRefusalV1::OutputLimit)
+}
+
+fn convert_hover(
+    result: &Value,
+    limits: SemanticLimitsV1,
+) -> Result<SemanticResultV1, SemanticRefusalV1> {
+    let hover = result
+        .as_object()
+        .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+    let contents = hover
+        .get("contents")
+        .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+    let value = if let Some(value) = contents.as_str() {
+        value
+    } else {
+        let markup = contents
+            .as_object()
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        if !matches!(
+            markup.get("kind").and_then(Value::as_str),
+            Some("plaintext" | "markdown")
+        ) {
+            return Err(SemanticRefusalV1::MalformedProviderReply);
+        }
+        markup
+            .get("value")
+            .and_then(Value::as_str)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?
+    };
+    let text = SemanticTextV1::try_new(value.to_owned(), limits.max_detail_bytes)
+        .map_err(|_| SemanticRefusalV1::OutputLimit)?;
+    SemanticResultV1::try_type_at_point(text, limits).map_err(|_| SemanticRefusalV1::OutputLimit)
 }
 
 fn convert_rename_plan(
@@ -3405,6 +3594,10 @@ mod tests {
                 "positionEncoding": "utf-16",
                 "diagnosticProvider": {"interFileDependencies": false, "workspaceDiagnostics": false},
                 "documentSymbolProvider": true,
+                "definitionProvider": true,
+                "referencesProvider": true,
+                "implementationProvider": true,
+                "hoverProvider": true,
                 "renameProvider": true
             }}
         }))));
@@ -3507,6 +3700,16 @@ mod tests {
         SemanticRequestV1 {
             request: SemanticRequestRefV1::new(request),
             ..diagnostics_request(0)
+        }
+    }
+
+    fn point_request(tag: u8, query: vellum_host::semantic::SemanticQueryV1) -> SemanticRequestV1 {
+        SemanticRequestV1 {
+            request: SemanticRequestRefV1::new([tag; 16]),
+            target: target(0),
+            expected_index: SemanticIndexGenerationV1::new(1),
+            language: SemanticTextV1::try_new("rust".to_owned(), 16).unwrap(),
+            query,
         }
     }
 
@@ -5426,6 +5629,141 @@ mod tests {
         assert_eq!(adapter.usage().cancellations, 1);
         assert_eq!(adapter.usage().orphan_messages, 0);
         assert_eq!(adapter.usage().cancelled_responses_correlated, 1);
+    }
+
+    #[test]
+    fn navigation_references_implementations_and_hover_use_exact_open_snapshots() {
+        let mut adapter = ready_adapter();
+        open_document(&mut adapter);
+
+        let definition = point_request(
+            20,
+            vellum_host::semantic::SemanticQueryV1::Definition { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&definition),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        let emitted = framed_json(adapter.transport.sends.last().unwrap());
+        assert_eq!(emitted["method"], "textDocument/definition");
+        assert_eq!(
+            emitted["params"]["position"],
+            json!({"line": 0, "character": 3})
+        );
+        adapter.transport.receives.push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+            "jsonrpc": "2.0", "id": 2,
+            "result": {
+                "uri": "vellum-lsp://seven",
+                "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 8}}
+            }
+        }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("definition must complete")
+        };
+        assert_eq!(reply.result.locations().unwrap()[0].target, target(0));
+        assert_eq!(
+            reply.result.locations().unwrap()[0].span,
+            SemanticSpanV1::try_new(3, 8).unwrap()
+        );
+
+        let references = point_request(
+            21,
+            vellum_host::semantic::SemanticQueryV1::References { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&references),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        let emitted = framed_json(adapter.transport.sends.last().unwrap());
+        assert_eq!(emitted["method"], "textDocument/references");
+        assert_eq!(emitted["params"]["context"]["includeDeclaration"], true);
+        adapter.transport.receives.push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+            "jsonrpc": "2.0", "id": 3,
+            "result": [{
+                "uri": "vellum-lsp://seven",
+                "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 8}}
+            }]
+        }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("references must complete")
+        };
+        assert_eq!(reply.result.locations().unwrap().len(), 1);
+
+        let implementations = point_request(
+            22,
+            vellum_host::semantic::SemanticQueryV1::Implementations { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&implementations),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        assert_eq!(
+            framed_json(adapter.transport.sends.last().unwrap())["method"],
+            "textDocument/implementation"
+        );
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc": "2.0", "id": 4, "result": null
+            }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("empty implementations must complete")
+        };
+        assert!(reply.result.locations().unwrap().is_empty());
+
+        let hover = point_request(
+            23,
+            vellum_host::semantic::SemanticQueryV1::TypeAtPoint { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&hover),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        assert_eq!(
+            framed_json(adapter.transport.sends.last().unwrap())["method"],
+            "textDocument/hover"
+        );
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc": "2.0", "id": 5,
+                "result": {"contents": {"kind": "markdown", "value": "```rust\nfn alpha()\n```"}}
+            }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("hover must complete")
+        };
+        assert_eq!(
+            reply.result.type_at_point().unwrap().as_str(),
+            "```rust\nfn alpha()\n```"
+        );
+    }
+
+    #[test]
+    fn navigation_rejects_unbound_provider_locations() {
+        let mut adapter = ready_adapter();
+        open_document(&mut adapter);
+        let definition = point_request(
+            24,
+            vellum_host::semantic::SemanticQueryV1::Definition { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&definition),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        adapter.transport.receives.push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+            "jsonrpc": "2.0", "id": 2,
+            "result": {
+                "uri": "file:///untrusted/foreign.rs",
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}
+            }
+        }))));
+        assert_eq!(
+            adapter.poll().unwrap().outcome,
+            SemanticOutcomeV1::Refused(SemanticRefusalV1::MalformedProviderReply)
+        );
+        assert_eq!(adapter.usage().malformed_messages, 1);
     }
 
     #[test]

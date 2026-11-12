@@ -3,7 +3,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     use crate::{
         DaemonExportPolicyV1, DaemonHealth, DaemonLifecycle, DaemonLimits, DaemonReadiness,
         DaemonServeError, DrainCompletion, DrainTransition, LocalDaemon,
-        StderrOperationalEventSink, compose_startup_workspace, request_shutdown, request_status,
+        StderrOperationalEventSink, compose_startup_workspace, request_shutdown, request_status_v2,
     };
     use std::{ffi::OsString, os::unix::ffi::OsStrExt, path::PathBuf, time::Duration};
     use vellum_adapter_local_authentication::{LocalCredentialStoreV1, LocalCredentialVerifierV1};
@@ -94,7 +94,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if args.len() == 2 && args[0] == "--status" {
-        let status = request_status(PathBuf::from(&args[1]).as_path(), Duration::from_secs(5))
+        let status = request_status_v2(PathBuf::from(&args[1]).as_path(), Duration::from_secs(5))
             .map_err(|_| CliError("status request refused"))?;
         let lifecycle = match status.lifecycle {
             DaemonLifecycle::Running => "running",
@@ -114,7 +114,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         let s = status.saturation;
         println!(
             concat!(
-                "{{\"version\":1,\"liveness\":\"live\",\"lifecycle\":\"{}\",",
+                "{{\"version\":2,\"liveness\":\"live\",\"lifecycle\":\"{}\",",
                 "\"health\":\"{}\",\"readiness\":\"{}\",\"utilization\":{{",
                 "\"in_flight_connections\":{},\"in_flight_capacity\":{},",
                 "\"active_clients\":{},\"client_capacity\":{},",
@@ -122,9 +122,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 "\"retired_clients\":{},\"retained_requests\":{},",
                 "\"request_capacity\":{},\"retained_witnesses\":{},",
                 "\"witness_capacity\":{},\"durable_receipts\":{},",
-                "\"durable_receipt_capacity\":{}}},\"saturation\":{{",
+                "\"durable_receipt_capacity\":{},",
+                "\"retired_durable_operations\":{},",
+                "\"retired_durable_operation_capacity\":{}}},\"saturation\":{{",
                 "\"in_flight\":{},\"clients\":{},\"client_lifetime\":{},",
                 "\"requests\":{},\"witnesses\":{},\"durable_receipts\":{},",
+                "\"retired_durable_operations\":{},",
                 "\"daemon_counters\":{},\"service_counters\":{},\"counters\":{},",
                 "\"request_latency\":{},\"workspace_identity\":{},\"events\":{},",
                 "\"authentication\":{}}}}}"
@@ -145,12 +148,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             u.witness_capacity,
             u.durable_receipts,
             u.durable_receipt_capacity,
+            u.retired_durable_operations,
+            u.retired_durable_operation_capacity,
             s.in_flight,
             s.clients,
             s.client_lifetime,
             s.requests,
             s.witnesses,
             s.durable_receipts,
+            s.retired_durable_operations,
             s.daemon_counters,
             s.service_counters,
             s.counters,

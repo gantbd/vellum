@@ -136,9 +136,10 @@ that treats an unlisted helper as trusted payload.
 
 The cargo-install qualification slice likewise changes no Rust package API or
 wire frame. It tightens distribution evidence from an ambient path-install
-smoke to `--locked --offline` execution in fresh Cargo/install/target roots,
-with an exact daemon+MCP binary closure and adversarial filesystem/environment
-checks. This is a release-process compatibility constraint: source payloads
+smoke to the documented exact-revision Git install under `--locked --offline`
+in fresh Cargo/install/target roots, with an exact daemon+MCP binary closure
+and adversarial filesystem/environment checks. This is a release-process
+compatibility constraint: source payloads
 that relied on an ambient registry cache, extra binaries, symlink binaries or
 writable installed executables now fail rather than receiving release credit.
 

@@ -158,15 +158,19 @@ requirePinnedKeystoneClosure(
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'vellum-github-source-'));
 try {
   if (verifyRemote) {
-    const remoteProbe = path.join(temporary, 'keystone-remote.git');
-    run('git', ['init', '--bare', remoteProbe]);
-    run('git', [
-      '-C', remoteProbe, 'fetch', '--depth=1',
-      policy.keystone.repository, policy.keystone.revision,
-    ]);
-    const fetched = run('git', ['-C', remoteProbe, 'rev-parse', 'FETCH_HEAD']);
-    if (fetched !== policy.keystone.revision) {
-      throw new Error('the GitHub remote did not return the pinned Keystone commit');
+    for (const [name, repository, revision] of [
+      ['vellum', policy.vellumRepository, vellumRevision],
+      ['keystone', policy.keystone.repository, policy.keystone.revision],
+    ]) {
+      const remoteProbe = path.join(temporary, `${name}-remote.git`);
+      run('git', ['init', '--bare', remoteProbe]);
+      run('git', [
+        '-C', remoteProbe, 'fetch', '--depth=1', repository, revision,
+      ]);
+      const fetched = run('git', ['-C', remoteProbe, 'rev-parse', 'FETCH_HEAD']);
+      if (fetched !== revision) {
+        throw new Error(`the GitHub remote did not return the pinned ${name} commit`);
+      }
     }
   }
 
@@ -227,7 +231,8 @@ try {
   const gitConfiguration = path.join(temporary, 'gitconfig');
   fs.writeFileSync(
     gitConfiguration,
-    `[url "${pathToFileURL(keystoneSource).href}"]\n\tinsteadOf = ${policy.keystone.repository}\n`,
+    `[url "${pathToFileURL(root).href}"]\n\tinsteadOf = ${policy.vellumRepository}\n`
+      + `[url "${pathToFileURL(keystoneSource).href}"]\n\tinsteadOf = ${policy.keystone.repository}\n`,
     { mode: 0o600 },
   );
   cargoEnvironment.GIT_CONFIG_GLOBAL = gitConfiguration;
@@ -235,6 +240,16 @@ try {
   const fetchEnvironment = { ...cargoEnvironment };
   delete fetchEnvironment.CARGO_NET_OFFLINE;
   run('cargo', ['fetch', '--locked'], { cwd: vellum, env: fetchEnvironment });
+  const gitSeed = path.join(temporary, 'git-seed');
+  fs.mkdirSync(path.join(gitSeed, 'src'), { recursive: true });
+  fs.writeFileSync(
+    path.join(gitSeed, 'Cargo.toml'),
+    `[package]\nname = "vellum-git-seed"\nversion = "0.0.0"\nedition = "2024"\npublish = false\n`
+      + `[dependencies]\nvellum-daemon = { git = ${JSON.stringify(policy.vellumRepository)}, rev = ${JSON.stringify(vellumRevision)} }\n`
+      + `vellum-mcp = { git = ${JSON.stringify(policy.vellumRepository)}, rev = ${JSON.stringify(vellumRevision)} }\n`,
+  );
+  fs.writeFileSync(path.join(gitSeed, 'src/lib.rs'), 'pub const PRESENT: bool = true;\n');
+  run('cargo', ['fetch'], { cwd: gitSeed, env: fetchEnvironment });
   const controlProfile = policy.sourceInstallProfiles[0];
   const controlManifest = path.join(vellum, controlProfile.path, 'Cargo.toml');
   const controlDependency = path.join(temporary, 'qualification-lock-control');
@@ -281,10 +296,11 @@ try {
     run(
       'cargo',
       [
-        'install', '--offline', '--locked', '--path', profile.path,
+        'install', '--offline', '--locked', '--git', policy.vellumRepository,
+        '--rev', vellumRevision, profile.package,
         '--root', installRoot, '--target-dir', target,
       ],
-      { cwd: vellum, capture: false, env: cargoEnvironment },
+      { cwd: temporary, capture: false, env: cargoEnvironment },
     );
     const binaries = profileBinaries(profile);
     installed.push(...binaries);
@@ -320,11 +336,11 @@ try {
     .reduce((count, binaries) => count + binaries.length, 0);
 
   process.stdout.write(
-    `Vellum coordinated GitHub source qualified: vellum ${vellumRevision}, keystone ${keystoneRevision}, ${installedBinaryCount} source-install smoke binaries from ${policy.sourceInstallProfiles.length} install package(s); workspace release build locked\n`,
+    `Vellum coordinated GitHub source qualified: vellum ${vellumRevision}, keystone ${keystoneRevision}, ${installedBinaryCount} immutable-Git install smoke binaries from ${policy.sourceInstallProfiles.length} install package(s); workspace release build locked\n`,
   );
   if (!verifyRemote) {
     process.stdout.write(
-      'Keystone GitHub reachability was not verified; rerun with --verify-remote before claiming a remotely reproducible bundle\n',
+      'Vellum and Keystone GitHub reachability were not verified; rerun with --verify-remote before claiming a remotely reproducible bundle\n',
     );
   }
 } finally {

@@ -266,9 +266,12 @@ seventh intent shared by the durable execute/lookup/retirement tools. Syntax dis
 is not a grant. Exact document/revision/destination matching is enforced again
 by the daemon policy; the response is locator-free and mismatched receipt sort,
 document or revision is `service_malformed`. The live restart qualification
-uses the production daemon library, socket, credential adapter and filesystem
-effect in process. It is not yet evidence that two separately launched shipped
-binaries preserve the same lost-reply behavior.
+now includes separately launched shipped daemon and MCP binaries. It persists
+an operation reference before execution, drops the first MCP process without
+consuming its response, restarts both processes, and recovers the retained
+receipt without repeating the saved edit. The in-process matrix remains the
+stronger source of exact counters and injected fault classification; the
+process case proves only the named local profile.
 
 ### Workspace and filesystem adapter
 

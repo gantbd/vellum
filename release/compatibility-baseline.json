@@ -192,7 +192,7 @@
       "sourceTree": {
         "directory": "adapters/semantic-lsp/src",
         "fileCount": 1,
-        "sha256": "b12bc6f24b8358a435b4d39c135a7ddb5942b55593bb424ef183c0f469db6555"
+        "sha256": "8fabccaeb6e36c8d8c5b778f4a70505cd361110c3213d96ba5aa7cd6e02ef7e4"
       }
     },
     {
@@ -269,7 +269,7 @@
       "sourceTree": {
         "directory": "applications/vellum-daemon/src",
         "fileCount": 3,
-        "sha256": "3ce04397f099e2154c5dc1d2e2e271c52838b6ffb112038105993c36ac75783e"
+        "sha256": "7c9d5495da3b499f863a57e6fe0b7fc7d056bc7960d6bde07513859cf58cf989"
       }
     },
     {

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "channel": "github-coordinated-source",
-  "installLockContract": "workspace-build-locked; path-install-is-smoke-only",
+  "installLockContract": "workspace-build-and-git-install-locked; path-install-local-convenience",
   "vellumRepository": "https://github.com/gantbd/vellum",
   "keystone": {
     "repository": "https://github.com/gantbd/keystone",

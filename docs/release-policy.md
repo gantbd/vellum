@@ -69,11 +69,12 @@ node scripts/qualify-github-source.mjs --vellum-ref=HEAD
 ```
 
 The probe creates a fresh Vellum archive, checks effective non-publication and
-the exact Keystone Git dependency closure, and maps the declared Keystone URL
-to the inspected local Git object without changing Cargo's source identity. It
-prefetches the locked graph into a fresh private `CARGO_HOME`, then builds and
-source-installs the `vellum` distribution package with `--locked --offline`
-into a fresh install root and target directory and executes
+the exact Keystone Git dependency closure, and maps both declared repository
+URLs to the inspected local Git objects without changing Cargo's source
+identities. It prefetches the locked graph into a fresh private `CARGO_HOME`,
+then builds the archived workspace and executes the documented
+`cargo install --locked --offline --git ... --rev ... vellum` command into a
+fresh install root and target directory. It then executes
 both installed peer help paths plus an empty-invocation refusal. It requires the
 exact two-binary closure, rejects symlink/non-regular/group- or world-writable
 payloads, excludes TUI/GUI binaries, and checks that refusal output discloses
@@ -83,13 +84,12 @@ a release workspace build with `--locked`, after injecting
 a temporary direct dependency and requiring that the locked build refuse. This
 proves the archive build consumes the workspace lock.
 
-Cargo's path installer is deliberately not credited with that property. The
-install step is an executable/package-shape smoke test, while the
-locked workspace build is the reproducible-graph evidence. The source contract
-now has one root distribution package, but still needs an independently
-qualified install lock or an installer that installs the already locked-built
-artifact before path-install is credited as graph reproducibility. The probe
-never installs or releases either presentation repository.
+Cargo's path installer remains local convenience and is not credited with
+immutable-source reproducibility. The locked workspace build and locked Git
+install are separate required evidence: the former proves the archive consumes
+the workspace lock, while the latter proves the documented one-package command
+selects the exact commit and binary closure. The probe never installs or
+releases either presentation repository.
 
 `node scripts/qualify-github-source.test.mjs` constructs two temporary Git
 repositories and exercises the complete archive, exact-Git resolution,
@@ -104,7 +104,8 @@ fixture has only local exact-Git dependencies and proves
 the isolation, exact binary closure, adversarial filesystem checks and process
 behavior—not third-party retrieval. Before calling a bundle remotely
 reproducible, also run `--verify-remote`, which requires network access and
-proves that GitHub advertises the pinned Keystone commit:
+proves that GitHub advertises both the selected Vellum commit and the pinned
+Keystone commit:
 
 ```sh
 node scripts/qualify-github-source.mjs --vellum-ref=RELEASE_COMMIT --verify-remote

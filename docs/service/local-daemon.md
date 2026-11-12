@@ -61,9 +61,9 @@ and the `--allow-retire-receipt` action ceiling remain conjunctive.
 Durable receipt retirement retains a permanent operation tombstone under a
 separate bounded monotone capacity. Active receipt capacity releases only
 after validated active-file cleanup and directory synchronization following
-tombstone commit. The passive in-process snapshot exposes both gauges;
-the byte-compatible V1 external control-status frame does not yet project the
-new tombstone gauge.
+tombstone commit. The passive in-process snapshot and additive V2 external
+control-status frame expose both gauges. V1 remains byte-compatible and omits
+the tombstone fields.
 
 The persistent standalone composition retains its identity metadata port for
 runtime membership. The v3 record separates exact document/root issued prefixes
@@ -285,14 +285,16 @@ its clock boundary and signal meaning remain daemon-owned.
 
 The installed binary exposes one separate owner-only control socket in the same
 pinned private directory. Its bounded local protocol preserves the original
-one-byte V1 shutdown request and adds the two-byte status request `[2, 1]`
-(operation, version). Status returns one fixed-size V1 reply with liveness,
-lifecycle, health, readiness, the same aggregate utilization gauges described
-above, and their closed saturation predicates. It contains no paths, source,
+one-byte V1 shutdown request and accepts two-byte status requests `[2, 1]` and
+`[2, 2]` (operation, version). V1 remains fixed-size and byte-compatible. The
+additive fixed-size V2 reply preserves all V1 fields and adds permanent durable-
+operation tombstone occupancy, capacity and saturation. Both contain liveness,
+lifecycle, health, readiness, aggregate utilization and closed saturation
+predicates. Neither contains paths, source,
 subjects, sessions, client/request/document/root IDs, arguments, per-user
 counts, dynamic labels, raw errors, or debug rendering. The shipped
-`vellum-daemon --status PRIVATE_CONTROL_SOCKET` renders that closed reply as
-one stable JSON object.
+`vellum-daemon --status PRIVATE_CONTROL_SOCKET` requests V2 and renders that
+closed reply as one stable version-two JSON object.
 
 Status sampling copies the last projection published by the serialized daemon
 at admission, request completion, fencing, and drain transitions. It does not

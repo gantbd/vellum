@@ -8,6 +8,16 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Extended the production LSP adapter with bounded definition, references,
+  implementations and type-at-point queries. Results must resolve to exact
+  open Vellum snapshots; foreign provider URIs and unsupported capabilities
+  refuse without source-bearing telemetry.
+- Added private daemon control-status V2 with content-free retired durable-
+  operation occupancy, capacity and saturation. V1 remains byte-compatible,
+  while the installed `--status` command now requests and renders V2.
+- Added a shipped-process lost-reply qualification: independently launched
+  daemon and MCP binaries restart and recover a durable saved-edit receipt
+  without reapplying the edit or overwriting a later external file change.
 - Added a pure release activation/rollback algebra and private-scratch
   qualifier. Exact approval binds distinct candidate/prior identities;
   immutable digest-named daemon/MCP/plist bundles, a synchronized atomic
@@ -383,8 +393,10 @@ will follow Semantic Versioning once a public release contract is selected.
 - Added an offline coordinated-source cargo-install qualifier with fresh Cargo,
   install, and target roots; exact daemon/MCP binary closure; content-safe
   startup probes; and adversarial path, symlink, mode, and ambient-environment
-  fixtures. Actual GitHub-source readiness remains fail-closed on the recorded
-  Keystone and offline dependency-source blockers.
+  fixtures. The qualifier now executes the documented exact-revision Git
+  install from immutable local repository objects rather than substituting a
+  path install. Remote reachability and a self-contained offline dependency
+  bundle remain separate nonclaims.
 - Added the nonpublishing `vellum` source-install package. One Cargo invocation
   now installs the independently owned `vellum-daemon` and `vellum-mcp`
   executables; the package contains no runtime policy or adapter selection.

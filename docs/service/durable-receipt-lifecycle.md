@@ -98,8 +98,9 @@ is not rotation.
 
 The daemon publishes content-free active receipt and retired identity used,
 capacity and saturation gauges in its passive in-process USE/golden-signal
-snapshot. The byte-compatible external V1 status frame does not yet project the
-retired-identity gauge. Operators can alert before capacity is exhausted;
+snapshot and additive external V2 status frame. The byte-compatible V1 frame
+remains available and omits the retired-identity gauge. Operators can alert
+before capacity is exhausted;
 the dimensions cannot identify a subject, operation, path or source. The
 existing full/refusal/failure/replay counters remain RED evidence. The supported
 response to retired-identity saturation is to provision a larger bounded journal
