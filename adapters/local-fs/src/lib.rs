@@ -31,11 +31,6 @@ pub use workspace_identity::*;
 mod request_journal;
 #[cfg(target_os = "macos")]
 pub use request_journal::*;
-#[cfg(target_os = "macos")]
-mod semantic_snapshot;
-#[cfg(target_os = "macos")]
-pub use semantic_snapshot::*;
-#[cfg(target_os = "macos")]
 mod append_journal;
 #[cfg(target_os = "macos")]
 pub use append_journal::*;

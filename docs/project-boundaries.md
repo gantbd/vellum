@@ -22,7 +22,6 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/client/vellum-semantic-session-client` | Transport-neutral phase truth, exact mutation uncertainty, compact synchronization witnesses and witness-backed reply revalidation; exports only content-safe binding facts to trusted composition | Sockets, authentication, grants, broker replay storage, provider selection or automatic retry |
 | `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter plus a bounded private-path Unix client exchange preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Authentication, automatic reconnect/retry, server dispatch, broker/provider ownership, remote TCP or MCP policy |
 | `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
-| `vellum/adapters/semantic-helper-xpc-macos` | One-attempt signed-service NSXPC interpretation of the helper frames plus explicit snapshot-directory capability transfer | Provider launch policy, source traversal, retry, bundle construction or signing authority |
 | `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; connector binaries may select public SDKs and credential adapters while their libraries retain bounded protocol projections | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
 | `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
 | `vellum/distribution/launchd-activate` | Explicit approval/evidence validation, durable launchd-effect bracketing, exact process/status qualification and rollback | Implicit activation, artifact selection, source installation, semantic-provider lifecycle or unbounded restart |
@@ -30,6 +29,7 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
 | `vellum-tui` | Terminal composition root, bindings, rendering and lifecycle | GUI policy, independent source/history authority or reusable adapter policy |
 | `vellum-gui-macos` | Native macOS GUI composition root, bindings, rendering and lifecycle | Terminal policy, independent source/history authority or reusable adapter policy |
+| `vellum-semantic-helper-macos` | macOS-only snapshot, NSXPC, App Sandbox and bundle mechanisms interpreting Vellum's helper protocol | Cross-platform engine/service semantics, ordinary daemon release closure or weakened production qualification |
 
 ```text
 vellum-tui --------+----> vellum-editor ----> vellum-session -> vellum-engine

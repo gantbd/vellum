@@ -753,20 +753,9 @@ name = "vellum-adapter-local-fs"
 version = "0.1.0"
 dependencies = [
  "rustix",
- "sha2",
  "vellum-engine",
  "vellum-host",
  "vellum-protocol",
- "vellum-semantic-helper-protocol",
-]
-
-[[package]]
-name = "vellum-adapter-semantic-helper-xpc-macos"
-version = "0.1.0"
-dependencies = [
- "cc",
- "vellum-semantic-helper-protocol",
- "vellum-semantic-helper-wire",
 ]
 
 [[package]]
