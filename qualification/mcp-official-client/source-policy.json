@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "protocolVersion": "2026-07-28",
+  "source": {
+    "repository": "https://github.com/modelcontextprotocol/typescript-sdk",
+    "releaseTag": "v2.4.0",
+    "releaseCommitPrefix": "951fe56",
+    "releaseCommitVerifiedByGitHub": true
+  },
+  "packages": {
+    "@modelcontextprotocol/client": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/client/-/client-2.4.0.tgz",
+      "integrity": "sha512-LgrD2OphHuG12vfKFKz6SOnq7bKHQmhGJIAYdD+MZBn2npHEyry6uD8zvktodtl5CQM85MO0anUyD9JwmUmxww==",
+      "license": "Apache-2.0"
+    },
+    "@modelcontextprotocol/core": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/core/-/core-2.4.0.tgz",
+      "integrity": "sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==",
+      "license": "Apache-2.0"
+    }
+  },
+  "lockPolicy": {
+    "lockfileVersion": 3,
+    "registryPrefix": "https://registry.npmjs.org/",
+    "requireIntegrity": true,
+    "requireLicense": true,
+    "allowLifecycleScripts": false,
+    "allowGitDependencies": false,
+    "allowLinks": false
+  },
+  "sbom": {
+    "format": "CycloneDX",
+    "specVersion": "1.5",
+    "file": "source-sbom.json",
+    "status": "must be generated from and exactly match package-lock.json before qualification"
+  }
+}

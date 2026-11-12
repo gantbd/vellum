@@ -52,6 +52,8 @@ jobs:
           make check-launchd-distribution
           make check-launchd-activation
           make check-shipped-mcp
+          npm ci --ignore-scripts --no-audit --no-fund --prefix qualification/mcp-official-client
+          make qualify-mcp-official-client
       - name: Build twice from exact clean source and compare bytes
         working-directory: vellum
         run: >-

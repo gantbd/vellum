@@ -1,0 +1,17 @@
+{
+  "name": "vellum-mcp-official-client-qualification",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Nonshipping official MCP client interoperability qualification for Vellum",
+  "license": "MIT OR Apache-2.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "check-source": "node verify-source.mjs",
+    "check-profile": "node verify-source.test.mjs",
+    "qualify": "node qualify.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0"
+  }
+}

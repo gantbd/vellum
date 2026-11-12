@@ -72,3 +72,28 @@ inputs recorded in `release/source.json`.
 No remote or publication has been configured. Coordinated live-daemon
 qualification remains owned by Vellum until the peer release lifecycle is
 available from immutable remote inputs.
+
+## Official-client interoperability
+
+`qualification/mcp-official-client` is a nonshipping qualification package,
+not a Vellum or extracted-peer runtime dependency. Its TypeScript dependency
+exists only to drive the built Rust daemon and MCP binaries through the
+official client API. `make check-mcp-official-client-profile` runs offline and
+adversarially qualifies the lock/SBOM policy plus the current seven ordinary
+and four authenticated tool expectations. It does not claim interoperability.
+
+The committed npm schema-3 lock and generated CycloneDX source SBOM close 13
+exact registry components under SHA-512 integrity; they contain no Git/link
+source or lifecycle script. `make qualify-mcp-official-client` verifies that
+source identity, requires its already-installed locked closure, builds both
+Rust peers offline, and exercises automatic and pinned modern negotiation,
+discovery, tool/resource enumeration, exact locator resolution, resource read,
+snapshot, atomic workspace edit, and clean EOF/disconnect. CI alone performs
+the separate `npm ci --ignore-scripts` acquisition from the exact lock.
+
+The official `@modelcontextprotocol/client` 2.4.0 qualification passes against
+the shipped Rust surfaces: automatic and pinned negotiation remain on
+`2026-07-28`, the ordinary catalog contains seven tools, the authenticated
+catalog contains eleven, both workspace-edit paths complete, and both stdio
+children disconnect cleanly. This qualification exposed and closed missing
+modern cache metadata on resource reads and non-object durable input schemas.

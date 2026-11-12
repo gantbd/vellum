@@ -43,7 +43,12 @@ jobs:
         run: make check-cargo-install-qualification qualify-github-source
       - name: Qualify MCP peer extraction boundaries
         working-directory: vellum
-        run: make check-mcp-extraction
+        run: make check-mcp-extraction check-mcp-official-client-profile
+      - name: Qualify the official MCP client against the Rust peers
+        working-directory: vellum
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix qualification/mcp-official-client
+          make qualify-mcp-official-client
       - name: Materialize exact-Git semantic MCP peer
         working-directory: vellum
         run: >-

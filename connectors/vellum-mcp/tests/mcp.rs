@@ -682,6 +682,8 @@ fn resource_read_is_self_contained_and_never_accepts_path_uris() {
         &mut mcp,
         json!({"jsonrpc":"2.0", "id":1, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/document/11"}}),
     );
+    assert_eq!(read["result"]["ttlMs"], 0);
+    assert_eq!(read["result"]["cacheScope"], "private");
     assert_eq!(read["result"]["contents"][0]["text"], "alpha");
     assert_eq!(read["result"]["contents"][0]["_meta"]["vellum/revision"], 9);
 
@@ -729,6 +731,8 @@ fn root_resource_read_revalidates_kind_and_rejects_unknown_or_tampered_uris() {
         &mut server,
         json!({"jsonrpc":"2.0", "id":1, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/root/13"}}),
     );
+    assert_eq!(read["result"]["ttlMs"], 0);
+    assert_eq!(read["result"]["cacheScope"], "private");
     assert_eq!(
         read["result"]["contents"][0]["text"],
         "{\"kind\":\"directory\"}"

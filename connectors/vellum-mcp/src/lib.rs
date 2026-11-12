@@ -955,6 +955,8 @@ impl<T: ServicePort> McpServer<T> {
                     id,
                     with_server_meta(json!({
                         "resultType": "complete",
+                        "ttlMs": 0,
+                        "cacheScope": "private",
                         "contents": [{
                             "uri": uri,
                             "mimeType": "text/plain",
@@ -972,6 +974,8 @@ impl<T: ServicePort> McpServer<T> {
                     id,
                     with_server_meta(json!({
                         "resultType": "complete",
+                        "ttlMs": 0,
+                        "cacheScope": "private",
                         "contents": [{
                             "uri": uri,
                             "mimeType": "application/vnd.vellum.root+json",
@@ -1395,6 +1399,7 @@ fn document_input_schema() -> Value {
 
 fn durable_input_schema() -> Value {
     json!({
+        "type": "object",
         "oneOf": [
             durable_intent_schema("add_file", &["locator"]),
             durable_intent_schema("add_directory", &["locator"]),
@@ -3167,6 +3172,7 @@ mod durable_projection_tests {
         assert_eq!(status["annotations"]["destructiveHint"], false);
 
         let intents = execute["inputSchema"]["oneOf"].as_array().unwrap();
+        assert_eq!(execute["inputSchema"]["type"], "object");
         assert_eq!(intents.len(), 7);
         for intent in intents {
             assert_eq!(intent["additionalProperties"], false);

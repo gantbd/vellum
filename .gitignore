@@ -5,3 +5,4 @@
 /.verification-candidate.*/
 /.verification-tools-*/
 /.peer-staging/
+/qualification/mcp-official-client/node_modules/
