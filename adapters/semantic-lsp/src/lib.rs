@@ -161,7 +161,6 @@ pub enum LspProviderInitializationOptionsV1 {
 #[derive(Clone, Eq, PartialEq)]
 pub struct LspRustAnalyzerStandaloneInitializationV1 {
     linked_project_path: String,
-    linked_project: LspResolvedDocumentUriV1,
 }
 
 impl fmt::Debug for LspProviderInitializationOptionsV1 {
@@ -257,12 +256,11 @@ impl LspInitializationProfileV1 {
         if linked_project_path.len() > limits.max_uri_bytes {
             return None;
         }
-        let linked_project = resolve_workspace_relative_document_uri(root, "src/lib.rs", limits)?;
+        let _linked_project = resolve_workspace_relative_document_uri(root, "src/lib.rs", limits)?;
         profile.provider_options =
             Some(LspProviderInitializationOptionsV1::RustAnalyzerStandalone(
                 LspRustAnalyzerStandaloneInitializationV1 {
                     linked_project_path,
-                    linked_project,
                 },
             ));
         Some(profile)
@@ -1565,18 +1563,22 @@ impl<
         locator: &LspVirtualDocumentV1,
     ) -> Option<LspResolvedDocumentUriV1> {
         let resolved = match &locator.0 {
-            LspDocumentLocatorKindV1::OpaqueUri(uri) => Some(LspResolvedDocumentUriV1(uri.clone())),
+            LspDocumentLocatorKindV1::OpaqueUri(uri) => {
+                if matches!(
+                    self.initialization.provider_options.as_ref(),
+                    Some(LspProviderInitializationOptionsV1::RustAnalyzerStandalone(
+                        _
+                    ))
+                ) {
+                    return None;
+                }
+                Some(LspResolvedDocumentUriV1(uri.clone()))
+            }
             LspDocumentLocatorKindV1::WorkspaceRelative(relative) => {
                 let root = &self.initialization.workspace.as_ref()?.uri;
                 resolve_workspace_relative_document_uri(root, relative, self.limits)
             }
         }?;
-        if let Some(LspProviderInitializationOptionsV1::RustAnalyzerStandalone(options)) =
-            self.initialization.provider_options.as_ref()
-            && resolved != options.linked_project
-        {
-            return None;
-        }
         Some(resolved)
     }
 
@@ -4249,7 +4251,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_analyzer_standalone_options_are_exact_root_bound_and_private() {
+    fn rust_analyzer_standalone_pins_project_root_and_confines_distinct_documents() {
         let limits = LspLimitsV1::reference();
         let protocol = LspProviderProtocolProfileV1::try_new_with_readiness_schema(
             [11; 32],
@@ -4291,7 +4293,7 @@ mod tests {
         .unwrap();
         let main =
             LspDocumentLocatorV1::try_workspace_relative("src/main.rs".to_owned(), limits).unwrap();
-        assert!(!adapter.register_virtual_document(SemanticDocumentRefV1::new([2; 16]), main));
+        assert!(adapter.register_virtual_document(SemanticDocumentRefV1::new([2; 16]), main));
         let opaque =
             LspDocumentLocatorV1::try_new("vellum-lsp://other".to_owned(), limits).unwrap();
         assert!(!adapter.register_virtual_document(SemanticDocumentRefV1::new([3; 16]), opaque));
@@ -4325,6 +4327,12 @@ mod tests {
         assert_eq!(
             adapter.documents[&target(0).document].uri.0,
             "file:///private/qualified%20package/src/lib.rs"
+        );
+        assert_eq!(
+            adapter.documents[&SemanticDocumentRefV1::new([2; 16])]
+                .uri
+                .0,
+            "file:///private/qualified%20package/src/main.rs"
         );
         assert_eq!(
             initialize

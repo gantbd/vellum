@@ -730,6 +730,71 @@ fn epoch_refusal_discards_stage_without_false_publishing_over_committed_projecti
 }
 
 #[test]
+fn unsealed_multi_document_projection_reseals_without_reopening_sources() {
+    let first = snapshot(target(5, 8), "a");
+    let second = snapshot(target(6, 3), "bb");
+    let snapshots = [first, second];
+    let manifest = SemanticSynchronizationManifestV1::try_from_snapshots(
+        &snapshots,
+        SemanticSessionLimitsV1::reference(),
+    )
+    .unwrap();
+    let describe = SemanticSessionCommandV1::Describe {
+        exchange: exchange(53),
+    };
+    let begin = SemanticSessionCommandV1::BeginSynchronization {
+        exchange: exchange(54),
+        operation: operation(54),
+        incarnation: incarnation(1),
+        membership: membership(2),
+        epoch: epoch(6),
+        manifest,
+    };
+    let complete = SemanticSessionCommandV1::CompleteSynchronization {
+        exchange: exchange(55),
+        operation: operation(55),
+        incarnation: incarnation(1),
+        membership: membership(2),
+        epoch: epoch(6),
+        manifest,
+    };
+    let description = SemanticSessionReplyV1::try_new(
+        describe.kind(),
+        describe.exchange(),
+        incarnation(1),
+        None,
+        None,
+        SemanticSessionOutcomeV1::Description(ready_description(incarnation(1), epoch(5))),
+    )
+    .unwrap();
+    let mut client = ready_committed_client(
+        [
+            SemanticExchangeDispositionV1::Reply(description),
+            accepted(&begin),
+            accepted(&complete),
+        ],
+        epoch(4),
+        &snapshots,
+    );
+
+    client.attempt(describe).unwrap();
+    assert_eq!(
+        client.validation_state(),
+        SemanticReplyValidationV1::Unsealed
+    );
+    client.attempt(begin).unwrap();
+    client.attempt(complete).unwrap();
+
+    let state = client.membership.as_ref().unwrap();
+    assert_eq!(state.documents.len(), 2);
+    assert_eq!(state.epoch, Some(epoch(6)));
+    assert_eq!(
+        state.validation,
+        SemanticReplyValidationV1::WitnessValidated
+    );
+}
+
+#[test]
 fn ready_epoch_aba_and_begin_reuse_are_rejected_across_readiness_transitions() {
     let prior = snapshot(target(5, 8), "a");
     let unavailable = SemanticSessionCommandV1::Describe {

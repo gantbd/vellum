@@ -5,10 +5,10 @@ partition-bound asynchronous client facade, no-process-authority LSP adapter,
 qualified local process supervisor, embedded local composition facade, exact
 deadline scheduler, staged provider replacement, bounded MCP projection and
 stdio driver, and background-session protocol/client/broker/actor substrate are
-implemented. The semantic MCP executable has an explicit unavailable
-qualification composition; no production semantic transport, runnable semantic
-daemon, useful query-serving standalone composition, PSI, nREPL or automatic restart
-policy is claimed.
+implemented. The semantic MCP executable has both an explicit unavailable
+qualification composition and an authenticated local rust-analyzer composition
+that serves bounded startup workspace snapshots. No remote semantic transport,
+PSI, nREPL, automatic restart policy or post-start file watching is claimed.
 
 Vellum's useful semantic surface is a peer capability, not an editor wrapper.
 `vellum_host::semantic` defines the outbound contract that a trusted embedded
@@ -113,7 +113,10 @@ The adapter receives an already-owned nonblocking byte transport and a
 non-reusing index-generation issuer. It cannot discover or launch an
 executable, choose arguments, read workspace configuration, open a network
 connection, or apply an edit. Virtual URIs are path-free and injective across
-registered documents. Initialization grants `ReadIndex` only when the server
+registered documents. The standalone rust-analyzer profile instead binds every
+document to a distinct workspace-confined file URI; the first ordered startup
+member is `src/lib.rs`, the fixed linked-project root, and later members receive
+injective generated paths beneath `src/`. Initialization grants `ReadIndex` only when the server
 statically advertises both pull diagnostics and document symbols, but
 initialization alone remains `Indexing`. Only a privately owned,
 server-profile-specific readiness port may promote the adapter to `Ready`; each
@@ -365,10 +368,12 @@ The workspace binary refuses a default invocation and requires explicit private
 semantic/native socket and credential paths plus one registered language. Its
 current real profile authenticates one persistent semantic connection, joins
 with the synchronization/query role product, synchronizes exact public native
-snapshots, waits for pinned-provider readiness, publishes a locator-free
-document catalog, serves stdio MCP, and explicitly leaves on clean EOF. This
-first executable profile intentionally refuses zero or multiple documents and
-supports only the audited rust-analyzer standalone mapping.
+snapshots as one bounded uniform-language startup manifest, waits for
+pinned-provider readiness, publishes a locator-free multi-document catalog,
+serves stdio MCP, explicitly releases retained query results, and performs a
+bounded affine retirement sequence on clean EOF. It supports the audited
+rust-analyzer standalone mapping; it does not observe native changes or
+resynchronize after MCP service begins.
 
 The explicit `--unavailable` mode admits one process-local partition to a real sovereign
 service whose provider is permanently unavailable. It is useful for MCP host,
@@ -407,7 +412,7 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes live multi-document resynchronization, membership rollover after
+work includes post-start multi-document resynchronization and file watching, membership rollover after
 tombstone exhaustion, and extraction of the MCP peer into its sibling
 repository.
 

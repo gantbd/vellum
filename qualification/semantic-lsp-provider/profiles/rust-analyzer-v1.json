@@ -3,9 +3,9 @@
   "profile_id": "rust-analyzer-v1",
   "fixture": {
     "manifest": "rust-analyzer-v1/manifest.json",
-    "sha256": "c83d1531502165da227ce6f7c7e53d500f75d2ec132d754fe911dbd1bcd06473",
-    "file_count": 2,
-    "total_bytes": 402
+    "sha256": "c66b0dbee5461658e282aef9e350d538ba04b3342fc0e205433997f6861849b7",
+    "file_count": 3,
+    "total_bytes": 444
   },
   "qualification": {
     "kind": "pinned",

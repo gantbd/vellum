@@ -21,7 +21,7 @@ use vellum_semantic_service::{
 
 const HELP: &str = "vellum-semantic-mcp 0.1.0\n\
 Bounded stdio MCP peer for Vellum semantic queries.\n\n\
-Real socket mode is a single-document, single-language rust-analyzer probe.\n\n\
+Real socket mode is a bounded uniform-language rust-analyzer composition.\n\n\
 USAGE:\n\
     vellum-semantic-mcp --semantic-socket PRIVATE_SOCKET --semantic-credential PRIVATE_CREDENTIAL --native-socket PRIVATE_SOCKET --native-credential PRIVATE_CREDENTIAL --document-language LANGUAGE [--metrics-stderr]\n\
     vellum-semantic-mcp --unavailable [--metrics-stderr]\n\
@@ -31,8 +31,8 @@ OPTIONS:\n\
     --semantic-credential PRIVATE_FILE     Private semantic-service credential.\n\
     --native-socket PRIVATE_SOCKET         Native Vellum daemon endpoint.\n\
     --native-credential PRIVATE_FILE       Private native-daemon credential.\n\
-    --document-language LANGUAGE           Explicit language for the sole synchronized document;\n\
-                                           zero or multiple documents are refused.\n\
+    --document-language LANGUAGE           Explicit language registration applied to every\n\
+                                           synchronized document in this composition.\n\
     --unavailable      Run an explicit no-provider composition for MCP discovery and\n\
                        harness qualification. Semantic queries fail closed.\n\
     --metrics-stderr   Emit one content-safe JSON usage record after clean EOF.\n\
@@ -379,31 +379,48 @@ fn join_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV1
 #[cfg(unix)]
 fn leave_session<P: vellum_semantic_session_client::SemanticSessionExchangePortV1>(
     session: &mut vellum_semantic_session_client::SemanticSessionClientV1<P>,
-    exchange: u128,
-    operation: u128,
+    mut exchange: u128,
+    mut operation: u128,
 ) -> Result<(), RemoteStage> {
     use vellum_semantic_protocol::{
         SemanticExchangeDispositionV1, SemanticExchangeRefV1, SemanticSessionCommandV1,
         SemanticSessionOperationRefV1, SemanticSessionOutcomeV1,
     };
-    let binding = session.binding().ok_or(RemoteStage::Cleanup)?;
-    let command = SemanticSessionCommandV1::LeaveSession {
-        exchange: SemanticExchangeRefV1::new(exchange.to_be_bytes()).ok_or(RemoteStage::Cleanup)?,
-        operation: SemanticSessionOperationRefV1::new(operation.to_be_bytes())
-            .ok_or(RemoteStage::Cleanup)?,
-        incarnation: binding.incarnation,
-        membership: binding.membership,
-    };
-    match session.attempt(command).map_err(|_| RemoteStage::Cleanup)? {
-        SemanticExchangeDispositionV1::Reply(reply)
-            if matches!(reply.outcome(), SemanticSessionOutcomeV1::Accepted) =>
-        {
-            Ok(())
+    for _ in 0..1_024 {
+        let binding = session.binding().ok_or(RemoteStage::Cleanup)?;
+        let command = SemanticSessionCommandV1::LeaveSession {
+            exchange: SemanticExchangeRefV1::new(exchange.to_be_bytes())
+                .ok_or(RemoteStage::Cleanup)?,
+            operation: SemanticSessionOperationRefV1::new(operation.to_be_bytes())
+                .ok_or(RemoteStage::Cleanup)?,
+            incarnation: binding.incarnation,
+            membership: binding.membership,
+        };
+        match session.attempt(command).map_err(|_| RemoteStage::Cleanup)? {
+            SemanticExchangeDispositionV1::Reply(reply)
+                if matches!(reply.outcome(), SemanticSessionOutcomeV1::Accepted) =>
+            {
+                return Ok(());
+            }
+            SemanticExchangeDispositionV1::Reply(reply)
+                if matches!(
+                    reply.outcome(),
+                    SemanticSessionOutcomeV1::Pending(
+                        vellum_semantic_protocol::SemanticSessionPendingV1::Retirement { .. }
+                    )
+                ) =>
+            {
+                exchange = exchange.checked_add(1).ok_or(RemoteStage::Cleanup)?;
+                operation = operation.checked_add(1).ok_or(RemoteStage::Cleanup)?;
+            }
+            SemanticExchangeDispositionV1::Reply(_)
+            | SemanticExchangeDispositionV1::NotSent
+            | SemanticExchangeDispositionV1::OutcomeUnknown => {
+                return Err(RemoteStage::Cleanup);
+            }
         }
-        SemanticExchangeDispositionV1::Reply(_)
-        | SemanticExchangeDispositionV1::NotSent
-        | SemanticExchangeDispositionV1::OutcomeUnknown => Err(RemoteStage::Cleanup),
     }
+    Err(RemoteStage::Cleanup)
 }
 
 #[cfg(unix)]
@@ -489,7 +506,7 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
     join_session(&mut semantic, description)?;
     macro_rules! fail_joined {
         ($stage:expr) => {{
-            let cleanup = leave_session(&mut semantic, u128::MAX - 1, u128::MAX);
+            let cleanup = leave_session(&mut semantic, u128::MAX - 2_048, u128::MAX - 1_024);
             return Err(cleanup.err().unwrap_or($stage));
         }};
     }
@@ -534,10 +551,6 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
             let _ = native.disconnect();
             fail_joined!(RemoteStage::Synchronization);
         }
-    }
-    if coordinator.synchronized_documents().len() != 1 {
-        let _ = native.disconnect();
-        fail_joined!(RemoteStage::Catalog);
     }
     // Provider readiness may require bounded polling after the first complete
     // snapshot. Observing Indexing intentionally unseals the local projection,
@@ -625,7 +638,7 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
         Ok(client) => client,
         Err(failure) => {
             let mut semantic = failure.into_session();
-            let cleanup = leave_session(&mut semantic, u128::MAX - 1, u128::MAX);
+            let cleanup = leave_session(&mut semantic, u128::MAX - 2_048, u128::MAX - 1_024);
             return Err(cleanup.err().unwrap_or(RemoteStage::QueryBinding));
         }
     };
@@ -646,38 +659,11 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
     let cleanup_result = (|| {
         let query = server.into_client().into_port();
         let mut extraction = query.try_into_session().map_err(|_| RemoteStage::Cleanup)?;
-        let binding = extraction.session.binding().ok_or(RemoteStage::Cleanup)?;
-        let leave = vellum_semantic_protocol::SemanticSessionCommandV1::LeaveSession {
-            exchange: vellum_semantic_protocol::SemanticExchangeRefV1::new(
-                extraction.next_exchange.to_be_bytes(),
-            )
-            .ok_or(RemoteStage::Cleanup)?,
-            operation: vellum_semantic_protocol::SemanticSessionOperationRefV1::new(
-                extraction.next_operation.to_be_bytes(),
-            )
-            .ok_or(RemoteStage::Cleanup)?,
-            incarnation: binding.incarnation,
-            membership: binding.membership,
-        };
-        match extraction
-            .session
-            .attempt(leave)
-            .map_err(|_| RemoteStage::Cleanup)?
-        {
-            vellum_semantic_protocol::SemanticExchangeDispositionV1::Reply(reply)
-                if matches!(
-                    reply.outcome(),
-                    vellum_semantic_protocol::SemanticSessionOutcomeV1::Accepted
-                ) =>
-            {
-                Ok(())
-            }
-            vellum_semantic_protocol::SemanticExchangeDispositionV1::Reply(_)
-            | vellum_semantic_protocol::SemanticExchangeDispositionV1::NotSent
-            | vellum_semantic_protocol::SemanticExchangeDispositionV1::OutcomeUnknown => {
-                Err(RemoteStage::Cleanup)
-            }
-        }
+        leave_session(
+            &mut extraction.session,
+            extraction.next_exchange,
+            extraction.next_operation,
+        )
     })();
     cleanup_result?;
     let stdio = stdio_result.map_err(|_| RemoteStage::Stdio)?;

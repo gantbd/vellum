@@ -9,8 +9,13 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "10e742118c92e50a371c06707d275a0838a03edc4d2e61aa27bd56619f424c90",
-      "bytes": 232
+      "sha256": "da5b2e92745a5e6f74388dd2f01ab78dd344f02850cf164f663dfdfd9c246c9f",
+      "bytes": 230
+    },
+    {
+      "path": "src/secondary.rs",
+      "sha256": "438b8fd3ac1c4eae008087c41e284708991cac9490d6981fa9ea9dbbd35ca289",
+      "bytes": 44
     }
   ]
 }

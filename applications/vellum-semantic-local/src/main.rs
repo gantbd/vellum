@@ -294,19 +294,31 @@ mod unix {
         }
     }
 
-    struct StandaloneDocument {
-        issued: bool,
+    #[derive(Default)]
+    struct StandaloneDocuments {
+        assignments: BTreeMap<SemanticDocumentRefV1, LspVirtualDocumentV1>,
     }
-    impl LspVirtualDocumentIssuerV1 for StandaloneDocument {
-        fn issue(&mut self, _document: SemanticDocumentRefV1) -> Option<LspVirtualDocumentV1> {
-            if self.issued {
-                return None;
+    impl LspVirtualDocumentIssuerV1 for StandaloneDocuments {
+        fn issue(&mut self, document: SemanticDocumentRefV1) -> Option<LspVirtualDocumentV1> {
+            if let Some(locator) = self.assignments.get(&document) {
+                return Some(locator.clone());
             }
-            self.issued = true;
-            LspVirtualDocumentV1::try_workspace_relative(
-                "src/lib.rs".to_owned(),
-                LspLimitsV1::reference(),
-            )
+            let relative = if self.assignments.is_empty() {
+                "src/lib.rs".to_owned()
+            } else {
+                use std::fmt::Write as _;
+                let mut relative = String::with_capacity(15 + 32 + 3);
+                relative.push_str("src/vellum-doc-");
+                for byte in document.as_bytes() {
+                    write!(&mut relative, "{byte:02x}").ok()?;
+                }
+                relative.push_str(".rs");
+                relative
+            };
+            let locator =
+                LspVirtualDocumentV1::try_workspace_relative(relative, LspLimitsV1::reference())?;
+            self.assignments.insert(document, locator.clone());
+            Some(locator)
         }
     }
 
@@ -408,7 +420,7 @@ mod unix {
             qualified,
             Generations(0),
             RustAnalyzerReadiness(LspIndexReadinessV1::Indexing),
-            StandaloneDocument { issued: false },
+            StandaloneDocuments::default(),
             LspLimitsV1::reference(),
             SemanticLimitsV1::reference(),
             SemanticClientRefV1::new(random_nonzero()?),
@@ -637,7 +649,11 @@ mod unix {
 
     #[cfg(test)]
     mod tests {
-        use super::provider_version_token;
+        use super::{StandaloneDocuments, provider_version_token};
+        use vellum_adapter_semantic_lsp::{
+            LspLimitsV1, LspVirtualDocumentIssuerV1, LspVirtualDocumentV1,
+        };
+        use vellum_host::semantic::SemanticDocumentRefV1;
 
         #[test]
         fn observed_provider_version_has_a_valid_provenance_projection() {
@@ -645,6 +661,24 @@ mod unix {
                 provider_version_token("0.3.3113-standalone (e5e7830640 2026-11-08)"),
                 "0.3.3113-standalone--e5e7830640-2026-11-08-"
             );
+        }
+
+        #[test]
+        fn standalone_virtual_documents_are_repeatable_and_injective() {
+            let first = SemanticDocumentRefV1::new([1; 16]);
+            let second = SemanticDocumentRefV1::new([2; 16]);
+            let mut documents = StandaloneDocuments::default();
+            let first_locator = documents.issue(first).unwrap();
+            assert_eq!(
+                first_locator,
+                LspVirtualDocumentV1::try_workspace_relative(
+                    "src/lib.rs".to_owned(),
+                    LspLimitsV1::reference(),
+                )
+                .unwrap()
+            );
+            assert_eq!(documents.issue(first), Some(first_locator.clone()));
+            assert_ne!(documents.issue(second), Some(first_locator));
         }
     }
 }

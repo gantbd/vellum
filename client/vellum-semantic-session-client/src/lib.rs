@@ -947,12 +947,12 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionClientV1<P> {
                     "accepted synchronization epoch was preflighted as fresh"
                 );
                 let state = self.membership.as_mut().expect("binding checked");
-                let (documents, retained_bytes) =
-                    if state.validation == SemanticReplyValidationV1::WitnessValidated {
-                        (state.documents.clone(), state.witness_bytes)
-                    } else {
-                        (BTreeMap::new(), 0)
-                    };
+                // Loss of query validation does not erase the last accepted
+                // synchronization projection. A fresh epoch can reseal that
+                // exact document product without fabricating Open effects or
+                // requiring a source revision change.
+                let documents = state.documents.clone();
+                let retained_bytes = state.witness_bytes;
                 let source_bytes = documents
                     .values()
                     .try_fold(0u64, |total, witness| {
