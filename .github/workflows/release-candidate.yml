@@ -46,6 +46,7 @@ jobs:
           node scripts/build-release-candidate.test.mjs
           make check-artifact-lifecycle
           make check-clean-release-candidate
+          make check-candidate-bundle
           make check-activation-transaction
           make check-launchd-distribution
           make check-launchd-activation
@@ -55,11 +56,20 @@ jobs:
           node scripts/qualify-clean-release-candidate.mjs
           --vellum-ref=${{ github.sha }}
           --output-dir=../release-candidate
+      - name: Package and round-trip the download product
+        working-directory: vellum
+        run: |
+          node scripts/package-release-candidate.mjs \
+            --qualified-dir=../release-candidate \
+            --bundle-file=../vellum-release-candidate.tar
+          chmod 0644 ../vellum-release-candidate.tar
+          node scripts/verify-release-candidate-bundle.mjs \
+            --bundle-file=../vellum-release-candidate.tar
       - name: Upload unsigned candidate artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: vellum-daemon-mcp-launchd-${{ github.sha }}
-          path: release-candidate
+          path: vellum-release-candidate.tar
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

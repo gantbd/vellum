@@ -18,8 +18,9 @@ use vellum_daemon::{AuthenticatedUnixConnector, DaemonExportPolicyV1, DaemonLimi
 use vellum_editor::Workspace;
 use vellum_host::authority::{AuthorityActionSetV1, AuthorityActionV1};
 use vellum_mcp::{
-    DURABLE_EXECUTE_TOOL, DURABLE_RECEIPT_TOOL, DURABLE_RETIRE_TOOL, McpLimits, McpServer,
-    PROTOCOL_VERSION,
+    CHANGES_TOOL, DURABLE_EXECUTE_TOOL, DURABLE_RECEIPT_TOOL, DURABLE_RETIRE_TOOL,
+    DURABLE_STATUS_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -56,6 +57,26 @@ fn built_daemon_binary() -> PathBuf {
         "build both product binaries before process qualification"
     );
     daemon
+}
+
+fn extraction_catalog() -> (Vec<String>, Vec<String>) {
+    let contract =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../release/vellum-mcp-extraction.json");
+    let contract: Value = serde_json::from_slice(&fs::read(contract).unwrap()).unwrap();
+    let names = |field: &str| {
+        contract["protocol"][field]
+            .as_array()
+            .unwrap_or_else(|| panic!("protocol.{field} must be an array"))
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("protocol.{field} entries must be strings"))
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    (names("ordinaryTools"), names("authenticatedAdditions"))
 }
 
 #[test]
@@ -136,9 +157,38 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect::<Vec<_>>();
-    assert!(names.contains(&DURABLE_EXECUTE_TOOL));
-    assert!(names.contains(&DURABLE_RECEIPT_TOOL));
-    assert!(names.contains(&DURABLE_RETIRE_TOOL));
+    let (ordinary_contract, authenticated_contract) = extraction_catalog();
+    let ordinary_runtime = [
+        SNAPSHOT_TOOL,
+        REPLACE_TOOL,
+        REPLACE_AND_SAVE_TOOL,
+        WORKSPACE_EDIT_TOOL,
+        CHANGES_TOOL,
+        MEMBERSHIP_TOOL,
+    ];
+    let authenticated_runtime = [
+        DURABLE_EXECUTE_TOOL,
+        DURABLE_RECEIPT_TOOL,
+        DURABLE_RETIRE_TOOL,
+        DURABLE_STATUS_TOOL,
+    ];
+    assert_eq!(
+        ordinary_contract,
+        ordinary_runtime.map(str::to_owned),
+        "extraction ordinary catalog drifted from runtime"
+    );
+    assert_eq!(
+        authenticated_contract,
+        authenticated_runtime.map(str::to_owned),
+        "extraction authenticated catalog drifted from runtime"
+    );
+    assert_eq!(
+        names,
+        ordinary_runtime
+            .into_iter()
+            .chain(authenticated_runtime)
+            .collect::<Vec<_>>()
+    );
     let mut mcp_stderr = String::new();
     mcp.stderr
         .take()
@@ -207,9 +257,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect::<Vec<_>>();
-    assert!(!owner_names.contains(&DURABLE_EXECUTE_TOOL));
-    assert!(!owner_names.contains(&DURABLE_RECEIPT_TOOL));
-    assert!(!owner_names.contains(&DURABLE_RETIRE_TOOL));
+    assert_eq!(owner_names, ordinary_runtime);
     let owner_shutdown = Command::new(&daemon_binary)
         .arg("--shutdown")
         .arg(&control)

@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -17,6 +17,13 @@ check-clean-release-candidate:
 	node --check scripts/qualify-clean-release-candidate.mjs
 	node --check scripts/qualify-clean-release-candidate.test.mjs
 	node scripts/qualify-clean-release-candidate.test.mjs
+
+check-candidate-bundle:
+	node --check scripts/release-candidate-bundle-lib.mjs
+	node --check scripts/release-candidate-bundle-lib.test.mjs
+	node --check scripts/package-release-candidate.mjs
+	node --check scripts/verify-release-candidate-bundle.mjs
+	node scripts/release-candidate-bundle-lib.test.mjs
 
 check-activation-transaction:
 	node --check scripts/activation-transaction-lib.mjs

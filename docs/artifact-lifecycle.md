@@ -54,10 +54,18 @@ Readiness is therefore a gate input for a future separately authorized
 activation mechanism, not an activation side effect.
 
 The GitHub workflow materializes the complete candidate twice through separate
-builder invocations and uploads only after their regular-file closures are
+builder invocations and packages it only after their regular-file closures are
 byte-identical. The separate equivalence record names file hashes and exact
-build/source identities. It deliberately does not claim independent build
-environments, a reproducible build across runs, signing, or attestation.
+build/source identities. A canonical USTAR bundle contains exactly that record
+and the candidate closure. It fixes archive ownership and time fields, retains
+the four native payloads as `0755`, retains metadata as `0600`, and rejects
+links, traversal, extra entries, mode loss, noncanonical headers and corrupt
+content before extraction. The workflow deliberately changes the outer tar to
+`0644` and revalidates every extracted binary and native smoke before uploading
+only that tar. This accounts for GitHub artifact transport flattening the outer
+file mode without losing executable modes inside the download product. It
+deliberately does not claim independent build environments, a reproducible
+build across runs, signing, or attestation.
 
 ## Local qualification
 
@@ -74,6 +82,21 @@ node scripts/qualify-release-candidate.mjs \
 The evidence destination must already have a real parent directory and must
 not exist. The tool creates it exclusively only after every validation and
 smoke gate succeeds. It does not choose an installation location.
+
+Package that qualified output into the exact GitHub download product and then
+verify a downloaded copy with:
+
+```sh
+node scripts/package-release-candidate.mjs \
+  --qualified-dir=/absolute/path/to/qualified-output \
+  --bundle-file=/absolute/path/to/vellum-release-candidate.tar
+node scripts/verify-release-candidate-bundle.mjs \
+  --bundle-file=/absolute/path/to/vellum-release-candidate.tar
+```
+
+Both commands extract only through the closed archive parser; neither invokes
+the system tar utility, installs a product, activates launchd, signs, publishes
+or contacts a remote service.
 
 ## Local activation transaction model
 

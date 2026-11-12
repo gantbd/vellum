@@ -52,6 +52,10 @@ const requiredFiles = [
   'scripts/compare-release-candidates.mjs',
   'scripts/qualify-clean-release-candidate.mjs',
   'scripts/qualify-clean-release-candidate.test.mjs',
+  'scripts/release-candidate-bundle-lib.mjs',
+  'scripts/release-candidate-bundle-lib.test.mjs',
+  'scripts/package-release-candidate.mjs',
+  'scripts/verify-release-candidate-bundle.mjs',
   'scripts/qualify-release-candidate.mjs',
   'scripts/qualify-release-candidate.test.mjs',
   'scripts/activation-transaction-lib.mjs',
@@ -269,10 +273,19 @@ if (sourcePolicy !== undefined) {
     '--output-dir=../release-candidate',
     '--vellum-ref=${{ github.sha }}',
     'make check-clean-release-candidate',
+    'make check-candidate-bundle',
+    'scripts/package-release-candidate.mjs',
+    'scripts/verify-release-candidate-bundle.mjs',
+    '--qualified-dir=../release-candidate',
+    '--bundle-file=../vellum-release-candidate.tar',
+    'path: vellum-release-candidate.tar',
   ]) {
     if (!candidateWorkflow.includes(required)) {
       fail(`release-candidate workflow is missing pinned contract: ${required}`);
     }
+  }
+  if (/^\s*path:\s*release-candidate\s*$/m.test(candidateWorkflow)) {
+    fail('release-candidate workflow must not upload the permission-losing raw directory');
   }
   for (const forbidden of [
     'vellum-tui',
@@ -342,6 +355,28 @@ if (mcpExtraction !== undefined) {
     || mcpExtraction.publication !== 'none'
   ) {
     fail('MCP extraction must remain a non-publishing public-client-SDK peer with the local credential adapter');
+  }
+  const expectedOrdinaryMcpTools = [
+    'vellum.snapshot',
+    'vellum.replace',
+    'vellum.replace_and_save',
+    'vellum.workspace_edit',
+    'vellum.poll_changes',
+    'vellum.membership',
+  ];
+  const expectedAuthenticatedMcpAdditions = [
+    'vellum.durable_execute',
+    'vellum.durable_receipt',
+    'vellum.durable_retire',
+    'vellum.durable_status',
+  ];
+  if (
+    JSON.stringify(mcpExtraction.protocol?.ordinaryTools)
+      !== JSON.stringify(expectedOrdinaryMcpTools)
+    || JSON.stringify(mcpExtraction.protocol?.authenticatedAdditions)
+      !== JSON.stringify(expectedAuthenticatedMcpAdditions)
+  ) {
+    fail('MCP extraction catalog must retain six ordinary tools plus four authenticated additions');
   }
   const blockers = mcpExtraction.immutableDependencyBlockers ?? [];
   const immutableDependencies = mcpExtraction.qualifiedImmutableDependencies ?? [];
