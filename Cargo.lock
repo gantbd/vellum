@@ -753,9 +753,11 @@ name = "vellum-adapter-local-fs"
 version = "0.1.0"
 dependencies = [
  "rustix",
+ "sha2",
  "vellum-engine",
  "vellum-host",
  "vellum-protocol",
+ "vellum-semantic-helper-protocol",
 ]
 
 [[package]]
