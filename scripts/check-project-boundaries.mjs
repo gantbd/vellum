@@ -22,6 +22,7 @@ const locations = new Map([
   ['vellum-protocol', '/protocol/'],
   ['vellum-wire', '/protocol/'],
   ['vellum-semantic-protocol', '/protocol/'],
+  ['vellum-semantic-helper-protocol', '/protocol/'],
   ['vellum-semantic-wire', '/protocol/'],
   ['vellum-service', '/service/'],
   ['vellum-semantic-service', '/service/'],
@@ -90,6 +91,11 @@ for (const dependency of dependencies('vellum-engine')) {
 }
 if (dependencies('vellum-protocol').size !== 0) {
   failures.push('protocol must remain dependency-free');
+}
+for (const dependency of dependencies('vellum-semantic-helper-protocol')) {
+  if (dependency !== 'sha2') {
+    failures.push(`semantic helper protocol has forbidden dependency on ${dependency}`);
+  }
 }
 forbidEdges(
   'vellum-client',

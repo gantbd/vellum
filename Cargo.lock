@@ -929,6 +929,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-semantic-helper-protocol"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "vellum-semantic-local"
 version = "0.1.0"
 dependencies = [
