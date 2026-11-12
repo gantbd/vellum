@@ -199,6 +199,15 @@ membership, and state-changing intent is replayed only under an exact operation
 identity. Unknown, duplicate, reordered, trailing, malformed and over-limit
 wire values refuse before service dispatch.
 
+The standalone MCP composition assigns lifecycle/synchronization and query
+correlations to disjoint lower/upper 128-bit partitions with monotone headroom.
+Before an arrived request executes, it reserves a worst-case synchronization
+epoch plus one request operation. Falling below that reserve drives bounded
+Leave, fresh Join and complete snapshot reopening while retaining the same MCP
+owner and stdio lifetime. This prevents cross-role correlation ABA and prevents
+ordinary exhaustion from consuming the retirement tail. It does not silently
+compact historical broker replay evidence or rotate the service incarnation.
+
 The pure serialized broker prevents cross-membership request collisions and existence
 oracles by remapping `(membership, external request)` to sovereign internal
 request identities. Terminal deliveries remain exact and non-destructive until
@@ -256,7 +265,7 @@ erasure of provider, allocator, swap, crash-dump or transport copies.
 | STRIDE: spoofing / elevation | Correlation or self-requested roles treated as authority | Opaque identities are evidence only; the local channel authenticates once, installed policy independently attenuates role requests, and exact incarnation/membership bind replies | Local HMAC attribution is neither remote identity nor same-user isolation; the operator probe policy is intentionally coarse |
 | STRIDE: tampering / repudiation | Frame mutation, operation ABA or ambiguous lost reply | Canonical strict decoding, exact mutation-intent replay, operation budget, non-reusable request tombstones, transport disposition separated from application outcome | No MAC, signature, durable audit ledger or transport persistence claim |
 | STRIDE: information disclosure | Cross-member request oracle or sensitive values in telemetry | Sovereign request remapping, absent/foreign coalescing, redacted Debug and closed metric-label rule | No transport confidentiality; frame sizes and timing remain observable |
-| STRIDE: denial of service | Oversized frames, counts, text, retained requests or replay state | Exact deployment-narrowed limits, count-before-allocation, operation/request budgets and bounded cleanup | Deliberate capacity exhaustion can still refuse service until orderly retirement |
+| STRIDE: denial of service | Oversized frames, counts, text, retained requests or replay state | Exact deployment-narrowed limits, count-before-allocation, operation/request budgets, reserved cleanup, and request-bound membership rollover before ordinary headroom is exhausted | Deliberate global replay-ledger or incarnation-lifetime exhaustion still refuses service; no silent compaction or unbounded lifetime claim |
 | LINDDUN: linkability / identifiability | Digest, document counts, opaque IDs or provider fingerprint correlate workspaces and users | These values are excluded from logs, errors, discovery metadata and metric labels | A transport observer may correlate length, cadence and connection lifetime |
 | LINDDUN: non-repudiation / detectability / disclosure | Retained terminal results or compact witness shape reveal activity, language, cardinality or source-length structure | Exact membership-scoped retention, content-free fixed-cardinality observations and explicit Release; source is absent from errors and observations | Release is not secure erasure; transport confidentiality, storage encryption and provider-cache deletion remain composition obligations |
 | LINDDUN: unawareness / non-compliance | Agent queries without human-visible purpose or retention policy | Protocol exposes capability/readiness only and grants no UI consent authority | Human notice, consent, purpose limitation, deletion policy and jurisdictional compliance remain composition obligations |

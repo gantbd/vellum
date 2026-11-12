@@ -384,6 +384,19 @@ query results and the semantic membership, then disconnects the native client.
 This is request-bound service-mutation synchronization, not idle background or
 external filesystem watching.
 
+Composition lifecycle/synchronization correlations occupy the lower half of
+the 128-bit identity space and query correlations occupy the corresponding
+upper-half partition; both start with at least one quarter-space of monotone
+headroom. They therefore cannot collide while request-bound synchronization and
+queries advance independently. Before executing an arrived frame, the peer
+also reserves enough ordinary operations for one worst-case complete epoch plus
+that frame. When the membership falls below this reserve, it uses the separate
+retirement tail to leave, rejoins under a fresh membership, resets the local
+synchronization coordinator, opens a complete current epoch, rebinds the MCP
+catalog, and continues the same stdio lifetime. Successful rollovers are a
+content-safe exit metric. This does not compact the broker's historical global
+join/membership replay ledger or rotate its service incarnation.
+
 The explicit `--unavailable` mode admits one process-local partition to a real sovereign
 service whose provider is permanently unavailable. It is useful for MCP host,
 catalog, framing and failure-path qualification only: capability discovery says
@@ -421,11 +434,11 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes external filesystem watching, seamless membership rollover after
-tombstone exhaustion, and extraction of the MCP peer into its sibling
-repository. Ordinary operation headroom can no longer consume the broker/client
-retirement tail, but the MCP runtime does not yet leave, rejoin, fully
-resynchronize and rebind while stdio remains live.
+work includes external filesystem watching, bounded broker-incarnation rotation
+or separately specified global replay-ledger compaction, and extraction of the
+MCP peer into its sibling repository. Membership-local operation exhaustion now
+rolls over without consuming the broker/client retirement tail; historical
+global replay evidence is still never silently deleted.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's
