@@ -76,6 +76,7 @@ try {
   }
   write(vellum, 'release/compatibility-baseline.json', 'fixture compatibility\n');
   write(vellum, 'release/dependency-policy.json', 'fixture dependency policy\n');
+  write(vellum, 'release/portable-core.json', 'fixture portable core policy\n');
   write(vellum, 'release/source-sbom.manifest.json', 'fixture SBOM\n');
   write(vellum, 'rust-toolchain.toml', fs.readFileSync(path.resolve('rust-toolchain.toml'), 'utf8'));
   for (const name of [
@@ -89,6 +90,11 @@ try {
     vellum,
     '.github/workflows/release-candidate.yml',
     fs.readFileSync(path.resolve('.github/workflows/release-candidate.yml'), 'utf8'),
+  );
+  write(
+    vellum,
+    '.github/workflows/portable-core.yml',
+    fs.readFileSync(path.resolve('.github/workflows/portable-core.yml'), 'utf8'),
   );
   write(
     vellum,

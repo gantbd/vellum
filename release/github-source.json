@@ -82,6 +82,7 @@
     "docs/launchd-activation.md",
     "release/compatibility-baseline.json",
     "release/dependency-policy.json",
+    "release/portable-core.json",
     "release/github-source.json",
     "release/source-sbom.manifest.json",
     "release/vellum-mcp-extraction.json",
@@ -90,6 +91,8 @@
     "scripts/check-release-contract.mjs",
     "scripts/check-compatibility-baseline.mjs",
     "scripts/check-compatibility-baseline.test.mjs",
+    "scripts/check-portable-core.mjs",
+    "scripts/check-portable-core.test.mjs",
     "scripts/check-supply-chain.mjs",
     "scripts/check-supply-chain.test.mjs",
     "scripts/supply-chain-lib.mjs",
@@ -143,6 +146,7 @@
     "applications/vellum-daemon/tests/qualification.rs",
     ".github/workflows/release-candidate.yml",
     ".github/workflows/ci.yml",
-    ".github/workflows/fuzz-soak.yml"
+    ".github/workflows/fuzz-soak.yml",
+    ".github/workflows/portable-core.yml"
   ]
 }

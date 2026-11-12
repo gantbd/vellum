@@ -124,6 +124,7 @@ export function validateCandidate(directory, options = {}) {
     'Cargo.lock',
     'release/compatibility-baseline.json',
     'release/dependency-policy.json',
+    'release/portable-core.json',
     'release/github-source.json',
     'release/source-sbom.manifest.json',
     'distribution/launchd-render/Cargo.toml',
@@ -138,6 +139,7 @@ export function validateCandidate(directory, options = {}) {
     'scripts/compare-release-candidates.mjs',
     'scripts/release-reproducibility-lib.mjs',
     '.github/workflows/release-candidate.yml',
+    '.github/workflows/portable-core.yml',
     'rust-toolchain.toml',
   ];
   if (Object.keys(manifest.inputs).sort().join(',') !== requiredInputs.sort().join(',')) {

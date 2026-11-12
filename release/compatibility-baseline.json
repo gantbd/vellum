@@ -30,6 +30,8 @@
       "host/vellum-host",
       "host/vellum-session",
       "protocol/vellum-protocol",
+      "protocol/vellum-semantic-helper-protocol",
+      "protocol/vellum-semantic-helper-wire",
       "protocol/vellum-semantic-protocol",
       "protocol/vellum-semantic-wire",
       "protocol/vellum-wire",
@@ -172,7 +174,7 @@
       "sourceTree": {
         "directory": "adapters/local-fs/src",
         "fileCount": 9,
-        "sha256": "779320e828155bbf0f68840ddc23ecf76483f0225b0f772578f57fd812769ea1"
+        "sha256": "295524dde7a7452d84e1ab65edf68c0ec5df336a02bd84bfdc09f59560bbb225"
       }
     },
     {
@@ -579,6 +581,54 @@
         "directory": "client/vellum-semantic-client/src",
         "fileCount": 2,
         "sha256": "7db8b246dec1f59e3a2f5c82ef41fac4c064009027bbe002dbbdbf2106195c0e"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-semantic-helper-protocol/Cargo.toml",
+      "name": "vellum-semantic-helper-protocol",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_helper_protocol",
+          "path": "protocol/vellum-semantic-helper-protocol/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-semantic-helper-protocol/src",
+        "fileCount": 1,
+        "sha256": "44d26024274282b6fc32f261bb2e8da678f6eccc89eef3580ff00673c3b5396c"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-semantic-helper-wire/Cargo.toml",
+      "name": "vellum-semantic-helper-wire",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_helper_wire",
+          "path": "protocol/vellum-semantic-helper-wire/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-semantic-helper-wire/src",
+        "fileCount": 1,
+        "sha256": "41bb42e8c3d4fe4c735c362d0cc7beb686db3457a957024aedd0b81c558a3189"
       }
     },
     {
