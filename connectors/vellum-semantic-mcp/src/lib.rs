@@ -2,9 +2,10 @@
 //! partition-bound semantic client.
 //!
 //! This crate owns no provider, process, workspace, authentication, clock, edit,
-//! or transport authority. Its seven fixed tools submit revision/index-bound
-//! read or rename-plan queries through an already-bound client port. Rename
-//! application is deliberately absent. The library is prepared for a later
+//! or transport authority. Seven query tools submit revision/index-bound read
+//! or rename-plan requests through an already-bound client port; one lifecycle
+//! tool explicitly releases a retained terminal result. Rename application is
+//! deliberately absent. The library is prepared for a later
 //! transport/extraction boundary; it is not itself a transport or deployable
 //! peer. Complete query results deliberately disclose the bounded provider
 //! fingerprint (opaque id, profile, and version) needed to correlate semantic
@@ -23,8 +24,8 @@ use vellum_semantic_client::{
     SemanticClientV1, SemanticDeliveryOutcomeV1, SemanticDiagnosticSeverityV1,
     SemanticDocumentRefV1, SemanticIndexGenerationV1, SemanticLimitsV1, SemanticLocationV1,
     SemanticOutcomeV1, SemanticProviderReadinessV1, SemanticQueryKindV1, SemanticQueryV1,
-    SemanticRefusalV1, SemanticReplyV1, SemanticRequestRefV1, SemanticRequestV1,
-    SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSourceRevisionV1,
+    SemanticRefusalV1, SemanticReleaseOutcomeV1, SemanticReplyV1, SemanticRequestRefV1,
+    SemanticRequestV1, SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSourceRevisionV1,
     SemanticSubmitOutcomeV1, SemanticSymbolKindV1, SemanticTargetV1, SemanticTextV1,
     SovereignValidatedSemanticServicePortV1,
 };
@@ -115,6 +116,7 @@ pub const IMPLEMENTATIONS_TOOL: &str = "vellum.semantic.implementations";
 pub const DIAGNOSTICS_TOOL: &str = "vellum.semantic.diagnostics";
 pub const TYPE_AT_POINT_TOOL: &str = "vellum.semantic.type_at_point";
 pub const PLAN_RENAME_TOOL: &str = "vellum.semantic.plan_rename";
+pub const RELEASE_REQUEST_TOOL: &str = "vellum.semantic.release_request";
 pub const CAPABILITIES_RESOURCE: &str = "vellum-semantic://capabilities";
 pub const DOCUMENTS_RESOURCE: &str = "vellum-semantic://documents";
 pub const MAX_SEMANTIC_MCP_DOCUMENTS_V1: usize = 4_096;
@@ -128,7 +130,7 @@ const MAX_METADATA_KEY_BYTES: usize = 256;
 const MAX_METADATA_DEPTH: usize = 16;
 const MAX_CURSOR_BYTES: usize = 256;
 
-const TOOLS: [&str; 7] = [
+const TOOLS: [&str; 8] = [
     SYMBOLS_TOOL,
     DEFINITION_TOOL,
     REFERENCES_TOOL,
@@ -136,6 +138,7 @@ const TOOLS: [&str; 7] = [
     DIAGNOSTICS_TOOL,
     TYPE_AT_POINT_TOOL,
     PLAN_RENAME_TOOL,
+    RELEASE_REQUEST_TOOL,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -239,6 +242,7 @@ pub struct SemanticMcpUsageV1 {
     pub completed: u64,
     pub cancelled: u64,
     pub timed_out: u64,
+    pub released: u64,
     pub refused: u64,
     pub protocol_errors: u64,
     pub malformed_deliveries: u64,
@@ -468,6 +472,9 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
             return self.protocol_error(id, -32602, "invalid tool arguments");
         };
         bump(&mut self.usage.tool_calls, &mut self.usage.saturated);
+        if name == RELEASE_REQUEST_TOOL {
+            return self.release_request(id, arguments).await;
+        }
         if let Err(refusal) = self.drain_deliveries().await {
             bump(&mut self.usage.refused, &mut self.usage.saturated);
             return success(id, tool_outcome(refusal, true));
@@ -549,6 +556,55 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
                 json!({"status":"pending"})
             });
         let is_error = outcome_is_error(&outcome);
+        success(id, tool_outcome(outcome, is_error))
+    }
+
+    async fn release_request(&mut self, id: Value, arguments: &Map<String, Value>) -> Value {
+        if !only_keys(arguments, &["request"]) {
+            bump(&mut self.usage.refused, &mut self.usage.saturated);
+            return self.protocol_error(id, -32602, "invalid tool arguments");
+        }
+        let Some(request) = arguments
+            .get("request")
+            .and_then(Value::as_str)
+            .and_then(parse_hex_ref)
+            .map(SemanticRequestRefV1::new)
+        else {
+            bump(&mut self.usage.refused, &mut self.usage.saturated);
+            return self.protocol_error(id, -32602, "invalid tool arguments");
+        };
+        let releasable = self
+            .records
+            .get(&request)
+            .is_some_and(|record| record.outcome.is_some() && !record.outcome_unknown);
+        if !releasable {
+            bump(&mut self.usage.refused, &mut self.usage.saturated);
+            let reason = if self.records.contains_key(&request) {
+                "request_not_terminal"
+            } else {
+                "unknown_request"
+            };
+            return success(
+                id,
+                tool_outcome(json!({"status":"refused","reason":reason}), true),
+            );
+        }
+        let outcome = match self.client.release_request(request).await {
+            SemanticReleaseOutcomeV1::Released => {
+                self.records.remove(&request);
+                bump(&mut self.usage.released, &mut self.usage.saturated);
+                json!({"status":"released","request":hex_ref(request.as_bytes())})
+            }
+            SemanticReleaseOutcomeV1::OutcomeUnknown => {
+                json!({"status":"outcome_unknown"})
+            }
+            SemanticReleaseOutcomeV1::Unavailable => json!({"status":"unavailable"}),
+            SemanticReleaseOutcomeV1::Refused(refusal) => service_refusal(refusal),
+        };
+        let is_error = outcome_is_error(&outcome);
+        if is_error {
+            bump(&mut self.usage.refused, &mut self.usage.saturated);
+        }
         success(id, tool_outcome(outcome, is_error))
     }
 
@@ -984,6 +1040,21 @@ fn success_tools(tools: Vec<Value>) -> Value {
 }
 
 fn tool_schema(name: &str) -> Value {
+    if name == RELEASE_REQUEST_TOOL {
+        return json!({
+            "name":name,
+            "title":"Release semantic result",
+            "description":"Explicitly retire one terminal retained query result after the caller no longer needs replay.",
+            "inputSchema":{
+                "type":"object",
+                "properties":{"request":{"type":"string","pattern":"^[0-9a-f]{32}$"}},
+                "required":["request"],
+                "additionalProperties":false
+            },
+            "outputSchema":{"type":"object","properties":{"status":{"type":"string"}},"required":["status"]},
+            "annotations":{"readOnlyHint":false,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}
+        });
+    }
     let (title, description, extras) = match name {
         SYMBOLS_TOOL => (
             "Search document symbols",
@@ -1103,7 +1174,7 @@ fn tool_outcome(outcome: Value, is_error: bool) -> Value {
 fn outcome_is_error(outcome: &Value) -> bool {
     !matches!(
         outcome.get("status").and_then(Value::as_str),
-        Some("complete" | "pending")
+        Some("complete" | "pending" | "released")
     )
 }
 

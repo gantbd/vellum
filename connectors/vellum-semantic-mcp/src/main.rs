@@ -702,6 +702,7 @@ fn run_remote(configuration: RemoteArguments) -> Result<(), RemoteStage> {
                     "requests":usage.requests,
                     "tool_calls":usage.tool_calls,
                     "queries_submitted":usage.queries_submitted,
+                    "released":usage.released,
                     "refused":usage.refused,
                     "protocol_errors":usage.protocol_errors,
                     "saturated":usage.saturated
@@ -787,6 +788,7 @@ fn run_unavailable(metrics: bool) -> ExitCode {
                     "requests":mcp_usage.requests,
                     "tool_calls":mcp_usage.tool_calls,
                     "queries_submitted":mcp_usage.queries_submitted,
+                    "released":mcp_usage.released,
                     "refused":mcp_usage.refused,
                     "protocol_errors":mcp_usage.protocol_errors,
                     "saturated":mcp_usage.saturated

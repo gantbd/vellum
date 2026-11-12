@@ -146,7 +146,7 @@ the connector's portable conformance suite.
 
 Language semantics are another peer boundary, not an editor feature or native
 Vellum service command. `vellum-host::semantic` is the bounded shared value and
-provider contract: seven narrow query forms, exact Vellum
+provider contract: seven narrow query forms plus explicit retained-result release, exact Vellum
 source-revision, peer-index and composition-installed provider-provenance
 binding, a read/rename-plan capability lattice, closed
 stale/unsupported/unavailable outcomes and content-safe counters. It

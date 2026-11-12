@@ -147,6 +147,14 @@ impl SemanticSessionExchangePortV1 for WitnessServer {
                     .unwrap(),
                 })
             }
+            SemanticSessionCommandV1::ReleaseRequest { request, .. } => {
+                assert_eq!(
+                    self.request.as_ref().map(|value| value.request),
+                    Some(*request)
+                );
+                self.request = None;
+                SemanticSessionOutcomeV1::Accepted
+            }
             _ => panic!("unexpected command"),
         };
         self.reply(command, outcome)
@@ -343,11 +351,15 @@ fn witness_validated_session_becomes_a_sealed_query_port() {
         delivery.outcome,
         SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Complete(_))
     ));
+    assert_eq!(
+        run(client.release_request(SemanticRequestRefV1::new([5; 16]))),
+        SemanticReleaseOutcomeV1::Released
+    );
     let extracted = match client.into_port().try_into_session() {
         Ok(extracted) => extracted,
         Err(_) => panic!("completed query port must extract for explicit leave"),
     };
-    assert_eq!(extracted.next_exchange, 108);
-    assert_eq!(extracted.next_operation, 103);
+    assert_eq!(extracted.next_exchange, 110);
+    assert_eq!(extracted.next_operation, 105);
     assert!(extracted.session.binding().is_some());
 }

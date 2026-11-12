@@ -352,7 +352,8 @@ partition-bound `vellum-semantic-client`, plus a sequential newline-delimited
 stdio driver. The library is not a remote transport or authentication boundary;
 the binary is an explicit composition root over the native SDK, semantic Unix
 transport and local credential adapter. Its stable surface mirrors the seven
-closed query forms and one content-safe capability resource; transient indexing
+closed query forms, one explicit terminal-result release operation, and two
+content-safe catalog resources; transient indexing
 changes outcomes, not the catalog. It never depends directly on the editor,
 apply crate or LSP adapter. The library projection and stdio driver remain
 service-neutral. Cancellation and composition-owned deadline
@@ -396,10 +397,12 @@ synchronization/query role product independently, and owns the actor and pinned
 provider runtime. Trusted synchronization input comes from composition-owned
 Vellum snapshot products, not an MCP argument or workspace manifest. The
 connector does not mint the seal, infer membership from document ids, or
-automatically replay an uncertain mutation. Remaining delivery work includes
-live multi-document resynchronization, terminal-request release for long-lived
-MCP processes, graceful semantic-service shutdown, and extraction of the MCP
-peer into its sibling repository.
+automatically replay an uncertain mutation. MCP callers can explicitly release
+terminal replay payloads; the broker retains a bounded non-reusable identity
+tombstone. Remaining delivery work includes live multi-document
+resynchronization, membership rollover after tombstone exhaustion, graceful
+semantic-service shutdown, and extraction of the MCP peer into its sibling
+repository.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

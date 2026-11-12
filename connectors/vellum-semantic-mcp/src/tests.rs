@@ -9,8 +9,8 @@ use super::*;
 use vellum_semantic_client::{
     SemanticAdmissionOutcomeV1, SemanticCapabilitySetV1, SemanticDeliveryV1,
     SemanticProviderObservationV1, SemanticProviderProvenanceV1, SemanticProviderRefV1,
-    SemanticResultV1, SemanticServiceRefusalV1, SemanticSnapshotV1, SemanticSpanV1,
-    SemanticSymbolV1,
+    SemanticReleaseOutcomeV1, SemanticResultV1, SemanticServiceRefusalV1, SemanticSnapshotV1,
+    SemanticSpanV1, SemanticSymbolV1,
 };
 
 fn run<F: Future>(future: F) -> F::Output {
@@ -27,6 +27,7 @@ struct Model {
     submissions: Vec<SemanticRequestV1>,
     submit_outcomes: VecDeque<SemanticSubmitOutcomeV1>,
     deliveries: VecDeque<SemanticDeliveryV1>,
+    releases: Vec<SemanticRequestRefV1>,
 }
 
 #[derive(Clone)]
@@ -44,6 +45,7 @@ impl ModelPort {
             submissions: Vec::new(),
             submit_outcomes: VecDeque::new(),
             deliveries: VecDeque::new(),
+            releases: Vec::new(),
         })))
     }
 }
@@ -102,6 +104,14 @@ impl SemanticServicePortV1 for ModelPort {
         _request: SemanticRequestRefV1,
     ) -> vellum_semantic_client::SemanticFutureV1<'_, Result<bool, SemanticServiceRefusalV1>> {
         Box::pin(std::future::ready(Ok(false)))
+    }
+
+    fn release_request(
+        &mut self,
+        request: SemanticRequestRefV1,
+    ) -> vellum_semantic_client::SemanticFutureV1<'_, SemanticReleaseOutcomeV1> {
+        self.0.lock().unwrap().releases.push(request);
+        Box::pin(std::future::ready(SemanticReleaseOutcomeV1::Released))
     }
 
     fn take_delivery(
@@ -172,6 +182,14 @@ fn call(name: &str, mut arguments: Value) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"_meta":meta(),"name":name,"arguments":arguments}
+    }))
+    .unwrap()
+}
+
+fn release_call(request: &str) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"_meta":meta(),"name":RELEASE_REQUEST_TOOL,"arguments":{"request":request}}
     }))
     .unwrap()
 }
@@ -258,7 +276,7 @@ fn catalog_is_fixed_read_only_and_has_no_identity_or_apply_arguments() {
         .unwrap();
     assert_eq!(response["result"]["ttlMs"], 0);
     assert_eq!(response["result"]["cacheScope"], "private");
-    assert_eq!(tools.len(), 7);
+    assert_eq!(tools.len(), 8);
     assert_eq!(
         tools
             .iter()
@@ -270,11 +288,10 @@ fn catalog_is_fixed_read_only_and_has_no_identity_or_apply_arguments() {
     assert!(!encoded.contains("rename_apply"));
     assert!(!encoded.contains("client_id"));
     assert!(!encoded.contains("auth"));
-    assert!(
-        tools
-            .iter()
-            .all(|tool| tool["annotations"]["readOnlyHint"] == true)
-    );
+    assert!(tools.iter().all(|tool| {
+        tool["annotations"]["readOnlyHint"]
+            == json!(tool["name"].as_str() != Some(RELEASE_REQUEST_TOOL))
+    }));
     assert!(port.0.lock().unwrap().submissions.is_empty());
 }
 
@@ -533,7 +550,15 @@ fn notification_and_recursive_duplicate_keys_never_submit_work() {
 
 #[test]
 fn all_seven_tools_build_exact_requests_and_changed_replay_conflicts() {
-    for name in TOOLS {
+    for name in [
+        SYMBOLS_TOOL,
+        DEFINITION_TOOL,
+        REFERENCES_TOOL,
+        IMPLEMENTATIONS_TOOL,
+        DIAGNOSTICS_TOOL,
+        TYPE_AT_POINT_TOOL,
+        PLAN_RENAME_TOOL,
+    ] {
         let (mut server, port) = server();
         let response = run(server.handle(&call(name, common_arguments()))).unwrap();
         assert_eq!(status(&response), "pending");
@@ -647,6 +672,55 @@ fn pending_exact_replay_delivers_once_and_replays_terminal_without_resubmit() {
     let replay = run(server.handle(&request)).unwrap();
     assert_eq!(complete, replay);
     assert_eq!(port.0.lock().unwrap().submissions.len(), 1);
+}
+
+#[test]
+fn terminal_result_is_replayable_until_explicit_release_then_capacity_is_reclaimed() {
+    let port = ModelPort::ready();
+    let mut limits = SemanticMcpLimitsV1::reference();
+    limits.max_retained_requests = 1;
+    let mut server =
+        SemanticMcpServerV1::try_new_test(SemanticClientV1::new(port.clone()), limits).unwrap();
+    let request = call(DIAGNOSTICS_TOOL, common_arguments());
+    assert_eq!(status(&run(server.handle(&request)).unwrap()), "pending");
+    port.0
+        .lock()
+        .unwrap()
+        .deliveries
+        .push_back(SemanticDeliveryV1 {
+            request: SemanticRequestRefV1::new([1; 16]),
+            outcome: SemanticDeliveryOutcomeV1::Peer(SemanticOutcomeV1::Complete(
+                SemanticReplyV1 {
+                    request: SemanticRequestRefV1::new([1; 16]),
+                    target: SemanticTargetV1 {
+                        document: SemanticDocumentRefV1::new([2; 16]),
+                        source_revision: SemanticSourceRevisionV1::new(3),
+                    },
+                    index_generation: SemanticIndexGenerationV1::new(7).unwrap(),
+                    provider: provenance(),
+                    result: SemanticResultV1::try_diagnostics(
+                        Vec::new(),
+                        SemanticLimitsV1::reference(),
+                    )
+                    .unwrap(),
+                },
+            )),
+        });
+    assert_eq!(status(&run(server.handle(&request)).unwrap()), "complete");
+    let released = run(server.handle(&release_call("01010101010101010101010101010101"))).unwrap();
+    assert_eq!(status(&released), "released");
+    assert_eq!(
+        port.0.lock().unwrap().releases,
+        vec![SemanticRequestRefV1::new([1; 16])]
+    );
+    assert_eq!(server.usage().released, 1);
+
+    let mut next = common_arguments();
+    next["request"] = json!("03030303030303030303030303030303");
+    assert_eq!(
+        status(&run(server.handle(&call(DIAGNOSTICS_TOOL, next))).unwrap()),
+        "pending"
+    );
 }
 
 #[test]

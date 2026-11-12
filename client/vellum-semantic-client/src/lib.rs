@@ -52,6 +52,18 @@ pub struct SemanticProviderObservationV1 {
     capabilities: SemanticCapabilitySetV1,
 }
 
+/// Exact lifecycle result for retiring one retained semantic request result.
+/// `Released` means this port retains no replayable terminal payload for the
+/// request. It does not claim secure erasure in the provider, allocator, swap,
+/// transport, or operating system.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticReleaseOutcomeV1 {
+    Released,
+    OutcomeUnknown,
+    Unavailable,
+    Refused(SemanticServiceRefusalV1),
+}
+
 #[cfg(test)]
 mod session_query_tests;
 
@@ -108,6 +120,10 @@ pub trait SemanticServicePortV1 {
         &mut self,
         request: SemanticRequestRefV1,
     ) -> SemanticFutureV1<'_, Result<bool, SemanticServiceRefusalV1>>;
+    fn release_request(
+        &mut self,
+        request: SemanticRequestRefV1,
+    ) -> SemanticFutureV1<'_, SemanticReleaseOutcomeV1>;
     fn take_delivery(
         &mut self,
     ) -> SemanticFutureV1<'_, Result<Option<SemanticDeliveryV1>, SemanticServiceRefusalV1>>;
@@ -212,6 +228,15 @@ impl<P: vellum_semantic_service::SemanticProviderPortV1 + Send> SemanticServiceP
         Box::pin(async move { self.service.cancel(self.client, request) })
     }
 
+    fn release_request(
+        &mut self,
+        _request: SemanticRequestRefV1,
+    ) -> SemanticFutureV1<'_, SemanticReleaseOutcomeV1> {
+        // The in-process service destructively removes a delivery when it is
+        // taken and retains no caller-replay payload afterward.
+        Box::pin(std::future::ready(SemanticReleaseOutcomeV1::Released))
+    }
+
     fn take_delivery(
         &mut self,
     ) -> SemanticFutureV1<'_, Result<Option<SemanticDeliveryV1>, SemanticServiceRefusalV1>> {
@@ -277,6 +302,13 @@ impl<T: SemanticServicePortV1 + ?Sized> SemanticServicePortV1 for &mut T {
         request: SemanticRequestRefV1,
     ) -> SemanticFutureV1<'_, Result<bool, SemanticServiceRefusalV1>> {
         (**self).cancel(request)
+    }
+
+    fn release_request(
+        &mut self,
+        request: SemanticRequestRefV1,
+    ) -> SemanticFutureV1<'_, SemanticReleaseOutcomeV1> {
+        (**self).release_request(request)
     }
 
     fn take_delivery(
@@ -358,6 +390,7 @@ pub struct SemanticSessionQueryPortV1<P> {
     next_exchange: u128,
     next_operation: u128,
     pending_request: Option<SemanticRequestV1>,
+    pending_release: Option<SemanticRequestRefV1>,
     collecting: VecDeque<SemanticRequestRefV1>,
 }
 
@@ -429,6 +462,7 @@ pub fn try_bind_semantic_session_query_v1<P: SemanticSessionExchangePortV1 + Sen
         next_exchange: correlation_seed,
         next_operation: correlation_seed + 1,
         pending_request: None,
+        pending_release: None,
         collecting: VecDeque::new(),
     }))
 }
@@ -450,6 +484,7 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionQueryPortV1<P> {
     /// retired by the caller's subsequent `LeaveSession` command.
     pub fn try_into_session(self) -> Result<SemanticSessionQueryExtractionV1<P>, Box<Self>> {
         if self.pending_request.is_some()
+            || self.pending_release.is_some()
             || !self.collecting.is_empty()
             || self.session.pending_mutation().is_some()
         {
@@ -691,6 +726,87 @@ impl<P: SemanticSessionExchangePortV1 + Send> SemanticServicePortV1
         )))
     }
 
+    fn release_request(
+        &mut self,
+        request: SemanticRequestRefV1,
+    ) -> SemanticFutureV1<'_, SemanticReleaseOutcomeV1> {
+        Box::pin(async move {
+            let replaying = self.pending_release.is_some();
+            let disposition = if let Some(pending) = self.pending_release {
+                if pending != request {
+                    return SemanticReleaseOutcomeV1::Refused(
+                        SemanticServiceRefusalV1::DuplicateRequest,
+                    );
+                }
+                let exchange = match self.exchange() {
+                    Ok(exchange) => exchange,
+                    Err(_) => return SemanticReleaseOutcomeV1::OutcomeUnknown,
+                };
+                match self.session.replay_pending(exchange) {
+                    Ok(disposition) => disposition,
+                    Err(_) => return SemanticReleaseOutcomeV1::OutcomeUnknown,
+                }
+            } else {
+                if self.collecting.contains(&request) {
+                    return SemanticReleaseOutcomeV1::Refused(
+                        SemanticServiceRefusalV1::DuplicateRequest,
+                    );
+                }
+                let binding = match self.binding() {
+                    Ok(binding) => binding,
+                    Err(refusal) => return SemanticReleaseOutcomeV1::Refused(refusal),
+                };
+                let exchange = match self.exchange() {
+                    Ok(exchange) => exchange,
+                    Err(refusal) => return SemanticReleaseOutcomeV1::Refused(refusal),
+                };
+                let operation = match self.operation() {
+                    Ok(operation) => operation,
+                    Err(refusal) => return SemanticReleaseOutcomeV1::Refused(refusal),
+                };
+                match self
+                    .session
+                    .attempt(SemanticSessionCommandV1::ReleaseRequest {
+                        exchange,
+                        operation,
+                        incarnation: binding.incarnation,
+                        membership: binding.membership,
+                        request,
+                    }) {
+                    Ok(disposition) => disposition,
+                    Err(refusal) => {
+                        return SemanticReleaseOutcomeV1::Refused(Self::map_refusal(refusal));
+                    }
+                }
+            };
+            match disposition {
+                SemanticExchangeDispositionV1::NotSent if replaying => {
+                    SemanticReleaseOutcomeV1::OutcomeUnknown
+                }
+                SemanticExchangeDispositionV1::NotSent => SemanticReleaseOutcomeV1::Unavailable,
+                SemanticExchangeDispositionV1::OutcomeUnknown => {
+                    self.pending_release = Some(request);
+                    SemanticReleaseOutcomeV1::OutcomeUnknown
+                }
+                SemanticExchangeDispositionV1::Reply(reply) => {
+                    self.pending_release = None;
+                    match reply.outcome() {
+                        SemanticSessionOutcomeV1::Accepted => SemanticReleaseOutcomeV1::Released,
+                        SemanticSessionOutcomeV1::Refused(refusal) => {
+                            SemanticReleaseOutcomeV1::Refused(Self::map_session_refusal(*refusal))
+                        }
+                        SemanticSessionOutcomeV1::ReplayCapacity => {
+                            SemanticReleaseOutcomeV1::Refused(SemanticServiceRefusalV1::Capacity)
+                        }
+                        _ => SemanticReleaseOutcomeV1::Refused(
+                            SemanticServiceRefusalV1::MalformedProviderReply,
+                        ),
+                    }
+                }
+            }
+        })
+    }
+
     fn take_delivery(
         &mut self,
     ) -> SemanticFutureV1<'_, Result<Option<SemanticDeliveryV1>, SemanticServiceRefusalV1>> {
@@ -786,6 +902,13 @@ impl<P: SemanticServicePortV1> SemanticClientV1<P> {
         request: SemanticRequestRefV1,
     ) -> Result<bool, SemanticServiceRefusalV1> {
         self.port.cancel(request).await
+    }
+
+    pub async fn release_request(
+        &mut self,
+        request: SemanticRequestRefV1,
+    ) -> SemanticReleaseOutcomeV1 {
+        self.port.release_request(request).await
     }
 
     pub async fn take_delivery(
