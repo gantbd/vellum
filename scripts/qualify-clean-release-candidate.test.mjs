@@ -83,7 +83,13 @@ try {
     'release-candidate-lib.mjs',
     'compare-release-candidates.mjs',
     'release-reproducibility-lib.mjs',
+    'qualify-clean-release-candidate.mjs',
   ]) copyScript(name);
+  write(
+    vellum,
+    '.github/workflows/release-candidate.yml',
+    fs.readFileSync(path.resolve('.github/workflows/release-candidate.yml'), 'utf8'),
+  );
   write(
     vellum,
     'release/github-source.json',
@@ -139,11 +145,18 @@ try {
   const evidence = JSON.parse(
     fs.readFileSync(path.join(output, 'candidate-byte-equivalence.json'), 'utf8'),
   );
+  const provenanceText = fs.readFileSync(path.join(output, 'source-provenance.json'), 'utf8');
+  const provenance = JSON.parse(provenanceText);
   if (
     manifest.source.vellum.revision !== vellumRevision
     || evidence.source.vellumRevision !== vellumRevision
+    || provenance.source.vellum.revision !== vellumRevision
+    || provenance.source.vellum.tree.length !== 40
+    || provenance.source.keystone.tree.length !== 40
+    || provenance.subject.manifestSha256 !== evidence.manifestSha256
+    || provenance.nonClaims[0] !== 'remote-reachability'
     || evidence.manifestSha256.length !== 64
-    || JSON.stringify({ manifest, evidence }).includes(scratch)
+    || JSON.stringify({ manifest, evidence, provenance }).includes(scratch)
   ) {
     throw new Error('clean qualification evidence is incomplete or path-disclosing');
   }

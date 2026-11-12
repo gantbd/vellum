@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 import {
   ARTIFACT_NAMES,
@@ -17,6 +18,8 @@ import {
 
 const BLOCK = 512;
 const MAX_BUNDLE_BYTES = 512 * 1024 * 1024;
+export const SOURCE_PROVENANCE_FILE = 'source-provenance.json';
+const BYTE_EQUIVALENCE_FILE = 'candidate-byte-equivalence.json';
 const FILES = [
   ...ARTIFACT_NAMES,
   ...DEPLOYMENT_NAMES,
@@ -30,7 +33,8 @@ const EXPECTED = [
     mode: [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES].includes(name) ? 0o755 : 0o600,
     type: '0',
   })),
-  { name: 'candidate-byte-equivalence.json', mode: 0o600, type: '0' },
+  { name: BYTE_EQUIVALENCE_FILE, mode: 0o600, type: '0' },
+  { name: SOURCE_PROVENANCE_FILE, mode: 0o600, type: '0' },
 ];
 
 const fail = (message) => {
@@ -228,13 +232,83 @@ const validateEvidence = (file, candidate) => {
   return evidence;
 };
 
+const localTree = (repository, revision, label) => {
+  const result = spawnSync(
+    'git', ['-C', repository, 'rev-parse', `${revision}^{tree}`], { encoding: 'utf8' },
+  );
+  const tree = (result.stdout ?? '').trim();
+  if (result.status !== 0 || !/^[0-9a-f]{40}$/.test(tree)) {
+    fail(`${label} source object is unavailable`);
+  }
+  return tree;
+};
+
+const validateSourceProvenance = (file, candidate, evidenceFile, repositoryRoot) => {
+  const text = fs.readFileSync(file, 'utf8');
+  let provenance;
+  try {
+    provenance = JSON.parse(text);
+  } catch (error) {
+    fail(`source provenance is invalid JSON: ${error.message}`);
+  }
+  if (text !== canonicalJson(provenance)) fail('source provenance is not canonical');
+  exactKeys(
+    provenance,
+    ['schema', 'channel', 'claims', 'nonClaims', 'source', 'subject'],
+    'source provenance',
+  );
+  if (
+    provenance.schema !== 1
+    || provenance.channel !== 'local-release-candidate-source-provenance'
+    || provenance.claims.join(',')
+      !== 'exact-local-git-objects,clean-detached-checkouts,candidate-manifest-bound,byte-equivalence-bound'
+    || provenance.nonClaims.join(',')
+      !== 'remote-reachability,signature,attestation,github-release,independent-build-execution,cross-host-reproducible-build'
+  ) fail('source provenance claims or nonclaims are incompatible');
+  exactKeys(provenance.source, ['vellum', 'keystone'], 'source provenance source');
+  for (const name of ['vellum', 'keystone']) {
+    const source = provenance.source[name];
+    exactKeys(source, ['repository', 'revision', 'tree'], `source provenance ${name}`);
+    if (
+      source.repository !== candidate.manifest.source[name].repository
+      || source.revision !== candidate.manifest.source[name].revision
+      || !/^[0-9a-f]{40}$/.test(source.tree)
+    ) fail(`source provenance ${name} identity is incompatible`);
+  }
+  exactKeys(
+    provenance.subject,
+    ['manifestSha256', 'byteEquivalenceSha256'],
+    'source provenance subject',
+  );
+  if (
+    provenance.subject.manifestSha256 !== candidate.manifestSha256
+    || provenance.subject.byteEquivalenceSha256 !== sha256File(evidenceFile)
+  ) fail('source provenance subject is incompatible');
+  if (repositoryRoot !== undefined) {
+    const root = fs.realpathSync(repositoryRoot);
+    const policy = JSON.parse(fs.readFileSync(path.join(root, 'release/github-source.json'), 'utf8'));
+    const keystone = fs.realpathSync(path.resolve(root, process.env.KEYSTONE_SOURCE ?? policy.keystone.relativePath));
+    if (
+      provenance.source.vellum.repository !== policy.vellumRepository
+      || provenance.source.keystone.repository !== policy.keystone.repository
+      || provenance.source.keystone.revision !== policy.keystone.revision
+      || provenance.source.vellum.tree
+        !== localTree(root, provenance.source.vellum.revision, 'Vellum')
+      || provenance.source.keystone.tree
+        !== localTree(keystone, provenance.source.keystone.revision, 'Keystone')
+    ) fail('source provenance differs from the inspected local Git objects');
+  }
+  return provenance;
+};
+
 export function buildCandidateBundle(qualifiedDirectory, options = {}) {
   const root = fs.realpathSync(qualifiedDirectory);
   const closure = fs.readdirSync(root, { withFileTypes: true });
   if (
-    closure.length !== 2
+    closure.length !== 3
     || !closure.some((entry) => entry.name === 'candidate' && entry.isDirectory() && !entry.isSymbolicLink())
-    || !closure.some((entry) => entry.name === 'candidate-byte-equivalence.json' && entry.isFile() && !entry.isSymbolicLink())
+    || !closure.some((entry) => entry.name === BYTE_EQUIVALENCE_FILE && entry.isFile() && !entry.isSymbolicLink())
+    || !closure.some((entry) => entry.name === SOURCE_PROVENANCE_FILE && entry.isFile() && !entry.isSymbolicLink())
   ) fail('qualified output closure is incompatible');
   const candidateRoot = path.join(root, 'candidate');
   if ((fs.lstatSync(candidateRoot).mode & 0o777) !== 0o700) {
@@ -244,9 +318,12 @@ export function buildCandidateBundle(qualifiedDirectory, options = {}) {
     repositoryRoot: options.repositoryRoot,
     runtimeTarget: options.runtimeTarget,
   });
-  const evidenceFile = path.join(root, 'candidate-byte-equivalence.json');
+  const evidenceFile = path.join(root, BYTE_EQUIVALENCE_FILE);
   exactMode(evidenceFile, 0o600, 'byte-equivalence evidence');
   validateEvidence(evidenceFile, candidate);
+  const provenanceFile = path.join(root, SOURCE_PROVENANCE_FILE);
+  exactMode(provenanceFile, 0o600, 'source provenance');
+  validateSourceProvenance(provenanceFile, candidate, evidenceFile, options.repositoryRoot);
   const entries = [{ ...EXPECTED[0], bytes: Buffer.alloc(0) }];
   for (const name of FILES) {
     const expected = EXPECTED.find((entry) => entry.name === `candidate/${name}`);
@@ -254,7 +331,14 @@ export function buildCandidateBundle(qualifiedDirectory, options = {}) {
     exactMode(file, expected.mode, expected.name);
     entries.push({ ...expected, bytes: fs.readFileSync(file) });
   }
-  entries.push({ ...EXPECTED.at(-1), bytes: fs.readFileSync(evidenceFile) });
+  entries.push({
+    ...EXPECTED.find((entry) => entry.name === BYTE_EQUIVALENCE_FILE),
+    bytes: fs.readFileSync(evidenceFile),
+  });
+  entries.push({
+    ...EXPECTED.find((entry) => entry.name === SOURCE_PROVENANCE_FILE),
+    bytes: fs.readFileSync(provenanceFile),
+  });
   return encode(entries);
 }
 
@@ -270,7 +354,7 @@ const inspectCandidateBundle = (bundleFile, options = {}, includeProducts = fals
     fs.mkdirSync(candidateRoot, { mode: 0o700 });
     fs.chmodSync(candidateRoot, 0o700);
     for (const entry of entries.slice(1)) {
-      const destination = entry.name === 'candidate-byte-equivalence.json'
+      const destination = [BYTE_EQUIVALENCE_FILE, SOURCE_PROVENANCE_FILE].includes(entry.name)
         ? path.join(scratch, entry.name)
         : path.join(candidateRoot, path.basename(entry.name));
       fs.writeFileSync(destination, entry.bytes, { flag: 'wx', mode: entry.mode });
@@ -280,7 +364,15 @@ const inspectCandidateBundle = (bundleFile, options = {}, includeProducts = fals
       repositoryRoot: options.repositoryRoot,
       runtimeTarget: options.runtimeTarget,
     });
-    validateEvidence(path.join(scratch, 'candidate-byte-equivalence.json'), candidate);
+    const evidenceFile = path.join(scratch, BYTE_EQUIVALENCE_FILE);
+    const provenanceFile = path.join(scratch, SOURCE_PROVENANCE_FILE);
+    validateEvidence(evidenceFile, candidate);
+    validateSourceProvenance(
+      provenanceFile,
+      candidate,
+      evidenceFile,
+      options.repositoryRoot,
+    );
     const smoke = options.smoke === false ? null : {
       products: smokeCandidate(candidate),
       launchd: smokeLaunchdDeployment(candidate),
@@ -288,8 +380,9 @@ const inspectCandidateBundle = (bundleFile, options = {}, includeProducts = fals
     };
     const report = {
       manifestSha256: candidate.manifestSha256,
+      sourceProvenanceSha256: sha256File(provenanceFile),
       vellumRevision: candidate.manifest.source.vellum.revision,
-      fileCount: FILES.length,
+      fileCount: FILES.length + 2,
       smoke,
     };
     const products = includeProducts ? ARTIFACT_NAMES.map((name) => {

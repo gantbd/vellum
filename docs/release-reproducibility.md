@@ -38,6 +38,13 @@ the clean candidate builder twice, but that remains CI evidence rather than a
 universal cross-host reproducibility claim. The record is not a signature,
 attestation, GitHub Release, activation authorization or crates.io publication.
 
+The clean-source composition additionally writes create-exclusive canonical
+`source-provenance.json`. It binds the selected Vellum and Keystone commit and
+tree objects to the candidate-manifest and byte-equivalence digests. The bundle
+parser requires that exact relationship before smoke or installation. This is
+unsigned local object evidence, not a GitHub reachability result, signature,
+attestation, independent-build claim, or cross-host reproducibility claim.
+
 The maintained clean-source gate creates detached local clones of the exact
 selected Vellum commit and coordinated Keystone commit, builds twice with Cargo
 offline, and retains one candidate plus the equivalence evidence:

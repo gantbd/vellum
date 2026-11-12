@@ -173,9 +173,11 @@ working-tree bytes for either revision. Coordinated CI requires both commands
 after checking out the exact Vellum and Keystone revisions. Remote reachability
 remains a separate, explicitly deferred `--verify-remote` gate.
 
-The source archive is not a final release artifact. Checksummed manifests,
-signatures/provenance and immutable release-bundle assembly remain separate
-gates after both repository objects are remotely retrievable.
+The source archive is not a final release artifact. The current immutable
+bundle carries checksum-closed local commit/tree provenance and exact
+build-recipe hashes, but that record is unsigned and unattested. Remote object
+reachability, GitHub artifact attestation, signing/notarization, and release
+publication remain separate gates.
 
 ## Non-publishing release candidates
 

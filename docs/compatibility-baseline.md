@@ -139,11 +139,15 @@ unknown persistence facts; treating every accepted outcome as durable is an
 incompatible consumer assumption, not a promise of this contract.
 
 The launchd distribution slice changes no Rust library API or native V1 frame.
-Its current private GitHub candidate manifest schema 4 retains the two product
+Its current private GitHub candidate manifest schema 5 retains the two product
 binaries, adds the checksum-closed inert renderer and explicit activation
-executor as distinct deployment artifacts, and captures both source closures.
-Existing schema-2/schema-3 candidate directories and qualification evidence
-must be rebuilt under schema 4; there is no migration that treats an unlisted
+executor as distinct deployment artifacts, captures both source closures, and
+hash-binds the exact local build recipe and workflow. The canonical bundle also
+adds path-free local commit/tree provenance bound to the candidate manifest and
+byte-equivalence record, without claiming remote reachability or attestation.
+Existing schema-2/schema-3/schema-4 candidate directories and qualification
+evidence must be rebuilt under schema 5; there is no migration that treats an
+unlisted
 helper as trusted payload. Qualification help-smokes the activator without its
 explicit effect switch and therefore performs no launchd effect.
 

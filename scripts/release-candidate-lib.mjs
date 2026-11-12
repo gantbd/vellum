@@ -73,12 +73,12 @@ export function validateCandidate(directory, options = {}) {
     ['schema', 'channel', 'claims', 'nonClaims', 'source', 'build', 'inputs', 'artifacts', 'deployment'],
     'manifest',
   );
-  if (manifest.schema !== 4 || manifest.channel !== 'github-release-candidate-artifact') {
+  if (manifest.schema !== 5 || manifest.channel !== 'github-release-candidate-artifact') {
     fail('manifest schema or channel is incompatible');
   }
   if (
     manifest.claims.join(',')
-      !== 'locked-workspace-build,native-help-smoke,sha256-checksums,effective-build-configuration,inert-launchd-renderer,activation-executor-packaged'
+      !== 'locked-workspace-build,native-help-smoke,sha256-checksums,effective-build-configuration,build-recipe-sha256,inert-launchd-renderer,activation-executor-packaged'
     || manifest.nonClaims.join(',')
       !== 'signature,attestation,github-release,crates.io-publication,activation,launchd-installation,launchd-socket-activation,authenticated-health'
   ) {
@@ -132,6 +132,12 @@ export function validateCandidate(directory, options = {}) {
     'distribution/launchd-activate/Cargo.toml',
     'distribution/launchd-activate/src/lib.rs',
     'distribution/launchd-activate/src/main.rs',
+    'scripts/build-release-candidate.mjs',
+    'scripts/release-candidate-lib.mjs',
+    'scripts/qualify-clean-release-candidate.mjs',
+    'scripts/compare-release-candidates.mjs',
+    'scripts/release-reproducibility-lib.mjs',
+    '.github/workflows/release-candidate.yml',
     'rust-toolchain.toml',
   ];
   if (Object.keys(manifest.inputs).sort().join(',') !== requiredInputs.sort().join(',')) {

@@ -50,6 +50,12 @@ const inputNames = [
   'distribution/launchd-activate/Cargo.toml',
   'distribution/launchd-activate/src/lib.rs',
   'distribution/launchd-activate/src/main.rs',
+  'scripts/build-release-candidate.mjs',
+  'scripts/release-candidate-lib.mjs',
+  'scripts/qualify-clean-release-candidate.mjs',
+  'scripts/compare-release-candidates.mjs',
+  'scripts/release-reproducibility-lib.mjs',
+  '.github/workflows/release-candidate.yml',
   'rust-toolchain.toml',
 ];
 
@@ -61,6 +67,13 @@ run('cargo', [
 const runtime = run('rustc', ['-vV']).stdout;
 const target = runtime.match(/^host: (.+)$/m)?.[1];
 if (!target) throw new Error('rustc host target is absent');
+const policy = JSON.parse(fs.readFileSync(path.join(root, 'release/github-source.json'), 'utf8'));
+const vellumRevision = run('git', ['rev-parse', 'HEAD^{commit}']).stdout.trim();
+const vellumTree = run('git', ['rev-parse', `${vellumRevision}^{tree}`]).stdout.trim();
+const keystoneRoot = fs.realpathSync(path.resolve(root, process.env.KEYSTONE_SOURCE ?? policy.keystone.relativePath));
+const keystoneTree = run(
+  'git', ['-C', keystoneRoot, 'rev-parse', `${policy.keystone.revision}^{tree}`],
+).stdout.trim();
 
 try {
   fs.mkdirSync(candidate, { recursive: true, mode: 0o700 });
@@ -88,11 +101,11 @@ try {
     runtime: 'native',
   }));
   const manifest = {
-    schema: 4,
+    schema: 5,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build', 'native-help-smoke', 'sha256-checksums',
-      'effective-build-configuration', 'inert-launchd-renderer',
+      'effective-build-configuration', 'build-recipe-sha256', 'inert-launchd-renderer',
       'activation-executor-packaged',
     ],
     nonClaims: [
@@ -100,8 +113,8 @@ try {
       'launchd-installation', 'launchd-socket-activation', 'authenticated-health',
     ],
     source: {
-      vellum: { repository: 'https://github.com/example/vellum', revision: 'a'.repeat(40) },
-      keystone: { repository: 'https://github.com/example/keystone', revision: 'c'.repeat(40) },
+      vellum: { repository: policy.vellumRepository, revision: vellumRevision },
+      keystone: { repository: policy.keystone.repository, revision: policy.keystone.revision },
     },
     build: {
       platform: 'macos', target, targetSelection: 'cargo --target', profile: 'release',
@@ -136,7 +149,7 @@ try {
       'independent-build-execution', 'reproducible-build', 'signature', 'attestation',
       'github-release', 'activation',
     ],
-    source: { vellumRevision: 'a'.repeat(40), keystoneRevision: 'c'.repeat(40) },
+    source: { vellumRevision, keystoneRevision: policy.keystone.revision },
     build: {
       target, rustc: 'rustc 1.95.0', cargo: 'cargo 1.95.0',
       profile: 'release', features: 'default',
@@ -145,6 +158,27 @@ try {
     files,
   };
   write(path.join(qualified, 'candidate-byte-equivalence.json'), canonicalJson(evidence), 0o600);
+  const provenance = {
+    schema: 1,
+    channel: 'local-release-candidate-source-provenance',
+    claims: [
+      'exact-local-git-objects', 'clean-detached-checkouts',
+      'candidate-manifest-bound', 'byte-equivalence-bound',
+    ],
+    nonClaims: [
+      'remote-reachability', 'signature', 'attestation', 'github-release',
+      'independent-build-execution', 'cross-host-reproducible-build',
+    ],
+    source: {
+      vellum: { ...manifest.source.vellum, tree: vellumTree },
+      keystone: { ...manifest.source.keystone, tree: keystoneTree },
+    },
+    subject: {
+      manifestSha256: evidence.manifestSha256,
+      byteEquivalenceSha256: sha256File(path.join(qualified, 'candidate-byte-equivalence.json')),
+    },
+  };
+  write(path.join(qualified, 'source-provenance.json'), canonicalJson(provenance), 0o600);
   write(bundle, buildCandidateBundle(qualified, { repositoryRoot: root }), 0o644);
 
   const installation = privateRoot('installation');

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { canonicalJson, sha256File } from './release-candidate-lib.mjs';
 
 process.on('uncaughtException', (error) => {
   process.stderr.write(`Vellum clean candidate: ${error.message}\n`);
@@ -43,6 +44,11 @@ const run = (command, args, options = {}) => {
 const commit = (repository, revision, label) => {
   const resolved = run('git', ['-C', repository, 'rev-parse', `${revision}^{commit}`]);
   if (!/^[0-9a-f]{40}$/.test(resolved)) throw new Error(`${label} is not a full commit`);
+  return resolved;
+};
+const tree = (repository, revision, label) => {
+  const resolved = run('git', ['-C', repository, 'rev-parse', `${revision}^{tree}`]);
+  if (!/^[0-9a-f]{40}$/.test(resolved)) throw new Error(`${label} is not a full tree identity`);
   return resolved;
 };
 const cloneAt = (source, revision, destination) => {
@@ -131,6 +137,53 @@ try {
       `--repository-root=${vellum}`,
     ],
     { cwd: vellum, env: environment },
+  );
+  const manifest = JSON.parse(fs.readFileSync(path.join(candidate, 'manifest.json'), 'utf8'));
+  const equivalence = path.join(canonicalOutput, 'candidate-byte-equivalence.json');
+  const provenance = {
+    schema: 1,
+    channel: 'local-release-candidate-source-provenance',
+    claims: [
+      'exact-local-git-objects',
+      'clean-detached-checkouts',
+      'candidate-manifest-bound',
+      'byte-equivalence-bound',
+    ],
+    nonClaims: [
+      'remote-reachability',
+      'signature',
+      'attestation',
+      'github-release',
+      'independent-build-execution',
+      'cross-host-reproducible-build',
+    ],
+    source: {
+      vellum: {
+        repository: policy.vellumRepository,
+        revision: vellumRevision,
+        tree: tree(vellum, vellumRevision, 'Vellum tree'),
+      },
+      keystone: {
+        repository: policy.keystone.repository,
+        revision: keystoneRevision,
+        tree: tree(keystone, keystoneRevision, 'Keystone tree'),
+      },
+    },
+    subject: {
+      manifestSha256: sha256File(path.join(candidate, 'manifest.json')),
+      byteEquivalenceSha256: sha256File(equivalence),
+    },
+  };
+  if (
+    manifest.source.vellum.revision !== provenance.source.vellum.revision
+    || manifest.source.keystone.revision !== provenance.source.keystone.revision
+  ) {
+    throw new Error('candidate source identity differs from the clean Git objects');
+  }
+  fs.writeFileSync(
+    path.join(canonicalOutput, 'source-provenance.json'),
+    canonicalJson(provenance),
+    { flag: 'wx', mode: 0o600 },
   );
   fs.chmodSync(canonicalOutput, 0o700);
   process.stdout.write(

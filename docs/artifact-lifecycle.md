@@ -8,10 +8,11 @@ publishes, installs, activates, signs, attests, or mutates a remote service.
 The candidate builder produces two product binaries, the inert
 `vellum-launchd-render` helper, the explicitly authorized
 `vellum-launchd-activate` executor, and canonical `manifest.json` and
-`SHA256SUMS` files. Manifest schema 4 identifies the exact Vellum and Keystone
+`SHA256SUMS` files. Manifest schema 5 identifies the exact Vellum and Keystone
 commits, effective Cargo build selection, Rust/Cargo versions, target, profile,
 feature mode, path-remap environment, and hashes of the lock, compatibility,
-dependency, SBOM, source-policy, toolchain, renderer, and activation-executor
+dependency, SBOM, source-policy, toolchain, renderer, activation-executor,
+builder/comparator libraries, clean-source qualifier, and release-workflow
 inputs. The manifest is itself
 checksummed. This is deterministic content evidence; it is not a signature or
 attestation.
@@ -56,16 +57,21 @@ activation mechanism, not an activation side effect.
 The GitHub workflow materializes the complete candidate twice through separate
 builder invocations and packages it only after their regular-file closures are
 byte-identical. The separate equivalence record names file hashes and exact
-build/source identities. A canonical USTAR bundle contains exactly that record
-and the candidate closure. It fixes archive ownership and time fields, retains
-the four native payloads as `0755`, retains metadata as `0600`, and rejects
+build/source identities. The clean-source gate also emits canonical local
+source provenance binding both exact commit/tree objects to the candidate
+manifest and equivalence-record digests. Its closed nonclaims deny remote
+reachability, signature, attestation, GitHub publication, independent build
+execution, and cross-host reproducibility. A canonical USTAR bundle contains
+both evidence records and the candidate closure. It fixes archive ownership
+and time fields, retains the four native payloads as `0755`, retains metadata
+as `0600`, and rejects
 links, traversal, extra entries, mode loss, noncanonical headers and corrupt
 content before extraction. The workflow deliberately changes the outer tar to
 `0644` and revalidates every extracted binary and native smoke before uploading
 only that tar. This accounts for GitHub artifact transport flattening the outer
 file mode without losing executable modes inside the download product. It
 deliberately does not claim independent build environments, a reproducible
-build across runs, signing, or attestation.
+build across runs, remote availability, signing, or attestation.
 
 ## Local qualification
 

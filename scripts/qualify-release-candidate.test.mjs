@@ -36,6 +36,12 @@ const inputs = [
   'distribution/launchd-activate/Cargo.toml',
   'distribution/launchd-activate/src/lib.rs',
   'distribution/launchd-activate/src/main.rs',
+  'scripts/build-release-candidate.mjs',
+  'scripts/release-candidate-lib.mjs',
+  'scripts/qualify-clean-release-candidate.mjs',
+  'scripts/compare-release-candidates.mjs',
+  'scripts/release-reproducibility-lib.mjs',
+  '.github/workflows/release-candidate.yml',
   'rust-toolchain.toml',
 ];
 
@@ -77,13 +83,14 @@ const makeCandidate = (directory, revision, marker) => {
     role: 'explicitly-authorized-launchd-activation-executor', runtime: 'native',
   }];
   const manifest = {
-    schema: 4,
+    schema: 5,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build',
       'native-help-smoke',
       'sha256-checksums',
       'effective-build-configuration',
+      'build-recipe-sha256',
       'inert-launchd-renderer',
       'activation-executor-packaged',
     ],

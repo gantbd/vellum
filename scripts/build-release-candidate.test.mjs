@@ -153,6 +153,16 @@ try {
   ].entries()) {
     write(vellum, name, `qualified build input ${index}\n`);
   }
+  for (const name of [
+    'scripts/build-release-candidate.mjs',
+    'scripts/release-candidate-lib.mjs',
+    'scripts/qualify-clean-release-candidate.mjs',
+    'scripts/compare-release-candidates.mjs',
+    'scripts/release-reproducibility-lib.mjs',
+    '.github/workflows/release-candidate.yml',
+  ]) {
+    write(vellum, name, fs.readFileSync(path.resolve(name), 'utf8'));
+  }
   write(vellum, 'rust-toolchain.toml', '[toolchain]\nchannel = "1.95.0"\n');
   run('cargo', ['generate-lockfile', '--offline'], vellum);
   const vellumRevision = commit(vellum);
@@ -170,8 +180,9 @@ try {
   if (manifestText.includes(fixture)) throw new Error('manifest disclosed the fixture path');
   const manifest = JSON.parse(manifestText);
   if (
-    manifest.schema !== 4
+    manifest.schema !== 5
     || manifest.claims.at(-1) !== 'activation-executor-packaged'
+    || !manifest.claims.includes('build-recipe-sha256')
     || !manifest.nonClaims.includes('activation')
   ) {
     throw new Error('builder omitted the lifecycle schema, configuration claim, or activation nonclaim');
