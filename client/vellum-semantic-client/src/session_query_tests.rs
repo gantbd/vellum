@@ -346,6 +346,15 @@ fn witness_validated_session_becomes_a_sealed_query_port() {
         run(client.submit(request)),
         SemanticSubmitOutcomeV1::Accepted
     );
+    let suspension = match client.into_port().try_suspend() {
+        Ok(suspension) => suspension,
+        Err(_) => panic!("definitive submit must suspend between MCP frames"),
+    };
+    let port = match suspension.try_resume() {
+        Ok(port) => port,
+        Err(_) => panic!("unchanged witness-validated session must resume"),
+    };
+    let mut client = SemanticClientV1::new(port);
     let delivery = run(client.take_delivery()).unwrap().unwrap();
     assert!(matches!(
         delivery.outcome,

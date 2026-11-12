@@ -529,6 +529,48 @@ fn modern_metadata_is_required_and_legacy_initialize_fails_forward() {
 }
 
 #[test]
+fn drained_frame_remains_unexecuted_until_composition_serves_it() {
+    let (mut server, _) = server();
+    let request = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0","id":1,"method":"resources/list","params":{"_meta":meta()}
+    }))
+    .unwrap();
+    let mut framed = request;
+    framed.push(b'\n');
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut reader = tokio::io::BufReader::new(framed.as_slice());
+    let mut usage = SemanticMcpStdioUsageV1::default();
+    let frame = runtime
+        .block_on(read_stdio_frame_v1(
+            &mut reader,
+            SemanticMcpStdioLimitsV1::reference(),
+            server.limits().max_request_bytes,
+            &mut usage,
+        ))
+        .unwrap();
+
+    assert_eq!(server.usage().requests, 0);
+    assert_eq!(usage.frames, 0);
+    let mut writer = Vec::new();
+    assert_eq!(
+        runtime
+            .block_on(serve_stdio_read_frame_v1(
+                &mut server,
+                frame,
+                &mut writer,
+                &mut usage,
+            ))
+            .unwrap(),
+        SemanticMcpStdioStepV1::Served
+    );
+    assert_eq!(server.usage().requests, 1);
+    assert_eq!(usage.frames, 1);
+    assert!(writer.ends_with(b"\n"));
+}
+
+#[test]
 fn notification_and_recursive_duplicate_keys_never_submit_work() {
     let (mut server, port) = server();
     let notification = serde_json::to_vec(&json!({

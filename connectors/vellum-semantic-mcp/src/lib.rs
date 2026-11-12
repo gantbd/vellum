@@ -25,14 +25,18 @@ use vellum_semantic_client::{
     SemanticDocumentRefV1, SemanticIndexGenerationV1, SemanticLimitsV1, SemanticLocationV1,
     SemanticOutcomeV1, SemanticProviderReadinessV1, SemanticQueryKindV1, SemanticQueryV1,
     SemanticRefusalV1, SemanticReleaseOutcomeV1, SemanticReplyV1, SemanticRequestRefV1,
-    SemanticRequestV1, SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSourceRevisionV1,
-    SemanticSubmitOutcomeV1, SemanticSymbolKindV1, SemanticTargetV1, SemanticTextV1,
-    SovereignValidatedSemanticServicePortV1,
+    SemanticRequestV1, SemanticServicePortV1, SemanticServiceRefusalV1, SemanticSessionQueryPortV1,
+    SemanticSessionQueryResumeRefusalV1, SemanticSessionQuerySuspensionV1,
+    SemanticSourceRevisionV1, SemanticSubmitOutcomeV1, SemanticSymbolKindV1, SemanticTargetV1,
+    SemanticTextV1, SovereignValidatedSemanticServicePortV1,
 };
+use vellum_semantic_session_client::SemanticSessionExchangePortV1;
 
 mod stdio;
 pub use stdio::{
-    SemanticMcpStdioFailureV1, SemanticMcpStdioLimitsV1, SemanticMcpStdioUsageV1, serve_stdio_v1,
+    SemanticMcpStdioFailureV1, SemanticMcpStdioFrameV1, SemanticMcpStdioLimitsV1,
+    SemanticMcpStdioStepV1, SemanticMcpStdioUsageV1, read_stdio_frame_v1, serve_stdio_frame_v1,
+    serve_stdio_read_frame_v1, serve_stdio_v1,
 };
 
 struct StrictJsonValue(Value);
@@ -264,6 +268,71 @@ pub struct SemanticMcpServerV1<P> {
     usage: SemanticMcpUsageV1,
 }
 
+/// Affine MCP pause between stdio frames. Request records, usage, the current
+/// catalog, query correlations, and collection obligations all remain owned.
+#[must_use = "a suspended MCP server must be resumed or explicitly retired"]
+pub struct SemanticMcpServerSuspensionV1<P> {
+    client: SemanticSessionQuerySuspensionV1<P>,
+    limits: SemanticMcpLimitsV1,
+    documents: Vec<SemanticMcpDocumentV1>,
+    records: BTreeMap<SemanticRequestRefV1, QueryRecord>,
+    usage: SemanticMcpUsageV1,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticMcpServerResumeRefusalV1 {
+    InvalidDocuments,
+    Query(SemanticSessionQueryResumeRefusalV1),
+}
+
+#[must_use = "resume refusal retains the exact suspended MCP owner"]
+pub struct SemanticMcpServerResumeFailureV1<P> {
+    reason: SemanticMcpServerResumeRefusalV1,
+    suspension: SemanticMcpServerSuspensionV1<P>,
+}
+
+impl<P> SemanticMcpServerResumeFailureV1<P> {
+    pub const fn reason(&self) -> SemanticMcpServerResumeRefusalV1 {
+        self.reason
+    }
+
+    pub fn into_suspension(self) -> SemanticMcpServerSuspensionV1<P> {
+        self.suspension
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticMcpServerResumeFailureV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticMcpServerResumeFailureV1")
+            .field("reason", &self.reason)
+            .field("suspension", &"<owned>")
+            .finish()
+    }
+}
+
+fn validate_documents(
+    limits: SemanticMcpLimitsV1,
+    documents: &mut [SemanticMcpDocumentV1],
+) -> Result<(), SemanticMcpBuildRefusalV1> {
+    documents.sort_by_key(|value| (value.native_workspace, value.native_document));
+    let semantic_documents: BTreeSet<_> = documents.iter().map(|value| value.document).collect();
+    if documents.len() > MAX_SEMANTIC_MCP_DOCUMENTS_V1
+        || semantic_documents.len() != documents.len()
+        || documents.windows(2).any(|pair| {
+            pair[0].native_workspace == pair[1].native_workspace
+                && pair[0].native_document == pair[1].native_document
+        })
+        || documents
+            .iter()
+            .any(|value| value.language.len() > limits.semantic.max_label_bytes)
+    {
+        Err(SemanticMcpBuildRefusalV1::InvalidDocuments)
+    } else {
+        Ok(())
+    }
+}
+
 impl<P: SovereignValidatedSemanticServicePortV1> SemanticMcpServerV1<P> {
     pub fn try_new(
         client: SemanticClientV1<P>,
@@ -290,21 +359,7 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
         if !limits.is_valid() {
             return Err(SemanticMcpBuildRefusalV1::InvalidLimits);
         }
-        documents.sort_by_key(|value| (value.native_workspace, value.native_document));
-        let semantic_documents: BTreeSet<_> =
-            documents.iter().map(|value| value.document).collect();
-        if documents.len() > MAX_SEMANTIC_MCP_DOCUMENTS_V1
-            || semantic_documents.len() != documents.len()
-            || documents.windows(2).any(|pair| {
-                pair[0].native_workspace == pair[1].native_workspace
-                    && pair[0].native_document == pair[1].native_document
-            })
-            || documents
-                .iter()
-                .any(|value| value.language.len() > limits.semantic.max_label_bytes)
-        {
-            return Err(SemanticMcpBuildRefusalV1::InvalidDocuments);
-        }
+        validate_documents(limits, &mut documents)?;
         Ok(Self {
             client,
             limits,
@@ -758,6 +813,84 @@ impl<P: SemanticServicePortV1> SemanticMcpServerV1<P> {
     ) -> Vec<u8> {
         bump(&mut self.usage.protocol_errors, &mut self.usage.saturated);
         self.encode(error(id, code, message, Some(data)))
+    }
+}
+
+impl<P: SemanticSessionExchangePortV1 + Send> SemanticMcpServerV1<SemanticSessionQueryPortV1<P>> {
+    /// Yields synchronization authority only when no query mutation has an
+    /// indeterminate transport outcome. Failure returns the complete server.
+    pub fn try_suspend_client(self) -> Result<SemanticMcpServerSuspensionV1<P>, Box<Self>> {
+        let Self {
+            client,
+            limits,
+            documents,
+            records,
+            usage,
+        } = self;
+        match client.into_port().try_suspend() {
+            Ok(client) => Ok(SemanticMcpServerSuspensionV1 {
+                client,
+                limits,
+                documents,
+                records,
+                usage,
+            }),
+            Err(client) => Err(Box::new(Self {
+                client: SemanticClientV1::new(*client),
+                limits,
+                documents,
+                records,
+                usage,
+            })),
+        }
+    }
+}
+
+impl<P: SemanticSessionExchangePortV1 + Send> SemanticMcpServerSuspensionV1<P> {
+    pub fn session_mut(
+        &mut self,
+    ) -> &mut vellum_semantic_session_client::SemanticSessionClientV1<P> {
+        self.client.session_mut()
+    }
+
+    /// Reconstitutes the query peer with one exact post-synchronization
+    /// catalog. Any refusal retains the entire suspended peer.
+    pub fn try_resume(
+        mut self,
+        mut documents: Vec<SemanticMcpDocumentV1>,
+    ) -> Result<
+        SemanticMcpServerV1<SemanticSessionQueryPortV1<P>>,
+        Box<SemanticMcpServerResumeFailureV1<P>>,
+    > {
+        if validate_documents(self.limits, &mut documents).is_err() {
+            return Err(Box::new(SemanticMcpServerResumeFailureV1 {
+                reason: SemanticMcpServerResumeRefusalV1::InvalidDocuments,
+                suspension: self,
+            }));
+        }
+        let prior_documents = std::mem::replace(&mut self.documents, documents);
+        match self.client.try_resume() {
+            Ok(client) => Ok(SemanticMcpServerV1 {
+                client: SemanticClientV1::new(client),
+                limits: self.limits,
+                documents: self.documents,
+                records: self.records,
+                usage: self.usage,
+            }),
+            Err(failure) => {
+                self.documents = prior_documents;
+                let reason = SemanticMcpServerResumeRefusalV1::Query(failure.reason());
+                self.client = failure.into_suspension();
+                Err(Box::new(SemanticMcpServerResumeFailureV1 {
+                    reason,
+                    suspension: self,
+                }))
+            }
+        }
+    }
+
+    pub fn into_query_suspension(self) -> SemanticSessionQuerySuspensionV1<P> {
+        self.client
     }
 }
 

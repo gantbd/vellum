@@ -403,6 +403,61 @@ pub struct SemanticSessionQueryExtractionV1<P> {
     pub next_operation: u128,
 }
 
+/// Affine pause between MCP frames. It retains the exact query correlations
+/// and collection queue while trusted composition temporarily regains the
+/// session's synchronization capability.
+#[must_use = "a suspended query port must be resumed or explicitly retired"]
+pub struct SemanticSessionQuerySuspensionV1<P> {
+    session: SemanticSessionClientV1<P>,
+    next_exchange: u128,
+    next_operation: u128,
+    collecting: VecDeque<SemanticRequestRefV1>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticSessionQueryResumeRefusalV1 {
+    PendingMutation,
+    Unbound,
+    RoleDenied,
+    Unsealed,
+}
+
+#[must_use = "resume refusal retains the exact suspended query owner"]
+pub struct SemanticSessionQueryResumeFailureV1<P> {
+    reason: SemanticSessionQueryResumeRefusalV1,
+    suspension: SemanticSessionQuerySuspensionV1<P>,
+}
+
+impl<P> SemanticSessionQueryResumeFailureV1<P> {
+    pub const fn reason(&self) -> SemanticSessionQueryResumeRefusalV1 {
+        self.reason
+    }
+
+    pub fn into_suspension(self) -> SemanticSessionQuerySuspensionV1<P> {
+        self.suspension
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticSessionQueryResumeFailureV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticSessionQueryResumeFailureV1")
+            .field("reason", &self.reason)
+            .field("suspension", &"<owned>")
+            .finish()
+    }
+}
+
+impl<P> std::fmt::Debug for SemanticSessionQuerySuspensionV1<P> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SemanticSessionQuerySuspensionV1")
+            .field("collecting", &self.collecting.len())
+            .field("session", &"<owned>")
+            .finish()
+    }
+}
+
 impl<P> sovereign_validation::Sealed for SemanticSessionQueryPortV1<P> where
     P: SemanticSessionExchangePortV1 + Send
 {
@@ -479,6 +534,24 @@ const fn valid_semantic_session_correlation_seed(seed: u128) -> bool {
 }
 
 impl<P: SemanticSessionExchangePortV1> SemanticSessionQueryPortV1<P> {
+    /// Suspends only between definitive query mutations. Pending collection
+    /// identities remain retained and become stale through ordinary session
+    /// synchronization when their source changes.
+    pub fn try_suspend(self) -> Result<SemanticSessionQuerySuspensionV1<P>, Box<Self>> {
+        if self.pending_request.is_some()
+            || self.pending_release.is_some()
+            || self.session.pending_mutation().is_some()
+        {
+            return Err(Box::new(self));
+        }
+        Ok(SemanticSessionQuerySuspensionV1 {
+            session: self.session,
+            next_exchange: self.next_exchange,
+            next_operation: self.next_operation,
+            collecting: self.collecting,
+        })
+    }
+
     /// Extracts the owned session only when no caller replay or delivery poll
     /// remains locally outstanding. Server-side retained request results are
     /// retired by the caller's subsequent `LeaveSession` command.
@@ -557,6 +630,59 @@ impl<P: SemanticSessionExchangePortV1> SemanticSessionQueryPortV1<P> {
             R::InvalidSession | R::UnknownMembership => SemanticServiceRefusalV1::UnknownClient,
             R::SynchronizationConflict => SemanticServiceRefusalV1::ClientIsolation,
         }
+    }
+}
+
+impl<P: SemanticSessionExchangePortV1> SemanticSessionQuerySuspensionV1<P> {
+    pub fn session_mut(&mut self) -> &mut SemanticSessionClientV1<P> {
+        &mut self.session
+    }
+
+    /// Retires a paused query composition without fabricating a resumed query
+    /// port. The retained collection queue is intentionally consumed: session
+    /// retirement is the authoritative bounded cleanup for those requests.
+    pub fn into_extraction(self) -> SemanticSessionQueryExtractionV1<P> {
+        SemanticSessionQueryExtractionV1 {
+            session: self.session,
+            next_exchange: self.next_exchange,
+            next_operation: self.next_operation,
+        }
+    }
+
+    pub fn try_resume(
+        self,
+    ) -> Result<SemanticSessionQueryPortV1<P>, Box<SemanticSessionQueryResumeFailureV1<P>>> {
+        let reason = if self.session.pending_mutation().is_some() {
+            Some(SemanticSessionQueryResumeRefusalV1::PendingMutation)
+        } else {
+            match self.session.binding() {
+                None => Some(SemanticSessionQueryResumeRefusalV1::Unbound),
+                Some(binding) if !binding.roles.contains(SemanticSessionRolesV1::query()) => {
+                    Some(SemanticSessionQueryResumeRefusalV1::RoleDenied)
+                }
+                Some(_)
+                    if self.session.validation_state()
+                        != SemanticReplyValidationV1::WitnessValidated =>
+                {
+                    Some(SemanticSessionQueryResumeRefusalV1::Unsealed)
+                }
+                Some(_) => None,
+            }
+        };
+        if let Some(reason) = reason {
+            return Err(Box::new(SemanticSessionQueryResumeFailureV1 {
+                reason,
+                suspension: self,
+            }));
+        }
+        Ok(SemanticSessionQueryPortV1 {
+            session: self.session,
+            next_exchange: self.next_exchange,
+            next_operation: self.next_operation,
+            pending_request: None,
+            pending_release: None,
+            collecting: self.collecting,
+        })
     }
 }
 

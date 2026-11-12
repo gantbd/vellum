@@ -356,8 +356,9 @@ stdio driver. The library is not a remote transport or authentication boundary;
 the binary is an explicit composition root over the native SDK, semantic Unix
 transport and local credential adapter. Its stable surface mirrors the seven
 closed query forms, one explicit terminal-result release operation, and two
-content-safe catalog resources; transient indexing
-changes outcomes, not the catalog. It never depends directly on the editor,
+content-safe catalog resources. Provider indexing changes query outcomes;
+committed native membership and source-revision changes replace the catalog at
+the next request boundary. It never depends directly on the editor,
 apply crate or LSP adapter. The library projection and stdio driver remain
 service-neutral. Cancellation and composition-owned deadline
 expiry retain their distinct outcomes. Rename application stays unadvertised
@@ -369,11 +370,19 @@ semantic/native socket and credential paths plus one registered language. Its
 current real profile authenticates one persistent semantic connection, joins
 with the synchronization/query role product, synchronizes exact public native
 snapshots as one bounded uniform-language startup manifest, waits for
-pinned-provider readiness, publishes a locator-free multi-document catalog,
-serves stdio MCP, explicitly releases retained query results, and performs a
-bounded affine retirement sequence on clean EOF. It supports the audited
-rust-analyzer standalone mapping; it does not observe native changes or
-resynchronize after MCP service begins.
+pinned-provider readiness, and publishes a locator-free multi-document catalog.
+The native connection remains live while stdio is served. After each complete
+frame arrives but before it is executed, the composition affinely pauses the
+query port, drains the bounded workspace-change feed, performs exact
+resynchronization and resealing after events or retention gaps, polls again to
+close the synchronization race, and replaces the catalog only after
+convergence. Eight refresh rounds and 4,096 feed pages are hard
+ceilings; sustained mutation refuses closed. A transport-unknown query mutation
+retains its exact replay path and temporarily prevents synchronization instead
+of being retried under a new identity. Clean EOF explicitly retires retained
+query results and the semantic membership, then disconnects the native client.
+This is request-bound service-mutation synchronization, not idle background or
+external filesystem watching.
 
 The explicit `--unavailable` mode admits one process-local partition to a real sovereign
 service whose provider is permanently unavailable. It is useful for MCP host,
@@ -412,11 +421,11 @@ through protocol shutdown with bounded forced escalation. Successful exit
 reports only the closed provider terminal class. Signal receipt is host
 lifecycle authority, not semantic query authority, and does not make a
 same-user process boundary into principal authentication. Remaining delivery
-work includes post-start multi-document resynchronization and file watching,
-seamless membership rollover after tombstone exhaustion, and extraction of the
-MCP peer into its sibling repository. Ordinary operation headroom can no longer
-consume the broker/client retirement tail, but the MCP runtime does not yet
-leave, rejoin, fully resynchronize and rebind while stdio remains live.
+work includes external filesystem watching, seamless membership rollover after
+tombstone exhaustion, and extraction of the MCP peer into its sibling
+repository. Ordinary operation headroom can no longer consume the broker/client
+retirement tail, but the MCP runtime does not yet leave, rejoin, fully
+resynchronize and rebind while stdio remains live.
 
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's

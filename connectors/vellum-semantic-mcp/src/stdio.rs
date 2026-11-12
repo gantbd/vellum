@@ -53,6 +53,12 @@ pub enum SemanticMcpStdioFailureV1 {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SemanticMcpStdioStepV1 {
+    Served,
+    Eof,
+}
+
 impl SemanticMcpStdioFailureV1 {
     pub const fn usage(&self) -> Option<SemanticMcpStdioUsageV1> {
         match self {
@@ -69,7 +75,10 @@ impl SemanticMcpStdioFailureV1 {
     }
 }
 
-enum ReadFrame {
+/// One fully drained physical frame. A composition may inspect only the shape
+/// and regain synchronization authority before executing `Complete` bytes.
+#[derive(Debug)]
+pub enum SemanticMcpStdioFrameV1 {
     Eof,
     Complete { bytes: Vec<u8>, observed: usize },
     Oversized { observed: usize },
@@ -98,48 +107,109 @@ where
     }
     let mut usage = SemanticMcpStdioUsageV1::default();
     loop {
-        let frame = match read_frame(reader, limits.max_frame_bytes).await {
-            Ok(frame) => frame,
-            Err(error) => return Err(io_failure(error, usage)),
-        };
-        let response = match frame {
-            ReadFrame::Eof => return Ok(usage),
-            ReadFrame::Complete { bytes, observed } => {
-                account_frame(&mut usage, observed);
-                server.handle(&bytes).await
-            }
-            ReadFrame::Oversized { observed } => {
-                account_frame(&mut usage, observed);
-                bump(&mut usage.oversized_frames, &mut usage.saturated);
-                Some(server.reject_oversized_frame(observed))
-            }
-            ReadFrame::Truncated { observed } => {
-                account_frame(&mut usage, observed);
-                bump(&mut usage.truncated_frames, &mut usage.saturated);
-                Some(server.reject_truncated_frame(observed))
-            }
-        };
-        let Some(response) = response else {
-            bump(&mut usage.notifications, &mut usage.saturated);
-            continue;
-        };
-        if let Err(error) = write_response(writer, &response).await {
-            bump(&mut usage.io_failures, &mut usage.saturated);
-            return Err(SemanticMcpStdioFailureV1::Io { error, usage });
+        if serve_stdio_frame_v1(server, reader, writer, limits, &mut usage).await?
+            == SemanticMcpStdioStepV1::Eof
+        {
+            return Ok(usage);
         }
-        bump(&mut usage.responses, &mut usage.saturated);
-        add(
-            &mut usage.response_bytes,
-            response.len(),
-            &mut usage.saturated,
-        );
     }
+}
+
+/// Serves at most one complete frame and returns control to the composition
+/// root before the next read. This is the request-bound synchronization seam;
+/// it owns no polling, provider, workspace, or retry policy.
+pub async fn serve_stdio_frame_v1<P, R, W>(
+    server: &mut SemanticMcpServerV1<P>,
+    reader: &mut R,
+    writer: &mut W,
+    limits: SemanticMcpStdioLimitsV1,
+    usage: &mut SemanticMcpStdioUsageV1,
+) -> Result<SemanticMcpStdioStepV1, SemanticMcpStdioFailureV1>
+where
+    P: SemanticServicePortV1,
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    if !limits.is_valid(server.limits().max_request_bytes) {
+        return Err(SemanticMcpStdioFailureV1::InvalidLimits);
+    }
+    let frame =
+        read_stdio_frame_v1(reader, limits, server.limits().max_request_bytes, usage).await?;
+    serve_stdio_read_frame_v1(server, frame, writer, usage).await
+}
+
+/// Reads and drains exactly one frame without executing it. This locates the
+/// synchronization seam after request arrival and before semantic effects.
+pub async fn read_stdio_frame_v1<R>(
+    reader: &mut R,
+    limits: SemanticMcpStdioLimitsV1,
+    max_request_bytes: usize,
+    usage: &mut SemanticMcpStdioUsageV1,
+) -> Result<SemanticMcpStdioFrameV1, SemanticMcpStdioFailureV1>
+where
+    R: AsyncBufRead + Unpin,
+{
+    if !limits.is_valid(max_request_bytes) {
+        return Err(SemanticMcpStdioFailureV1::InvalidLimits);
+    }
+    match read_frame(reader, limits.max_frame_bytes).await {
+        Ok(frame) => Ok(frame),
+        Err(error) => Err(io_failure(error, *usage)),
+    }
+}
+
+/// Executes one already-drained frame against the current exact MCP owner.
+pub async fn serve_stdio_read_frame_v1<P, W>(
+    server: &mut SemanticMcpServerV1<P>,
+    frame: SemanticMcpStdioFrameV1,
+    writer: &mut W,
+    usage: &mut SemanticMcpStdioUsageV1,
+) -> Result<SemanticMcpStdioStepV1, SemanticMcpStdioFailureV1>
+where
+    P: SemanticServicePortV1,
+    W: AsyncWrite + Unpin,
+{
+    let response = match frame {
+        SemanticMcpStdioFrameV1::Eof => return Ok(SemanticMcpStdioStepV1::Eof),
+        SemanticMcpStdioFrameV1::Complete { bytes, observed } => {
+            account_frame(usage, observed);
+            server.handle(&bytes).await
+        }
+        SemanticMcpStdioFrameV1::Oversized { observed } => {
+            account_frame(usage, observed);
+            bump(&mut usage.oversized_frames, &mut usage.saturated);
+            Some(server.reject_oversized_frame(observed))
+        }
+        SemanticMcpStdioFrameV1::Truncated { observed } => {
+            account_frame(usage, observed);
+            bump(&mut usage.truncated_frames, &mut usage.saturated);
+            Some(server.reject_truncated_frame(observed))
+        }
+    };
+    let Some(response) = response else {
+        bump(&mut usage.notifications, &mut usage.saturated);
+        return Ok(SemanticMcpStdioStepV1::Served);
+    };
+    if let Err(error) = write_response(writer, &response).await {
+        bump(&mut usage.io_failures, &mut usage.saturated);
+        return Err(SemanticMcpStdioFailureV1::Io {
+            error,
+            usage: *usage,
+        });
+    }
+    bump(&mut usage.responses, &mut usage.saturated);
+    add(
+        &mut usage.response_bytes,
+        response.len(),
+        &mut usage.saturated,
+    );
+    Ok(SemanticMcpStdioStepV1::Served)
 }
 
 async fn read_frame<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     limit: usize,
-) -> io::Result<ReadFrame> {
+) -> io::Result<SemanticMcpStdioFrameV1> {
     let retained_limit = limit.saturating_add(1);
     let mut retained = Vec::new();
     let mut observed = 0usize;
@@ -147,9 +217,9 @@ async fn read_frame<R: AsyncBufRead + Unpin>(
         let available = reader.fill_buf().await?;
         if available.is_empty() {
             return Ok(if observed == 0 {
-                ReadFrame::Eof
+                SemanticMcpStdioFrameV1::Eof
             } else {
-                ReadFrame::Truncated { observed }
+                SemanticMcpStdioFrameV1::Truncated { observed }
             });
         }
         let newline = available.iter().position(|byte| *byte == b'\n');
@@ -163,9 +233,9 @@ async fn read_frame<R: AsyncBufRead + Unpin>(
         reader.consume(consumed);
         if newline.is_some() {
             return Ok(if observed > limit {
-                ReadFrame::Oversized { observed }
+                SemanticMcpStdioFrameV1::Oversized { observed }
             } else {
-                ReadFrame::Complete {
+                SemanticMcpStdioFrameV1::Complete {
                     bytes: retained,
                     observed,
                 }
