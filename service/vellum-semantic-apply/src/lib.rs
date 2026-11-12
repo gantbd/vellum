@@ -1055,6 +1055,7 @@ fn map_workspace_error(error: WorkspaceError) -> SemanticApplyRefusalV1 {
         WorkspaceError::Capacity => SemanticApplyRefusalV1::Capacity,
         WorkspaceError::Empty
         | WorkspaceError::InvalidView
+        | WorkspaceError::SaveAsInProgress
         | WorkspaceError::Discovery(_)
         | WorkspaceError::Session(_) => SemanticApplyRefusalV1::WorkspaceUnavailable,
     }

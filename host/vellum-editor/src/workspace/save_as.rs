@@ -541,6 +541,21 @@ impl Workspace {
             .map_err(map_port)
     }
 
+    pub fn reconcile_document_save_as_release(
+        &mut self,
+        id: &WorkspaceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<bool, WorkspaceSaveAsErrorV1> {
+        let index = self.save_as_index(id)?;
+        let (host, transactions) = (&mut self.host, &mut self.save_as_transactions);
+        transactions[index]
+            .as_mut()
+            .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?
+            .operation
+            .reconcile_release(&mut CompletionPort { host, facts })
+            .map_err(map_port)
+    }
+
     pub fn retire_document_save_as(
         &mut self,
         id: &WorkspaceSaveAsIdV1,
@@ -553,6 +568,21 @@ impl Workspace {
             .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?
             .operation
             .retire(&mut CompletionPort { host, facts })
+            .map_err(map_port)
+    }
+
+    pub fn reconcile_document_save_as_retirement(
+        &mut self,
+        id: &WorkspaceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<bool, WorkspaceSaveAsErrorV1> {
+        let index = self.save_as_index(id)?;
+        let (host, transactions) = (&mut self.host, &mut self.save_as_transactions);
+        transactions[index]
+            .as_mut()
+            .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?
+            .operation
+            .reconcile_retirement(&mut CompletionPort { host, facts })
             .map_err(map_port)
     }
 

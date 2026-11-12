@@ -301,7 +301,7 @@
       "sourceTree": {
         "directory": "host/vellum-editor/src",
         "fileCount": 14,
-        "sha256": "520c7e65a26ce0c3bc1dfb8c40f008ef691eac0c1d5ddf53074ffbe7a7eb2cd5"
+        "sha256": "7feab5c335d52a22e84d59b0226e4fe5037d671b22ab3424619e68dfe562b485"
       }
     },
     {
@@ -556,7 +556,7 @@
       "sourceTree": {
         "directory": "service/vellum-semantic-apply/src",
         "fileCount": 3,
-        "sha256": "7a2f9a0d1d027176850c0e80fe7a913a46f7f6a480c050b74b73faaec077df71"
+        "sha256": "7860d136310f3bac65c7f81cf8ad9325485079a5947031e08cc5be20cb9af7d2"
       }
     },
     {
@@ -878,7 +878,7 @@
       "sourceTree": {
         "directory": "service/vellum-service/src",
         "fileCount": 1,
-        "sha256": "b0821e35ffb0ec05c20887c315edb209b32c2f6101ab2151e9eff774539765ad"
+        "sha256": "4eb34695bec50b598f205df169613eb5b8aada9fb6b8219bff8f5f863569f6de"
       }
     },
     {

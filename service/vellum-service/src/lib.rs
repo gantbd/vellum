@@ -13,12 +13,16 @@ use std::{
 use vellum_editor::{
     DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
     Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError,
-    WorkspaceExportCopyErrorV1, WorkspaceRootId, WorkspaceRootKind, WorkspaceSaveReceipt,
+    WorkspaceExportCopyErrorV1, WorkspaceRootId, WorkspaceRootKind, WorkspaceSaveAsErrorV1,
+    WorkspaceSaveAsIdV1, WorkspaceSaveAsStatusV1, WorkspaceSaveReceipt,
 };
 use vellum_engine::{
-    coordinator::DocumentVersion,
+    coordinator::{
+        DocumentVersion, TrustedSourceExportControlV1, TrustedSourceExportFactsV1,
+        TrustedSourceSaveAsFactsV1,
+    },
     instrumentation::{Boundary, Disposition, Recorder},
-    resource::{Application, Synchronization},
+    resource::{Application, SaveRequirements, Synchronization},
     source::Replacement,
 };
 use vellum_host::authentication::AuthenticatedSessionV1;
@@ -32,6 +36,7 @@ use vellum_host::export_copy::{
     ExportCopyAuthorityPortV1, ExportCopyAuthorizationRefusalV1, ExportCopyEffectPortV1,
     ExportCopyFailureV1, ExportCopyPersistenceV1, ExportCopyReceiptV1,
 };
+use vellum_host::save_as::{SaveAsAuthorityPortV1, SaveAsReceiptV1};
 use vellum_host::workspace::{
     WorkspaceDocumentBindingV1, WorkspaceIdentityAllocationV1, WorkspaceIdentityLimitsV1,
     WorkspaceIdentityMetadataV1, WorkspaceRootBindingKindV1, WorkspaceRootBindingV1,
@@ -255,6 +260,14 @@ pub struct ServiceUsage {
     pub export_observation_latency_nanos: u64,
     pub durable_retirement_authorizations: u64,
     pub durable_retirement_refused: u64,
+    pub save_as_begin_requests: u64,
+    pub save_as_begun: u64,
+    pub save_as_refused: u64,
+    pub save_as_binding_commits: u64,
+    pub save_as_capacity: usize,
+    pub save_as_retained: usize,
+    pub save_as_live: usize,
+    pub save_as_fenced: usize,
     pub counter_saturated: bool,
     pub active_clients: usize,
     pub client_capacity: usize,
@@ -265,6 +278,28 @@ pub struct ServiceUsage {
     pub request_capacity: usize,
     pub retained_witnesses: usize,
     pub witness_capacity: usize,
+}
+
+#[derive(Clone)]
+pub struct ServiceSaveAsIdV1(WorkspaceSaveAsIdV1);
+
+impl std::fmt::Debug for ServiceSaveAsIdV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ServiceSaveAsIdV1(<opaque>)")
+    }
+}
+
+#[derive(Debug)]
+pub enum ServiceSaveAsErrorV1 {
+    UnknownDocument,
+    CounterExhausted,
+    Workspace(WorkspaceSaveAsErrorV1),
+}
+
+impl From<WorkspaceSaveAsErrorV1> for ServiceSaveAsErrorV1 {
+    fn from(value: WorkspaceSaveAsErrorV1) -> Self {
+        Self::Workspace(value)
+    }
 }
 
 struct WitnessRecord {
@@ -999,6 +1034,7 @@ impl Service {
     }
 
     pub fn usage(&self) -> ServiceUsage {
+        let save_as = self.workspace.save_as_usage();
         ServiceUsage {
             active_clients: self.clients.len(),
             client_capacity: self.limits.max_clients,
@@ -1009,8 +1045,216 @@ impl Service {
             request_capacity: self.limits.max_requests,
             retained_witnesses: self.witnesses.len(),
             witness_capacity: self.limits.max_witnesses,
+            save_as_capacity: save_as.capacity,
+            save_as_retained: save_as.retained,
+            save_as_live: save_as.live,
+            save_as_fenced: save_as.fenced,
             ..self.usage
         }
+    }
+
+    /// Begins one host-authorized Save As against a stable service document
+    /// projection. This is an in-process composition seam, not a protocol
+    /// command: the caller must be the trusted owner of the authority port and
+    /// current engine facts.
+    pub fn begin_save_as<A: SaveAsAuthorityPortV1 + ?Sized>(
+        &mut self,
+        document: WorkspaceDocumentIdV1,
+        expected_revision: u64,
+        authority: &mut A,
+        persist: AuthorityRequestV1,
+        rebind: AuthorityRequestV1,
+        destination: SaveAsDestinationRequestV1,
+    ) -> Result<ServiceSaveAsIdV1, ServiceSaveAsErrorV1> {
+        bump(
+            &mut self.usage.save_as_begin_requests,
+            &mut self.usage.counter_saturated,
+        );
+        let Some(native) = self
+            .document_projections
+            .iter()
+            .find(|projection| projection.protocol == document)
+            .map(|projection| projection.native.clone())
+        else {
+            bump(
+                &mut self.usage.save_as_refused,
+                &mut self.usage.counter_saturated,
+            );
+            return Err(ServiceSaveAsErrorV1::UnknownDocument);
+        };
+        match self.workspace.begin_document_save_as(
+            &native,
+            expected_revision,
+            authority,
+            persist,
+            rebind,
+            destination,
+        ) {
+            Ok(operation) => {
+                bump(
+                    &mut self.usage.save_as_begun,
+                    &mut self.usage.counter_saturated,
+                );
+                Ok(ServiceSaveAsIdV1(operation))
+            }
+            Err(error) => {
+                bump(
+                    &mut self.usage.save_as_refused,
+                    &mut self.usage.counter_saturated,
+                );
+                Err(error.into())
+            }
+        }
+    }
+
+    pub fn admit_save_as(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        requirements: SaveRequirements,
+        facts: &TrustedSourceExportFactsV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        self.workspace
+            .admit_document_save_as(&operation.0, requirements, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn service_save_as(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportFactsV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        self.workspace
+            .service_document_save_as(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn reconcile_save_as_write(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportFactsV1,
+    ) -> Result<bool, ServiceSaveAsErrorV1> {
+        self.workspace
+            .reconcile_document_save_as_write(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn activate_save_as(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        maximum_binding_history: usize,
+        facts: &TrustedSourceSaveAsFactsV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        self.preflight_save_as_binding_revision(operation)?;
+        let before = self.workspace.document_save_as_status(&operation.0)?;
+        self.workspace
+            .activate_document_save_as(&operation.0, maximum_binding_history, facts)?;
+        self.commit_save_as_binding_revision(operation, before)
+    }
+
+    pub fn reconcile_save_as_activation(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+    ) -> Result<bool, ServiceSaveAsErrorV1> {
+        self.preflight_save_as_binding_revision(operation)?;
+        let before = self.workspace.document_save_as_status(&operation.0)?;
+        let closed = self
+            .workspace
+            .reconcile_document_save_as_activation(&operation.0)?;
+        self.commit_save_as_binding_revision(operation, before)?;
+        Ok(closed)
+    }
+
+    pub fn release_save_as(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        self.workspace
+            .release_document_save_as(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn reconcile_save_as_release(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<bool, ServiceSaveAsErrorV1> {
+        self.workspace
+            .reconcile_document_save_as_release(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn retire_save_as(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        self.workspace
+            .retire_document_save_as(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn reconcile_save_as_retirement(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        facts: &TrustedSourceExportControlV1,
+    ) -> Result<bool, ServiceSaveAsErrorV1> {
+        self.workspace
+            .reconcile_document_save_as_retirement(&operation.0, facts)
+            .map_err(Into::into)
+    }
+
+    pub fn save_as_status(
+        &self,
+        operation: &ServiceSaveAsIdV1,
+    ) -> Result<WorkspaceSaveAsStatusV1, ServiceSaveAsErrorV1> {
+        self.workspace
+            .document_save_as_status(&operation.0)
+            .map_err(Into::into)
+    }
+
+    pub fn save_as_receipt(
+        &self,
+        operation: &ServiceSaveAsIdV1,
+    ) -> Result<Option<SaveAsReceiptV1>, ServiceSaveAsErrorV1> {
+        self.workspace
+            .document_save_as_receipt(&operation.0)
+            .map_err(Into::into)
+    }
+
+    fn preflight_save_as_binding_revision(
+        &self,
+        operation: &ServiceSaveAsIdV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        let status = self.workspace.document_save_as_status(&operation.0)?;
+        if self.identity_materialized
+            && !status.binding_committed
+            && self.identity_generation == u64::MAX
+        {
+            return Err(ServiceSaveAsErrorV1::CounterExhausted);
+        }
+        Ok(())
+    }
+
+    fn commit_save_as_binding_revision(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+        before: WorkspaceSaveAsStatusV1,
+    ) -> Result<(), ServiceSaveAsErrorV1> {
+        let after = self.workspace.document_save_as_status(&operation.0)?;
+        if !before.binding_committed && after.binding_committed {
+            if self.identity_materialized {
+                self.identity_generation = self
+                    .identity_generation
+                    .checked_add(1)
+                    .ok_or(ServiceSaveAsErrorV1::CounterExhausted)?;
+            }
+            bump(
+                &mut self.usage.save_as_binding_commits,
+                &mut self.usage.counter_saturated,
+            );
+        }
+        Ok(())
     }
 
     /// Content-free durable identity revision used by a composition to detect
@@ -3241,9 +3485,10 @@ fn classify_workspace(error: WorkspaceError) -> RefusalV1 {
     match error {
         WorkspaceError::Capacity => RefusalV1::EditorCapacity,
         WorkspaceError::Empty => RefusalV1::NoActiveDocument,
-        WorkspaceError::InvalidView | WorkspaceError::Discovery(_) | WorkspaceError::Session(_) => {
-            RefusalV1::EditorUnavailable
-        }
+        WorkspaceError::InvalidView
+        | WorkspaceError::SaveAsInProgress
+        | WorkspaceError::Discovery(_)
+        | WorkspaceError::Session(_) => RefusalV1::EditorUnavailable,
     }
 }
 
