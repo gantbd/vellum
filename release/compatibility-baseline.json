@@ -375,7 +375,7 @@
       "sourceTree": {
         "directory": "distribution/launchd-activate/src",
         "fileCount": 2,
-        "sha256": "c13d139b6fff51f9282acb1660ee3822dded8031bc8c6f966b6df793f280ba47"
+        "sha256": "4cc55a5642b3f7768d2271ee368f1576ec8e32e72bd17d493d66d9f3d8def8e4"
       }
     },
     {
@@ -433,7 +433,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-mcp/src",
         "fileCount": 3,
-        "sha256": "1fa01c49c61c25f6262884f74caefdf8b84048c610aeb4e0a6ed42a5151e4621"
+        "sha256": "8e7a736e3f64bf805f4d92f2d98de730e40fd6db2c1aa0c035fd49c23f16077d"
       }
     },
     {
@@ -606,7 +606,7 @@
       "sourceTree": {
         "directory": "applications/vellum-semantic-local/src",
         "fileCount": 12,
-        "sha256": "b6e61dac568d4f0b612ad02e61fa9f5f503b41cd5411154385fe64d969448a34"
+        "sha256": "eb43b86ab9412353a1d7faebfd8d84d0fd72394d184d5f7b98df6700cd959f45"
       }
     },
     {
@@ -683,7 +683,7 @@
       "sourceTree": {
         "directory": "service/vellum-semantic-service/src",
         "fileCount": 1,
-        "sha256": "e00dcbc07d157c24fe4bb981cc57fc473e155ce0408cef70735f445efaa02ce0"
+        "sha256": "0482c49aeb17283acaaac6a4fb0cb9985262bc4d39cd87a10ca723142fc6244a"
       }
     },
     {

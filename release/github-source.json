@@ -103,6 +103,8 @@
     "scripts/release-reproducibility-lib.mjs",
     "scripts/release-reproducibility-lib.test.mjs",
     "scripts/compare-release-candidates.mjs",
+    "scripts/qualify-clean-release-candidate.mjs",
+    "scripts/qualify-clean-release-candidate.test.mjs",
     "scripts/qualify-release-candidate.mjs",
     "scripts/qualify-release-candidate.test.mjs",
     "scripts/cargo-install-qualification-lib.mjs",

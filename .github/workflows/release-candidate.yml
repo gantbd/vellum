@@ -29,6 +29,15 @@ jobs:
           ref: 3486252cdbaeb2d784756076f43ef6157ed0b7f8
           path: keystone
           persist-credentials: false
+      - name: Prefetch the exact locked dependency graph
+        working-directory: vellum
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+          GIT_CONFIG_GLOBAL: ${{ runner.temp }}/vellum-release-gitconfig
+          GIT_CONFIG_NOSYSTEM: "1"
+        run: |
+          printf '[url "file://${{ github.workspace }}/keystone"]\n\tinsteadOf = https://github.com/gantbd/keystone\n' > "$GIT_CONFIG_GLOBAL"
+          cargo fetch --locked
       - name: Verify release policy and candidate builder
         working-directory: vellum
         run: |
@@ -36,32 +45,21 @@ jobs:
           node --check scripts/build-release-candidate.mjs
           node scripts/build-release-candidate.test.mjs
           make check-artifact-lifecycle
+          make check-clean-release-candidate
           make check-activation-transaction
           make check-launchd-distribution
           make check-launchd-activation
-      - name: Build and stage locked candidate
+      - name: Build twice from exact clean source and compare bytes
         working-directory: vellum
         run: >-
-          node scripts/build-release-candidate.mjs
-          --vellum-revision=${{ github.sha }}
-          --output-dir=../candidate
-      - name: Independently rebuild and compare candidate bytes
-        working-directory: vellum
-        run: |
-          node scripts/build-release-candidate.mjs \
-            --vellum-revision=${{ github.sha }} \
-            --output-dir=../candidate-rebuild
-          node scripts/compare-release-candidates.mjs \
-            --candidate-a=../candidate \
-            --candidate-b=../candidate-rebuild \
-            --evidence-file=../candidate-byte-equivalence.json
+          node scripts/qualify-clean-release-candidate.mjs
+          --vellum-ref=${{ github.sha }}
+          --output-dir=../release-candidate
       - name: Upload unsigned candidate artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: vellum-daemon-mcp-launchd-${{ github.sha }}
-          path: |
-            candidate
-            candidate-byte-equivalence.json
+          path: release-candidate
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

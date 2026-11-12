@@ -106,6 +106,7 @@ struct QualifiedCandidateV1 {
     deployment: Vec<QualifiedArtifactV1>,
     smoke: serde_json::Value,
     launchd_smoke: serde_json::Value,
+    activation_executor_smoke: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -117,6 +118,7 @@ struct QualifiedRollbackV1 {
     deployment: Vec<QualifiedArtifactV1>,
     smoke: serde_json::Value,
     launchd_smoke: serde_json::Value,
+    activation_executor_smoke: serde_json::Value,
     trigger: String,
 }
 
@@ -200,6 +202,48 @@ pub struct ActivationReceiptV1 {
     pub content_disclosed: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationReconciliationStateV1 {
+    CandidateActiveDurable,
+    PriorRestoredDurable,
+    ActivationRefusedDurable,
+    RollbackRefusedDurable,
+    PreparedOnly,
+    PendingEffect,
+    OutcomeUnknown,
+    ConfirmedEffectWithoutDurableTerminal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationReconciliationActionV1 {
+    None,
+    ManualReauthorizationRequired,
+    InspectExactJobAndDaemonStatus,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivationReconciliationV1 {
+    pub schema: u64,
+    pub channel: &'static str,
+    pub transaction_id: String,
+    pub candidate_manifest_sha256: String,
+    pub prior_manifest_sha256: String,
+    pub selected_manifest_sha256: String,
+    pub journal_entries: u64,
+    pub last_sequence: u64,
+    pub last_phase: String,
+    pub last_effect: String,
+    pub last_disposition: String,
+    pub state: ActivationReconciliationStateV1,
+    pub required_action: ActivationReconciliationActionV1,
+    pub automatic_retry_authorized: bool,
+    pub launchd_effect: &'static str,
+    pub content_disclosed: bool,
+}
+
 #[derive(Clone, Debug)]
 struct CheckedVersionV1 {
     manifest: String,
@@ -218,6 +262,7 @@ struct CheckedActivationV1 {
     health_attempts: u32,
     health_interval: Duration,
     effect_timeout: Duration,
+    owner_uid: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -233,6 +278,22 @@ struct JournalEntryV1<'a> {
     candidate_manifest_sha256: &'a str,
     prior_manifest_sha256: &'a str,
     selected_manifest_sha256: &'a str,
+    content_disclosed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct JournalRecordV1 {
+    schema: u64,
+    channel: String,
+    sequence: u64,
+    transaction_id: String,
+    phase: String,
+    effect: String,
+    disposition: String,
+    candidate_manifest_sha256: String,
+    prior_manifest_sha256: String,
+    selected_manifest_sha256: String,
     content_disclosed: bool,
 }
 
@@ -414,6 +475,7 @@ fn validate_version(
 
 fn prepare(
     configuration: &ActivationConfigurationV1,
+    existing_journal: bool,
 ) -> Result<CheckedActivationV1, ActivationRefusalV1> {
     if configuration.schema != 1
         || configuration.channel != "vellum-launchd-activation"
@@ -442,12 +504,20 @@ fn prepare(
         configuration.owner_uid,
         0o700,
     )?;
-    if fs::read_dir(&configuration.transaction_directory)
+    let transaction_entries = fs::read_dir(&configuration.transaction_directory)
         .map_err(|_| refuse("transaction directory could not be read"))?
-        .next()
-        .is_some()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| refuse("transaction directory could not be read"))?;
+    if (!existing_journal && !transaction_entries.is_empty())
+        || (existing_journal
+            && (transaction_entries.len() != 1
+                || transaction_entries[0].file_name() != JOURNAL_DIRECTORY
+                || !transaction_entries[0]
+                    .file_type()
+                    .map_err(|_| refuse("journal directory could not be inspected"))?
+                    .is_dir()))
     {
-        return Err(refuse("transaction directory is not empty"));
+        return Err(refuse("transaction directory closure is incompatible"));
     }
     for (path, name) in [
         (&configuration.data_socket, "vellum.sock"),
@@ -490,12 +560,32 @@ fn prepare(
         || evidence.activation_plan.is_empty()
         || evidence.non_claims.is_empty()
         || evidence.candidate.vellum_revision == evidence.rollback.selected_prior_vellum_revision
-        || evidence.candidate.deployment.len() != 1
-        || evidence.rollback.deployment.len() != 1
+        || evidence
+            .claims
+            .iter()
+            .all(|claim| claim != "candidate-activation-executor-help-smoke-passed-without-effect")
+        || evidence.candidate.deployment.len() != 2
+        || evidence.rollback.deployment.len() != 2
+        || evidence
+            .candidate
+            .deployment
+            .iter()
+            .map(|artifact| artifact.file.as_str())
+            .collect::<BTreeSet<_>>()
+            != BTreeSet::from(["vellum-launchd-activate", "vellum-launchd-render"])
+        || evidence
+            .rollback
+            .deployment
+            .iter()
+            .map(|artifact| artifact.file.as_str())
+            .collect::<BTreeSet<_>>()
+            != BTreeSet::from(["vellum-launchd-activate", "vellum-launchd-render"])
         || evidence.candidate.smoke.is_null()
         || evidence.rollback.smoke.is_null()
         || evidence.candidate.launchd_smoke.is_null()
         || evidence.rollback.launchd_smoke.is_null()
+        || evidence.candidate.activation_executor_smoke.is_null()
+        || evidence.rollback.activation_executor_smoke.is_null()
         || evidence.rollback.trigger != "post-activation readiness or health gate fails"
     {
         return Err(refuse("qualification evidence is incompatible"));
@@ -527,10 +617,14 @@ fn prepare(
         return Err(refuse("candidate and prior versions are not distinct"));
     }
     let journal = configuration.transaction_directory.join(JOURNAL_DIRECTORY);
-    fs::create_dir(&journal).map_err(|_| refuse("journal directory could not be created"))?;
-    fs::set_permissions(&journal, fs::Permissions::from_mode(0o700))
-        .map_err(|_| refuse("journal directory mode could not be closed"))?;
-    sync_directory(&configuration.transaction_directory)?;
+    if existing_journal {
+        canonical_directory(&journal, configuration.owner_uid, 0o700)?;
+    } else {
+        fs::create_dir(&journal).map_err(|_| refuse("journal directory could not be created"))?;
+        fs::set_permissions(&journal, fs::Permissions::from_mode(0o700))
+            .map_err(|_| refuse("journal directory mode could not be closed"))?;
+        sync_directory(&configuration.transaction_directory)?;
+    }
     Ok(CheckedActivationV1 {
         approval,
         journal,
@@ -541,6 +635,7 @@ fn prepare(
         health_attempts: configuration.max_health_attempts,
         health_interval: Duration::from_millis(configuration.health_interval_ms),
         effect_timeout: Duration::from_millis(configuration.effect_timeout_ms),
+        owner_uid: configuration.owner_uid,
     })
 }
 
@@ -591,6 +686,206 @@ fn write_journal(
         .checked_add(1)
         .ok_or_else(|| refuse("journal sequence exhausted"))?;
     Ok(())
+}
+
+fn journal_record_shape_valid(record: &JournalRecordV1, checked: &CheckedActivationV1) -> bool {
+    let prior = record.selected_manifest_sha256 == checked.prior.manifest;
+    let candidate = record.selected_manifest_sha256 == checked.candidate.manifest;
+    match (
+        record.phase.as_str(),
+        record.effect.as_str(),
+        record.disposition.as_str(),
+    ) {
+        ("prepared", "none", "not_attempted") => prior,
+        ("prior_unload", "launchctl_bootout", disposition) => {
+            prior
+                && matches!(
+                    disposition,
+                    "pending" | "confirmed" | "refused" | "outcome_unknown"
+                )
+        }
+        ("candidate_load", "launchctl_bootstrap", disposition) => {
+            candidate
+                && matches!(
+                    disposition,
+                    "pending" | "confirmed" | "refused" | "outcome_unknown"
+                )
+        }
+        ("candidate_unload", "launchctl_bootout", disposition) => {
+            candidate
+                && matches!(
+                    disposition,
+                    "pending" | "confirmed" | "refused" | "outcome_unknown"
+                )
+        }
+        ("prior_load", "launchctl_bootstrap", disposition) => {
+            prior
+                && matches!(
+                    disposition,
+                    "pending" | "confirmed" | "refused" | "outcome_unknown"
+                )
+        }
+        ("terminal", "candidate_health", "confirmed") => candidate,
+        ("terminal", "prior_health", "confirmed" | "refused") => prior,
+        ("terminal", "none", "prior_not_ready") => prior,
+        _ => false,
+    }
+}
+
+fn journal_transition_valid(previous: &JournalRecordV1, next: &JournalRecordV1) -> bool {
+    if previous.disposition == "pending" {
+        return next.phase == previous.phase
+            && next.effect == previous.effect
+            && next.selected_manifest_sha256 == previous.selected_manifest_sha256
+            && matches!(
+                next.disposition.as_str(),
+                "confirmed" | "refused" | "outcome_unknown"
+            );
+    }
+    match (previous.phase.as_str(), previous.disposition.as_str()) {
+        ("prepared", "not_attempted") => {
+            (next.phase == "prior_unload" && next.disposition == "pending")
+                || (next.phase == "terminal" && next.disposition == "prior_not_ready")
+        }
+        ("prior_unload", "confirmed") => {
+            next.phase == "candidate_load" && next.disposition == "pending"
+        }
+        ("candidate_load", "confirmed") => {
+            (next.phase == "terminal"
+                && next.effect == "candidate_health"
+                && next.disposition == "confirmed")
+                || (next.phase == "candidate_unload" && next.disposition == "pending")
+        }
+        ("candidate_load", "refused") => {
+            next.phase == "prior_load" && next.disposition == "pending"
+        }
+        ("candidate_unload", "confirmed") => {
+            next.phase == "prior_load" && next.disposition == "pending"
+        }
+        ("prior_load", "confirmed" | "refused") => {
+            next.phase == "terminal"
+                && next.effect == "prior_health"
+                && matches!(next.disposition.as_str(), "confirmed" | "refused")
+        }
+        _ => false,
+    }
+}
+
+fn read_journal(
+    checked: &CheckedActivationV1,
+) -> Result<Vec<JournalRecordV1>, ActivationRefusalV1> {
+    let mut entries = fs::read_dir(&checked.journal)
+        .map_err(|_| refuse("journal directory could not be read"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| refuse("journal directory could not be read"))?;
+    entries.sort_by_key(fs::DirEntry::file_name);
+    if entries.is_empty() || entries.len() > 16 {
+        return Err(refuse("journal entry count is incompatible"));
+    }
+    let mut records = Vec::with_capacity(entries.len());
+    for (index, entry) in entries.into_iter().enumerate() {
+        let sequence = u64::try_from(index).map_err(|_| refuse("journal sequence overflow"))?;
+        let expected_name = format!("{sequence:04}.json");
+        if entry.file_name().to_str() != Some(expected_name.as_str()) {
+            return Err(refuse("journal filenames are not a contiguous sequence"));
+        }
+        let path = entry.path();
+        canonical_regular_file(&path, checked.owner_uid, Some(0o400), false)?;
+        let bytes = fs::read(&path).map_err(|_| refuse("journal entry could not be read"))?;
+        let record: JournalRecordV1 = serde_json::from_slice(&bytes)
+            .map_err(|_| refuse("journal entry JSON is incompatible"))?;
+        let mut canonical =
+            serde_json::to_vec_pretty(&record).map_err(|_| refuse("journal encoding failed"))?;
+        canonical.push(b'\n');
+        if bytes != canonical
+            || record.schema != 1
+            || record.channel != "vellum-launchd-activation-journal"
+            || record.sequence != sequence
+            || record.transaction_id != checked.approval.transaction_id
+            || record.candidate_manifest_sha256 != checked.candidate.manifest
+            || record.prior_manifest_sha256 != checked.prior.manifest
+            || record.content_disclosed
+            || !journal_record_shape_valid(&record, checked)
+            || records
+                .last()
+                .is_some_and(|previous| !journal_transition_valid(previous, &record))
+        {
+            return Err(refuse("journal evidence is incompatible"));
+        }
+        records.push(record);
+    }
+    if records[0].phase != "prepared" {
+        return Err(refuse("journal genesis is incompatible"));
+    }
+    Ok(records)
+}
+
+/// Reads and validates one exact durable activation journal without invoking
+/// launchd, the daemon, or any retry path. Nonterminal evidence always requires
+/// explicit operator reconciliation before a separately authorized new action.
+pub fn reconcile_activation_journal_v1(
+    configuration: &ActivationConfigurationV1,
+) -> Result<ActivationReconciliationV1, ActivationRefusalV1> {
+    let checked = prepare(configuration, true)?;
+    let records = read_journal(&checked)?;
+    let last = records.last().expect("nonempty journal was validated");
+    let (state, required_action) = match (
+        last.phase.as_str(),
+        last.effect.as_str(),
+        last.disposition.as_str(),
+    ) {
+        ("terminal", "candidate_health", "confirmed") => (
+            ActivationReconciliationStateV1::CandidateActiveDurable,
+            ActivationReconciliationActionV1::None,
+        ),
+        ("terminal", "prior_health", "confirmed") => (
+            ActivationReconciliationStateV1::PriorRestoredDurable,
+            ActivationReconciliationActionV1::None,
+        ),
+        ("terminal", "none", "prior_not_ready") => (
+            ActivationReconciliationStateV1::ActivationRefusedDurable,
+            ActivationReconciliationActionV1::None,
+        ),
+        ("terminal", "prior_health", "refused") => (
+            ActivationReconciliationStateV1::RollbackRefusedDurable,
+            ActivationReconciliationActionV1::None,
+        ),
+        (_, _, "outcome_unknown") => (
+            ActivationReconciliationStateV1::OutcomeUnknown,
+            ActivationReconciliationActionV1::InspectExactJobAndDaemonStatus,
+        ),
+        (_, _, "pending") => (
+            ActivationReconciliationStateV1::PendingEffect,
+            ActivationReconciliationActionV1::InspectExactJobAndDaemonStatus,
+        ),
+        ("prepared", _, _) => (
+            ActivationReconciliationStateV1::PreparedOnly,
+            ActivationReconciliationActionV1::ManualReauthorizationRequired,
+        ),
+        _ => (
+            ActivationReconciliationStateV1::ConfirmedEffectWithoutDurableTerminal,
+            ActivationReconciliationActionV1::InspectExactJobAndDaemonStatus,
+        ),
+    };
+    Ok(ActivationReconciliationV1 {
+        schema: 1,
+        channel: "vellum-launchd-activation-reconciliation",
+        transaction_id: checked.approval.transaction_id,
+        candidate_manifest_sha256: checked.candidate.manifest,
+        prior_manifest_sha256: checked.prior.manifest,
+        selected_manifest_sha256: last.selected_manifest_sha256.clone(),
+        journal_entries: u64::try_from(records.len())
+            .map_err(|_| refuse("journal entry count overflow"))?,
+        last_sequence: last.sequence,
+        last_phase: last.phase.clone(),
+        last_effect: last.effect.clone(),
+        last_disposition: last.disposition.clone(),
+        state,
+        required_action,
+        automatic_retry_authorized: false,
+        launchd_effect: "not_attempted",
+        content_disclosed: false,
+    })
 }
 
 fn disposition_name(disposition: LaunchdEffectDispositionV1) -> &'static str {
@@ -680,7 +975,7 @@ pub fn activate_v1<P: LaunchdActivationPortV1>(
     configuration: &ActivationConfigurationV1,
     port: &mut P,
 ) -> Result<ActivationReceiptV1, ActivationRefusalV1> {
-    let checked = prepare(configuration)?;
+    let checked = prepare(configuration, false)?;
     let mut sequence = 0;
     write_journal(
         &checked,

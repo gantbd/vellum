@@ -845,6 +845,17 @@ impl<P> SemanticProviderRetirementV1<P> {
             Err(self)
         }
     }
+
+    /// Changes only the concrete provider capability while preserving the
+    /// exact ordered close plan and its accumulated usage. The result remains
+    /// a retirement-only product and cannot be installed as a live service.
+    pub fn map_provider<Q>(self, map: impl FnOnce(P) -> Q) -> SemanticProviderRetirementV1<Q> {
+        SemanticProviderRetirementV1 {
+            provider: map(self.provider),
+            remaining: self.remaining,
+            usage: self.usage,
+        }
+    }
 }
 
 impl<P: SemanticProviderPortV1> SemanticProviderRetirementV1<P> {

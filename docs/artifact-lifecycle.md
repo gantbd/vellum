@@ -113,6 +113,13 @@ invocation may have occurred without matching confirmation. The scratch
 pointer remains non-activating evidence and is not silently promoted into a
 loaded-job fact.
 
+The packaged activator also exposes a read-only offline journal reconciler.
+It revalidates the exact candidate/prior identities and the complete canonical
+journal prefix, reports durable terminals separately from pending or unknown
+cuts, and always denies automatic retry. It invokes neither launchd nor daemon
+status and does not turn historical journal entries into a current-process
+claim.
+
 ## Activation and rollback boundary
 
 The separate [`vellum-launchd-activate`](launchd-activation.md) package now

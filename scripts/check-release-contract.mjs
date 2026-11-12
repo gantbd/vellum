@@ -50,6 +50,8 @@ const requiredFiles = [
   'scripts/release-reproducibility-lib.mjs',
   'scripts/release-reproducibility-lib.test.mjs',
   'scripts/compare-release-candidates.mjs',
+  'scripts/qualify-clean-release-candidate.mjs',
+  'scripts/qualify-clean-release-candidate.test.mjs',
   'scripts/qualify-release-candidate.mjs',
   'scripts/qualify-release-candidate.test.mjs',
   'scripts/activation-transaction-lib.mjs',
@@ -256,17 +258,17 @@ if (sourcePolicy !== undefined) {
     'workflow_dispatch:',
     'runs-on: macos-15',
     'ref: ${{ github.sha }}',
-    'scripts/build-release-candidate.mjs',
+    'cargo fetch --locked',
+    'scripts/qualify-clean-release-candidate.mjs',
     'make check-artifact-lifecycle',
     'make check-activation-transaction',
     'make check-launchd-distribution',
     'make check-launchd-activation',
     'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
     'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
-    '--output-dir=../candidate',
-    '--output-dir=../candidate-rebuild',
-    'scripts/compare-release-candidates.mjs',
-    'candidate-byte-equivalence.json',
+    '--output-dir=../release-candidate',
+    '--vellum-ref=${{ github.sha }}',
+    'make check-clean-release-candidate',
   ]) {
     if (!candidateWorkflow.includes(required)) {
       fail(`release-candidate workflow is missing pinned contract: ${required}`);
@@ -311,7 +313,9 @@ if (sourcePolicy !== undefined) {
   ) {
     fail('release-candidate checkout repositories or revisions drifted from source policy');
   }
-  if (/^\s*cargo\s+/m.test(candidateWorkflow)) {
+  const cargoLines = [...candidateWorkflow.matchAll(/^\s*(cargo\s+[^\n]+)$/gm)]
+    .map((match) => match[1].trim());
+  if (cargoLines.some((line) => line !== 'cargo fetch --locked')) {
     fail('release-candidate workflow must delegate package scope to the policy-bound builder');
   }
 }

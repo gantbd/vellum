@@ -193,12 +193,15 @@ fail-closed read-only LaunchAgent plist but
 does not install or activate it; see the
 [launchd distribution profile](launchd-distribution.md).
 
-The workflow invokes the locked candidate builder twice into distinct scratch
-products and refuses upload unless their complete regular-file closures are
+The workflow invokes the clean-source qualifier at the selected commit. That
+qualifier makes detached local clones of the exact Vellum and Keystone commits,
+sets Cargo offline, builds the locked candidate twice into distinct scratch
+products, and refuses upload unless their complete regular-file closures are
 byte-identical. It uploads a separate content-safe byte-equivalence record
 beside one candidate. This is evidence for those two materializations under one
 workflow environment; it is not a cross-run reproducible-build, signature, or
-attestation claim.
+attestation claim. Local source clones and exact URL rewrites are used; the
+qualifier performs no remote fetch, release, package publication, or activation.
 
 `vellum-semantic-local`, `vellum-semantic-mcp`, and all TUI/GUI applications
 are explicitly outside this artifact set. In particular, semantic-local must
@@ -209,13 +212,15 @@ bounded restart qualification are closed. Its current single-use observed
 identity, retained join ownership and core-dump suppression do not close those
 distribution gates.
 
-The same operation is available locally, but deliberately refuses dirty or
-mismatched source checkouts:
+The same clean committed-source operation is available locally. Working-tree
+changes are neither consumed nor required to be discarded; the exact selected
+commit is cloned into private scratch authority. The coordinated Keystone
+commit must be present locally, and Cargo remains offline:
 
 ```sh
-node scripts/build-release-candidate.mjs \
-  --vellum-revision="$(git rev-parse HEAD)" \
-  --output-dir=../vellum-candidate
+node scripts/qualify-clean-release-candidate.mjs \
+  --vellum-ref="$(git rev-parse HEAD)" \
+  --output-dir=../vellum-qualified-candidate
 ```
 
 This is an unsigned, unattested candidate artifact—not a GitHub Release, a

@@ -101,3 +101,30 @@ Codesigning, notarization, plist installation location, log retention,
 multi-user policy, daemon/MCP coordinated upgrade, semantic-provider lifecycle,
 and recovery after an unknown launchctl effect remain separate operator or
 future distribution contracts.
+
+## Offline journal reconciliation
+
+An interrupted or `outcome_unknown` transaction can be classified without
+invoking `launchctl`, the daemon status command, or any retry path:
+
+```sh
+vellum-launchd-activate --reconcile-journal \
+  --config=/absolute/private/activation.json
+```
+
+Reconciliation revalidates the same exact approval, qualification evidence,
+candidate/prior daemon hashes, plists and manifest identities. It then requires
+the transaction directory to contain only the private `0700` journal, and every
+entry to be a canonical same-owner `0400` file in one contiguous sequence. The
+reader validates the complete activation state-machine prefix; transplanted
+identities, missing interior entries, reordered phases, impossible effects,
+changed dispositions, unknown fields and noncanonical JSON refuse.
+
+The content-safe report distinguishes a durable candidate-active, prior-restored,
+activation-refused or rollback-refused terminal from prepared-only, pending,
+explicitly unknown and confirmed-effect-without-durable-terminal prefixes. It
+always sets `automaticRetryAuthorized` to false and `launchdEffect` to
+`not_attempted`. Nonterminal states require either manual reauthorization or an
+operator inspection of the exact job/program/PID and daemon status. The report
+does not infer current process state from the journal and cannot resume,
+rollback, load or unload a job.

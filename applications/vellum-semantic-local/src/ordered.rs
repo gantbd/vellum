@@ -40,8 +40,8 @@ use vellum_semantic_service::{
     SemanticBridgeProviderTransitionV1, SemanticBridgeRetiringProviderV1, SemanticBridgeServiceV1,
     SemanticClientRefV1, SemanticClientRetirementReportV1, SemanticDeliveryOutcomeV1,
     SemanticProviderPortV1, SemanticProviderReadinessV1, SemanticProviderReplacementFailureV1,
-    SemanticProviderRetirementV1, SemanticProviderStateV1, SemanticServiceLimitsV1,
-    SemanticServiceRefusalV1, SemanticSnapshotV1, SemanticSubmitOutcomeV1,
+    SemanticProviderReplacementRefusalV1, SemanticProviderRetirementV1, SemanticProviderStateV1,
+    SemanticServiceLimitsV1, SemanticServiceRefusalV1, SemanticSnapshotV1, SemanticSubmitOutcomeV1,
 };
 
 const MAX_LSP_OUTGOING_TEXT_BYTES_V1: usize =
@@ -415,6 +415,112 @@ pub type LocalSupervisedOrderedLspPreparedV1<G, R, U> =
 
 pub type LocalSupervisedOrderedLspBuildResultV1<G, R, U> = Result<
     LocalSupervisedOrderedLspPreparedV1<G, R, U>,
+    Box<LocalSupervisedOrderedLspBuildFailureV1<G, R, U>>,
+>;
+
+pub type LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U> =
+    LspFreshStartedAdapterV1<LocalLspFreshTransportV1, G, R, U>;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LocalSupervisedOrderedLspCandidateUsageV1 {
+    pub drives: u64,
+    pub ready_observations: u64,
+    pub poll_failures: u64,
+    pub unexpected_completions: u64,
+    pub saturated: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalSupervisedOrderedLspCandidateDriveV1 {
+    Pending,
+    Ready,
+    PollFailed(SemanticBridgePollFailureV1),
+    UnexpectedCompletion,
+}
+
+/// Independently launched and fresh-started ordered provider. It has never
+/// entered a service and can only become a replacement after reaching Ready;
+/// every other exit consumes it into forced-only cleanup.
+#[must_use = "candidate must be installed only when ready or retired explicitly"]
+pub struct LocalSupervisedOrderedLspCandidateV1<G, R, U> {
+    adapter: LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>,
+    usage: LocalSupervisedOrderedLspCandidateUsageV1,
+}
+
+impl<G, R, U> fmt::Debug for LocalSupervisedOrderedLspCandidateV1<G, R, U> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LocalSupervisedOrderedLspCandidateV1")
+            .field("usage", &self.usage)
+            .field("adapter", &"<owned>")
+            .finish()
+    }
+}
+
+impl<G, R, U> LocalSupervisedOrderedLspCandidateV1<G, R, U>
+where
+    G: SemanticGenerationIssuerV1,
+    R: LspIndexReadinessPortV1,
+    U: LspVirtualDocumentIssuerV1,
+{
+    pub fn state(&self) -> SemanticProviderStateV1 {
+        self.adapter.state()
+    }
+
+    pub const fn usage(&self) -> LocalSupervisedOrderedLspCandidateUsageV1 {
+        self.usage
+    }
+
+    pub fn drive_once(&mut self) -> LocalSupervisedOrderedLspCandidateDriveV1 {
+        cleanup_bump(&mut self.usage.drives, &mut self.usage.saturated);
+        match self.adapter.poll_bridge() {
+            Err(failure) => {
+                cleanup_bump(&mut self.usage.poll_failures, &mut self.usage.saturated);
+                LocalSupervisedOrderedLspCandidateDriveV1::PollFailed(failure)
+            }
+            Ok(Some(_)) => {
+                cleanup_bump(
+                    &mut self.usage.unexpected_completions,
+                    &mut self.usage.saturated,
+                );
+                LocalSupervisedOrderedLspCandidateDriveV1::UnexpectedCompletion
+            }
+            Ok(None)
+                if matches!(
+                    self.adapter.state().readiness,
+                    SemanticProviderReadinessV1::Ready { .. }
+                ) =>
+            {
+                cleanup_bump(
+                    &mut self.usage.ready_observations,
+                    &mut self.usage.saturated,
+                );
+                LocalSupervisedOrderedLspCandidateDriveV1::Ready
+            }
+            Ok(None) => LocalSupervisedOrderedLspCandidateDriveV1::Pending,
+        }
+    }
+
+    pub fn try_into_ready(
+        self,
+    ) -> Result<LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>, Box<Self>> {
+        if matches!(
+            self.adapter.state().readiness,
+            SemanticProviderReadinessV1::Ready { .. }
+        ) {
+            Ok(self.adapter)
+        } else {
+            Err(Box::new(self))
+        }
+    }
+
+    pub fn into_cleanup(self) -> SemanticRetirementDriverV1<LocalLspFreshTransportV1, G, R, U> {
+        SemanticRetirementDriverV1::from_uninstalled_fresh_adapter(self.adapter)
+    }
+}
+
+pub type LocalSupervisedOrderedLspCandidateLaunchResultV1<G, R, U> = Result<
+    LocalSupervisedOrderedLspCandidateV1<G, R, U>,
     Box<LocalSupervisedOrderedLspBuildFailureV1<G, R, U>>,
 >;
 
@@ -2421,6 +2527,180 @@ impl<P, C> fmt::Debug for LocalOrderedFusedSuspendedRuntimeV1<P, C> {
     }
 }
 
+pub type LocalOrderedLspReplacementInstallResultV1<G, R, U, C> = Result<
+    LocalOrderedLspInstalledReplacementV1<G, R, U, C>,
+    Box<LocalOrderedLspReplacementInstallFailureV1<G, R, U, C>>,
+>;
+
+#[must_use = "replacement stays hidden until displaced-provider cleanup is terminal"]
+pub struct LocalOrderedLspInstalledReplacementV1<G, R, U, C> {
+    runtime: LocalOrderedSuspendedTimedRuntimeV1<
+        LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>,
+        C,
+    >,
+    displaced: SemanticRetirementDriverV1<LocalLspFreshTransportV1, G, R, U>,
+    candidate_usage: LocalSupervisedOrderedLspCandidateUsageV1,
+}
+
+pub type LocalOrderedLspReconciledReplacementV1<G, R, U, C> = (
+    LocalOrderedSuspendedTimedRuntimeV1<LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>, C>,
+    LocalSemanticRetirementReceiptV1,
+    LocalSupervisedOrderedLspCandidateUsageV1,
+);
+
+pub type LocalOrderedLspReconciliationResultV1<G, R, U, C> = Result<
+    LocalOrderedLspReconciledReplacementV1<G, R, U, C>,
+    Box<LocalOrderedLspInstalledReplacementV1<G, R, U, C>>,
+>;
+
+impl<G, R, U, C> LocalOrderedLspInstalledReplacementV1<G, R, U, C>
+where
+    G: SemanticGenerationIssuerV1 + Send,
+    R: LspIndexReadinessPortV1 + Send,
+    U: LspVirtualDocumentIssuerV1 + Send,
+{
+    pub fn drive_displaced_once(&mut self) -> LocalSemanticRetirementStateV1 {
+        self.displaced.drive_once()
+    }
+
+    pub fn escalate_displaced(&mut self) {
+        self.displaced.escalate();
+    }
+
+    pub fn try_into_reconciled(self) -> LocalOrderedLspReconciliationResultV1<G, R, U, C> {
+        let Self {
+            runtime,
+            displaced,
+            candidate_usage,
+        } = self;
+        match displaced.try_into_terminal_receipt() {
+            Ok(receipt) => Ok((runtime, receipt, candidate_usage)),
+            Err(displaced) => Err(Box::new(Self {
+                runtime,
+                displaced: *displaced,
+                candidate_usage,
+            })),
+        }
+    }
+}
+
+#[must_use = "failed candidate installation retains every provider cleanup owner"]
+pub enum LocalOrderedLspReplacementInstallFailureV1<G, R, U, C> {
+    CandidateNotReady {
+        runtime: Box<
+            LocalOrderedSuspendedTimedRuntimeV1<
+                LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>,
+                C,
+            >,
+        >,
+        candidate: Box<LocalSupervisedOrderedLspCandidateV1<G, R, U>>,
+    },
+    CandidateRefused {
+        runtime: Box<
+            LocalOrderedSuspendedTimedRuntimeV1<
+                LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>,
+                C,
+            >,
+        >,
+        candidate: Box<LocalSupervisedOrderedLspCandidateV1<G, R, U>>,
+        refusal: LocalOrderedLspReplacementRefusalV1,
+    },
+    Reconciliation {
+        runtime: Box<
+            LocalOrderedFusedSuspendedRuntimeV1<
+                LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>,
+                C,
+            >,
+        >,
+        displaced: Box<SemanticRetirementDriverV1<LocalLspFreshTransportV1, G, R, U>>,
+        candidate_usage: LocalSupervisedOrderedLspCandidateUsageV1,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalOrderedLspReplacementRefusalV1 {
+    Ordered(LocalOrderedProviderReplacementRefusalV1),
+    Service(SemanticProviderReplacementRefusalV1),
+}
+
+impl<G, R, U, C> fmt::Debug for LocalOrderedLspReplacementInstallFailureV1<G, R, U, C> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::CandidateNotReady { .. } => "CandidateNotReady(<owned>)",
+            Self::CandidateRefused { .. } => "CandidateRefused(<owned>)",
+            Self::Reconciliation { .. } => "Reconciliation(<fused-owned>)",
+        })
+    }
+}
+
+impl<G, R, U, C>
+    LocalOrderedSuspendedTimedRuntimeV1<LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>, C>
+where
+    G: SemanticGenerationIssuerV1 + Send + 'static,
+    R: LspIndexReadinessPortV1 + Send + 'static,
+    U: LspVirtualDocumentIssuerV1 + Send + 'static,
+    C: LocalOrderedMonotonicClockV1,
+{
+    pub fn try_install_ready_candidate(
+        self,
+        candidate: LocalSupervisedOrderedLspCandidateV1<G, R, U>,
+    ) -> LocalOrderedLspReplacementInstallResultV1<G, R, U, C> {
+        let candidate_usage = candidate.usage();
+        let adapter = match candidate.try_into_ready() {
+            Ok(adapter) => adapter,
+            Err(candidate) => {
+                return Err(Box::new(
+                    LocalOrderedLspReplacementInstallFailureV1::CandidateNotReady {
+                        runtime: Box::new(self),
+                        candidate,
+                    },
+                ));
+            }
+        };
+        match self.try_replace_provider(adapter) {
+            Ok((runtime, retirement)) => Ok(LocalOrderedLspInstalledReplacementV1 {
+                runtime,
+                displaced: SemanticRetirementDriverV1::from_replacement_retirement(retirement),
+                candidate_usage,
+            }),
+            Err(failure) => match *failure {
+                LocalOrderedSuspendedReplacementFailureV1::Candidate { runtime, failure } => {
+                    let refusal = match &failure {
+                        LocalOrderedProviderReplacementFailureV1::Preflight { reason, .. } => {
+                            LocalOrderedLspReplacementRefusalV1::Ordered(*reason)
+                        }
+                        LocalOrderedProviderReplacementFailureV1::Service(failure) => {
+                            LocalOrderedLspReplacementRefusalV1::Service(failure.refusal())
+                        }
+                    };
+                    Err(Box::new(
+                        LocalOrderedLspReplacementInstallFailureV1::CandidateRefused {
+                            runtime: Box::new(runtime),
+                            candidate: Box::new(LocalSupervisedOrderedLspCandidateV1 {
+                                adapter: failure.into_candidate(),
+                                usage: candidate_usage,
+                            }),
+                            refusal,
+                        },
+                    ))
+                }
+                LocalOrderedSuspendedReplacementFailureV1::Reconciliation {
+                    runtime,
+                    retirement,
+                } => Err(Box::new(
+                    LocalOrderedLspReplacementInstallFailureV1::Reconciliation {
+                        runtime: Box::new(runtime),
+                        displaced: Box::new(
+                            SemanticRetirementDriverV1::from_replacement_retirement(retirement),
+                        ),
+                        candidate_usage,
+                    },
+                )),
+            },
+        }
+    }
+}
+
 #[must_use = "failed timed stop admission retains the same-spawn actor product"]
 pub struct LocalOrderedManagedTimedStopStartFailureV1<P, C> {
     reason: SemanticSessionActorControlRefusalV1,
@@ -3010,6 +3290,140 @@ fn qualified_workspace_initialization(
             )
         }
     }
+}
+
+/// Launches an independently fresh rust-analyzer candidate for the ordered
+/// replacement seam. The exact qualified workspace supplies initialization;
+/// composition and frame bounds close before process launch, and initialize is
+/// linearized against supervised stdout freshness exactly as at genesis.
+#[allow(clippy::too_many_arguments)]
+pub fn launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1<G, R, U>(
+    qualified: QualifiedProviderLaunchV1,
+    generations: G,
+    readiness: R,
+    virtual_documents: U,
+    lsp_limits: LspLimitsV1,
+    semantic_limits: SemanticLimitsV1,
+    session_limits: SemanticSessionLimitsV1,
+    service_limits: SemanticServiceLimitsV1,
+    protocol: &LspProviderProtocolProfileV1,
+) -> LocalSupervisedOrderedLspCandidateLaunchResultV1<G, R, U>
+where
+    G: SemanticGenerationIssuerV1,
+    R: LspIndexReadinessPortV1,
+    U: LspVirtualDocumentIssuerV1,
+{
+    let refuse_prelaunch = |reason, qualified, generations, readiness, virtual_documents| {
+        Box::new(LocalSupervisedOrderedLspBuildFailureV1 {
+            reason,
+            residue: LocalSupervisedOrderedLspBuildResidueV1::PreLaunch {
+                qualified: Box::new(qualified),
+                generations,
+                readiness,
+                virtual_documents,
+            },
+        })
+    };
+    if !lsp_configuration_align(lsp_limits, semantic_limits, session_limits, service_limits) {
+        return Err(refuse_prelaunch(
+            LocalSupervisedOrderedLspBuildRefusalV1::InvalidCompositionLimits,
+            qualified,
+            generations,
+            readiness,
+            virtual_documents,
+        ));
+    }
+    if !protocol.matches_launch_profile_digest(&qualified.profile_identity().digest()) {
+        return Err(refuse_prelaunch(
+            LocalSupervisedOrderedLspBuildRefusalV1::InvalidInitializationProfile,
+            qualified,
+            generations,
+            readiness,
+            virtual_documents,
+        ));
+    }
+    let Some(initialization) = qualified_workspace_initialization(
+        &qualified,
+        lsp_limits,
+        QualifiedLspInitializationPolicyV1::RustAnalyzerStandalone(protocol),
+    ) else {
+        return Err(refuse_prelaunch(
+            LocalSupervisedOrderedLspBuildRefusalV1::InvalidInitializationProfile,
+            qualified,
+            generations,
+            readiness,
+            virtual_documents,
+        ));
+    };
+    if required_lsp_frame_bytes(session_limits, service_limits)
+        .is_none_or(|required| qualified.profile.limits.max_frame_bytes < required)
+    {
+        return Err(refuse_prelaunch(
+            LocalSupervisedOrderedLspBuildRefusalV1::InsufficientTransportFrame,
+            qualified,
+            generations,
+            readiness,
+            virtual_documents,
+        ));
+    }
+    let provenance = qualified.profile.provenance.clone();
+    let transport = match launch_qualified_local_lsp_owned_v1(qualified) {
+        Ok(transport) => transport,
+        Err(failure) => {
+            let reason = failure.reason();
+            return Err(Box::new(LocalSupervisedOrderedLspBuildFailureV1 {
+                reason: LocalSupervisedOrderedLspBuildRefusalV1::Launch(reason),
+                residue: LocalSupervisedOrderedLspBuildResidueV1::LaunchAttempted {
+                    failure,
+                    generations,
+                    readiness,
+                    virtual_documents,
+                },
+            }));
+        }
+    };
+    let transport = match transport.try_claim_fresh() {
+        Ok(transport) => transport,
+        Err(failure) => {
+            let reason = failure.reason();
+            return Err(Box::new(LocalSupervisedOrderedLspBuildFailureV1 {
+                reason: LocalSupervisedOrderedLspBuildRefusalV1::TransportFreshness(reason),
+                residue: LocalSupervisedOrderedLspBuildResidueV1::TransportFreshness {
+                    failure,
+                    generations,
+                    readiness,
+                    virtual_documents,
+                },
+            }));
+        }
+    };
+    let fresh_start_witness = transport.fresh_start_witness();
+    let adapter = LspAdapterV1::try_new_with_profile(
+        transport,
+        generations,
+        readiness,
+        virtual_documents,
+        LspAdapterProfileV1::try_new(provenance, lsp_limits, semantic_limits, initialization)
+            .unwrap_or_else(|| unreachable!("preflight proved adapter profile limits")),
+    )
+    .unwrap_or_else(|| unreachable!("preflight proved adapter constructor limits"));
+    let adapter = match adapter.try_start_fresh() {
+        Ok(adapter) => adapter,
+        Err(failure) => {
+            let reason = match fresh_start_witness.refusal() {
+                Some(reason) => LocalSupervisedOrderedLspBuildRefusalV1::TransportFreshness(reason),
+                None => LocalSupervisedOrderedLspBuildRefusalV1::FreshStart(failure.reason()),
+            };
+            return Err(Box::new(LocalSupervisedOrderedLspBuildFailureV1 {
+                reason,
+                residue: LocalSupervisedOrderedLspBuildResidueV1::FreshStart(failure),
+            }));
+        }
+    };
+    Ok(LocalSupervisedOrderedLspCandidateV1 {
+        adapter,
+        usage: LocalSupervisedOrderedLspCandidateUsageV1::default(),
+    })
 }
 
 /// Consumes one qualified process launch into the only public production path

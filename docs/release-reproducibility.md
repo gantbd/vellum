@@ -38,6 +38,24 @@ the clean candidate builder twice, but that remains CI evidence rather than a
 universal cross-host reproducibility claim. The record is not a signature,
 attestation, GitHub Release, activation authorization or crates.io publication.
 
+The maintained clean-source gate creates detached local clones of the exact
+selected Vellum commit and coordinated Keystone commit, builds twice with Cargo
+offline, and retains one candidate plus the equivalence evidence:
+
+```sh
+node scripts/qualify-clean-release-candidate.mjs \
+  --vellum-ref="$(git rev-parse HEAD)" \
+  --output-dir=../vellum-qualified-candidate
+```
+
+Uncommitted files are never copied into the build. The gate uses only local Git
+objects and a local exact-URL rewrite; it neither checks remote reachability nor
+publishes, signs, attests, installs or activates the result. Registry sources
+must already exist in the selected Cargo cache because network access is
+disabled. The synthetic end-to-end test proves exact-ref selection, dirty-tree
+exclusion, the two-build comparison, content-safe evidence and non-destructive
+refusal of an existing output directory.
+
 The adversarial test refuses candidate-root reuse, payload drift, file-closure
 drift and hard-link substitution:
 

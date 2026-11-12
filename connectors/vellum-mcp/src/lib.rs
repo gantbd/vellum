@@ -1276,7 +1276,7 @@ fn tools_result(durable_projection: bool) -> Value {
                 "required": ["documents"],
                 "additionalProperties": false
             },
-            "outputSchema": generic_tool_output_schema(),
+            "outputSchema": workspace_edit_output_schema(),
             "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
         }),
         json!({
@@ -1625,6 +1625,39 @@ fn generic_tool_output_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": true
+    })
+}
+
+fn workspace_edit_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            closed_schema(
+                &["kind", "workspace", "generation", "persistence", "documents"],
+                json!({
+                    "kind": {"const": "workspace_edited"},
+                    "workspace": {"type": "integer", "minimum": 1},
+                    "generation": {"type": "integer", "minimum": 0},
+                    "persistence": {"const": "not_attempted"},
+                    "documents": {
+                        "type": "array",
+                        "maxItems": MAX_WORKSPACE_EDIT_DOCUMENTS,
+                        "items": closed_schema(
+                            &["workspace", "document", "revision", "text"],
+                            json!({
+                                "workspace": {"type": "integer", "minimum": 1},
+                                "document": {"type": "integer", "minimum": 1},
+                                "revision": {"type": "integer", "minimum": 0},
+                                "text": {"type": "string"}
+                            }),
+                        )
+                    }
+                }),
+            ),
+            closed_schema(
+                &["code"],
+                json!({"code": {"type": "string", "enum": TOOL_ERROR_CODES}}),
+            )
+        ]
     })
 }
 

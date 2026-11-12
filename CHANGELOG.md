@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Added a maintained exact clean-source candidate qualifier. It clones the
+  selected Vellum and coordinated Keystone commits into private detached
+  checkouts, keeps Cargo offline, builds the locked candidate twice, refuses
+  byte or file-closure drift, and retains one candidate with content-safe
+  equivalence evidence. Working-tree changes, remotes, crates.io publication,
+  signing, attestation, installation and activation remain outside the effect.
 - Added a bounded, source-revision-bound atomic workspace edit across the
   native protocol, wire, client SDK, service, and MCP projection. One request
   validates every explicit document and replacement before a single in-memory
@@ -15,7 +21,8 @@ will follow Semantic Versioning once a public release contract is selected.
   no-ops remain no-ops, and receipts state that filesystem persistence was not
   attempted. Passive content-free counters distinguish requests, refusals,
   requested/changed/unchanged documents, and changed versus all-no-op
-  transactions without participating in admission.
+  transactions without participating in admission. MCP discovery now advertises
+  a closed bounded success/error output schema for this operation.
 - Added provider-native incoming and outgoing call hierarchy queries through
   the semantic host algebra, session protocol/wire, service/client, LSP
   adapter, and semantic MCP peer. The two-stage LSP exchange preserves the
@@ -31,16 +38,19 @@ will follow Semantic Versioning once a public release contract is selected.
   broker/snapshot/deadline state, replays snapshots into one fresh provider,
   advances one exact provider epoch, invalidates pending queries without
   replay, clears their deadlines, returns displaced-provider cleanup authority,
-  preserves actor usage on resume, and permanently fences old senders. The
-  standalone binary remains unchanged until real-process candidate launch and
-  both cleanup products can be owned end to end.
+  preserves actor usage on resume, and permanently fences old senders. A fresh
+  qualified real-process candidate constructor now derives the same workspace
+  initialization, proves pinned readiness before installation, and withholds
+  resumption until displaced-provider retirement is terminal. Candidate,
+  displaced, and current-provider cleanup remain affine. The standalone binary
+  remains unchanged until policy can own this complete product end to end.
 - Added a separate source-built `vellum-launchd-activate` executor. An explicit
   operator approval binds exact qualified candidate/prior artifacts; every
   launchctl mutation is durably bracketed, running identity and daemon status
   are requalified, known candidate failure restores the exact prior version,
-  and uncertain effects stop without retry. Tests inject all effects, and the
-  executable remains outside both Cargo-install and release-candidate binary
-  payloads.
+  and uncertain effects stop without retry. Tests inject all effects; the
+  executable remains outside Cargo-install and is packaged as a separately
+  classified release-candidate deployment tool.
 - Replaced the packaged Node launchd renderer with a self-contained,
   non-publishable Rust executable. GitHub candidates now build, checksum,
   smoke, and qualify the exact native renderer for both candidate and rollback
@@ -483,6 +493,11 @@ will follow Semantic Versioning once a public release contract is selected.
   explicit-authorization help contract and records that no launchd effect was
   attempted. The workflow now compares two distinct candidate materializations
   byte-for-byte before upload without claiming cross-run reproducible builds.
+- Added offline launchd activation-journal reconciliation. It validates one
+  exact contiguous canonical state-machine prefix against the approved
+  candidate/prior identities, distinguishes durable terminals from pending,
+  unknown, and post-effect/nonterminal residue, and never invokes launchd,
+  queries the daemon, or authorizes an automatic retry.
 - Extended local candidate qualification through both packaged launchd
   renderers: the candidate and its selected rollback version must each render
   the exact inert direct-exec plist from fresh private scratch state and pass

@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     env, fs,
     future::Future,
+    num::NonZeroU64,
     os::unix::{ffi::OsStrExt as _, fs::PermissionsExt as _},
     path::PathBuf,
     process::Command,
@@ -30,11 +31,13 @@ use vellum_semantic_protocol::{
     SemanticSessionRolesV1, SemanticSynchronizationEpochV1, SemanticSynchronizationManifestV1,
 };
 use vellum_semantic_service::{
-    SemanticAdmissionOutcomeV1, SemanticClientRefV1, SemanticServiceLimitsV1, SemanticSnapshotV1,
+    SemanticAdmissionOutcomeV1, SemanticClientRefV1, SemanticProviderReadinessV1,
+    SemanticServiceLimitsV1, SemanticSnapshotV1,
 };
 use vellum_semantic_session_actor::{
     SemanticSessionActorAdmissionV1, SemanticSessionActorControlCompletionV1,
-    SemanticSessionActorLimitsV1, SemanticSessionActorPollV1, SemanticSessionActorTerminationV1,
+    SemanticSessionActorLimitsV1, SemanticSessionActorPhaseV1, SemanticSessionActorPollV1,
+    SemanticSessionActorTerminationV1,
 };
 use vellum_semantic_session_broker::SemanticBrokerContextV1;
 
@@ -263,6 +266,20 @@ impl LocalSemanticRestartClockV1 for MatrixRestartClock {
         self.0.push(delay);
         std::thread::sleep(delay.min(Duration::from_millis(1)));
         true
+    }
+}
+
+#[derive(Default)]
+struct MatrixOrderedClock(u64);
+
+impl LocalOrderedMonotonicClockV1 for MatrixOrderedClock {
+    fn sample(&mut self) -> Result<LocalOrderedInstantV1, LocalOrderedClockFailureV1> {
+        let tick = self.0;
+        self.0 = self
+            .0
+            .checked_add(1)
+            .ok_or(LocalOrderedClockFailureV1::Unavailable)?;
+        Ok(LocalOrderedInstantV1::from_composition_tick(tick))
     }
 }
 
@@ -652,6 +669,206 @@ fn supervised_pinned_protocol_joins_identity_notification_and_terminal_evidence(
     assert!(!debug.contains("vellum-matrix-lsp"));
     assert!(!debug.contains("$/vellumStatus"));
     drop(sender);
+}
+
+#[test]
+fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup() {
+    let scratch = MatrixScratch::new("ordered-real-replacement");
+    let (session, service) = matrix_limits();
+    let initial = qualify_provider_launch_v1(matrix_profile("pinned-serve", &scratch)).unwrap();
+    let profile_digest = initial.profile_identity().digest();
+    let protocol = LspProviderProtocolProfileV1::try_new(
+        profile_digest,
+        "vellum-matrix-lsp".to_owned(),
+        Some("1.0.0".to_owned()),
+        "$/vellumStatus".to_owned(),
+    )
+    .unwrap();
+    let prepared = launch_supervised_ordered_lsp_with_deadlines_rust_analyzer_standalone_v1(
+        initial,
+        MatrixGenerations(0),
+        MatrixReadiness(LspIndexReadinessV1::Current),
+        MatrixDocuments,
+        LspLimitsV1::reference(),
+        session.semantic,
+        SemanticClientRefV1::new([92; 16]),
+        SemanticSessionIncarnationV1::new([93; 16]).unwrap(),
+        session,
+        service,
+        MatrixOrderedClock::default(),
+        LocalOrderedDeadlinePolicyV1 {
+            relative_budget_ticks: NonZeroU64::new(100).unwrap(),
+            max_deadlines: service.max_pending,
+        },
+        &protocol,
+    )
+    .unwrap();
+    let (actor, old_sender) = prepared
+        .spawn_managed(SemanticSessionActorLimitsV1::reference())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut observation = 700_u64;
+    loop {
+        assert_eq!(
+            await_control(&actor.try_drive_provider().unwrap()),
+            SemanticSessionActorControlCompletionV1::Applied
+        );
+        if matches!(
+            observed_readiness(&old_sender, observation),
+            SemanticProviderReadinessProjectionV1::Ready { generation }
+                if generation == SemanticIndexGenerationV1::new(1).unwrap()
+        ) {
+            break;
+        }
+        observation = observation.checked_add(1).unwrap();
+        assert!(
+            Instant::now() < deadline,
+            "initial provider readiness deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+
+    let mut suspension = actor.try_begin_suspension().unwrap();
+    let mut suspended = loop {
+        match suspension.try_advance() {
+            LocalOrderedTimedSuspensionAdvanceV1::Pending(pending) => suspension = *pending,
+            LocalOrderedTimedSuspensionAdvanceV1::Ready(runtime) => break *runtime,
+            LocalOrderedTimedSuspensionAdvanceV1::Failed(_) => {
+                panic!("real process actor failed instead of suspending")
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "real process suspension deadline"
+        );
+        std::thread::yield_now();
+    };
+    assert_eq!(suspended.prior_actor_usage().suspensions, 1);
+
+    let candidate_launch =
+        qualify_provider_launch_v1(matrix_profile("pinned-serve", &scratch)).unwrap();
+    let mut candidate = launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1(
+        candidate_launch,
+        MatrixGenerations(10),
+        MatrixReadiness(LspIndexReadinessV1::Current),
+        MatrixDocuments,
+        LspLimitsV1::reference(),
+        session.semantic,
+        session,
+        service,
+        &protocol,
+    )
+    .unwrap();
+    loop {
+        match candidate.drive_once() {
+            LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
+            LocalSupervisedOrderedLspCandidateDriveV1::Pending => {}
+            other => panic!("fresh candidate became contaminated: {other:?}"),
+        }
+        assert!(
+            Instant::now() < deadline,
+            "replacement candidate readiness deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(
+        candidate.state().readiness,
+        SemanticProviderReadinessV1::Ready {
+            generation: SemanticIndexGenerationV1::new(11).unwrap(),
+        }
+    );
+
+    let mut installed = suspended.try_install_ready_candidate(candidate).unwrap();
+    let (next, displaced_receipt, candidate_usage) = loop {
+        let _ = installed.drive_displaced_once();
+        match installed.try_into_reconciled() {
+            Ok(reconciled) => break reconciled,
+            Err(returned) => installed = *returned,
+        }
+        assert!(
+            Instant::now() < deadline,
+            "displaced provider cleanup deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assert_eq!(
+        displaced_receipt.terminal(),
+        LocalSemanticRetirementTerminalV1::GracefulConfirmed
+    );
+    assert!(candidate_usage.drives > 0);
+    assert_eq!(candidate_usage.ready_observations, 1);
+
+    suspended = next;
+    let (actor, sender) = suspended.resume().unwrap();
+    assert_eq!(actor.usage().suspensions, 1);
+    assert_eq!(old_sender.phase(), SemanticSessionActorPhaseV1::Suspended);
+    assert!(matches!(
+        old_sender.try_exchange(
+            context(),
+            SemanticSessionCommandV1::Describe {
+                exchange: exchange(799),
+            },
+        ),
+        SemanticSessionActorAdmissionV1::NotSent {
+            reason: vellum_semantic_session_actor::SemanticSessionActorNotSentReasonV1::Closed,
+            ..
+        }
+    ));
+    assert_eq!(
+        observed_readiness(&sender, 800),
+        SemanticProviderReadinessProjectionV1::Ready {
+            generation: SemanticIndexGenerationV1::new(11).unwrap(),
+        }
+    );
+
+    assert!(actor.begin_drain());
+    let mut stop = actor.try_begin_stop().unwrap();
+    let mut stopped = loop {
+        match stop.try_complete() {
+            Ok(LocalOrderedManagedTimedStopResolutionV1::Terminal(stopped)) => break stopped,
+            Ok(LocalOrderedManagedTimedStopResolutionV1::Refused(_)) => {
+                panic!("quiescent replacement actor refused stop")
+            }
+            Err(pending) => stop = *pending,
+        }
+        assert!(Instant::now() < deadline, "replacement actor stop deadline");
+        std::thread::yield_now();
+    };
+    let timed_cleanup = loop {
+        match stopped.try_advance() {
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Pending(pending) => stopped = *pending,
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Ready(cleanup) => break *cleanup,
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Mismatch(_) => {
+                panic!("same-spawn replacement actor recovery mismatched")
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "replacement actor recovery deadline"
+        );
+        std::thread::yield_now();
+    };
+    let mut cleanup = timed_cleanup.try_retire_deadlines().unwrap();
+    let _ = cleanup.drive_client_retirement_once();
+    let mut provider = cleanup.try_into_provider_cleanup().unwrap();
+    let current_receipt = loop {
+        let _ = provider.drive_once();
+        match provider.try_into_terminal_receipt() {
+            Ok(receipt) => break receipt,
+            Err(returned) => provider = *returned,
+        }
+        assert!(
+            Instant::now() < deadline,
+            "current provider cleanup deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assert_eq!(
+        current_receipt.provider().terminal(),
+        LocalSemanticRetirementTerminalV1::GracefulConfirmed
+    );
+    drop(sender);
+    drop(old_sender);
 }
 
 #[test]

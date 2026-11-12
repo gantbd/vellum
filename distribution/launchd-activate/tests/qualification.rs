@@ -11,9 +11,10 @@ use std::{
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 use vellum_launchd_activate::{
-    ActivationConfigurationV1, ActivationOutcomeV1, ActivationVersionInputV1, DaemonStatusV1,
+    ActivationConfigurationV1, ActivationOutcomeV1, ActivationReconciliationActionV1,
+    ActivationReconciliationStateV1, ActivationVersionInputV1, DaemonStatusV1,
     LaunchdActivationPortV1, LaunchdEffectDispositionV1, LaunchdJobIdentityV1,
-    LaunchdObservationV1, activate_v1, decode_configuration_v1,
+    LaunchdObservationV1, activate_v1, decode_configuration_v1, reconcile_activation_journal_v1,
 };
 use vellum_launchd_render::{LaunchdConfigurationV1, render_launchd_profile_v1};
 
@@ -128,6 +129,7 @@ impl Fixture {
                     "claims":[
                         "candidate-integrity-verified",
                         "candidate-launchd-render-smoke-passed",
+                        "candidate-activation-executor-help-smoke-passed-without-effect",
                         "rollback-version-selected"
                     ],
                     "nonClaims":["activation"],
@@ -135,17 +137,25 @@ impl Fixture {
                         "manifestSha256":candidate_manifest,
                         "vellumRevision":"c".repeat(40),
                         "artifacts":artifact(&candidate_dir),
-                        "deployment":[{"file":"vellum-launchd-render","sha256":"d".repeat(64)}],
+                        "deployment":[
+                            {"file":"vellum-launchd-render","sha256":"d".repeat(64)},
+                            {"file":"vellum-launchd-activate","sha256":"1".repeat(64)}
+                        ],
                         "smoke":[],
-                        "launchdSmoke":{"exactInertProfile":true}
+                        "launchdSmoke":{"exactInertProfile":true},
+                        "activationExecutorSmoke":{"launchdEffect":"not-attempted"}
                     },
                     "rollback":{
                         "selectedPriorManifestSha256":prior_manifest,
                         "selectedPriorVellumRevision":"e".repeat(40),
                         "artifacts":artifact(&prior_dir),
-                        "deployment":[{"file":"vellum-launchd-render","sha256":"f".repeat(64)}],
+                        "deployment":[
+                            {"file":"vellum-launchd-render","sha256":"f".repeat(64)},
+                            {"file":"vellum-launchd-activate","sha256":"2".repeat(64)}
+                        ],
                         "smoke":[],
                         "launchdSmoke":{"exactInertProfile":true},
+                        "activationExecutorSmoke":{"launchdEffect":"not-attempted"},
                         "trigger":"post-activation readiness or health gate fails"
                     },
                     "activationPlan":["explicit approval"]
@@ -358,6 +368,111 @@ fn uncertain_launchctl_result_stops_without_retry_or_rollback() {
     let receipt = activate_v1(&fixture.configuration, &mut port).unwrap();
     assert_eq!(receipt.outcome, ActivationOutcomeV1::OutcomeUnknown);
     assert_eq!(port.effects, ["unload", "load-candidate"]);
+}
+
+#[test]
+fn offline_reconciliation_preserves_unknown_without_retry_or_launchd_effect() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new(&fixture);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::Confirmed);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::OutcomeUnknown);
+    let receipt = activate_v1(&fixture.configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, ActivationOutcomeV1::OutcomeUnknown);
+    let effects_before = port.effects.clone();
+
+    let reconciliation = reconcile_activation_journal_v1(&fixture.configuration).unwrap();
+    assert_eq!(
+        reconciliation.state,
+        ActivationReconciliationStateV1::OutcomeUnknown
+    );
+    assert_eq!(
+        reconciliation.required_action,
+        ActivationReconciliationActionV1::InspectExactJobAndDaemonStatus
+    );
+    assert_eq!(reconciliation.selected_manifest_sha256, "a".repeat(64));
+    assert!(!reconciliation.automatic_retry_authorized);
+    assert_eq!(reconciliation.launchd_effect, "not_attempted");
+    assert_eq!(port.effects, effects_before);
+}
+
+#[test]
+fn offline_reconciliation_distinguishes_pending_and_durable_terminal_prefixes() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new(&fixture);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::Confirmed);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::OutcomeUnknown);
+    activate_v1(&fixture.configuration, &mut port).unwrap();
+    let journal = fixture
+        .configuration
+        .transaction_directory
+        .join("activation-journal");
+    fs::remove_file(journal.join("0004.json")).unwrap();
+    let pending = reconcile_activation_journal_v1(&fixture.configuration).unwrap();
+    assert_eq!(
+        pending.state,
+        ActivationReconciliationStateV1::PendingEffect
+    );
+    assert_eq!(pending.last_phase, "candidate_load");
+    assert_eq!(pending.last_disposition, "pending");
+
+    let terminal_fixture = Fixture::new();
+    let mut terminal_port = FakePort::new(&terminal_fixture);
+    activate_v1(&terminal_fixture.configuration, &mut terminal_port).unwrap();
+    let terminal = reconcile_activation_journal_v1(&terminal_fixture.configuration).unwrap();
+    assert_eq!(
+        terminal.state,
+        ActivationReconciliationStateV1::CandidateActiveDurable
+    );
+    assert_eq!(
+        terminal.required_action,
+        ActivationReconciliationActionV1::None
+    );
+    let configuration_file = terminal_fixture._scratch.0.join("reconcile-config.json");
+    write(
+        &configuration_file,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&terminal_fixture.configuration).unwrap()
+        ),
+        0o600,
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_vellum-launchd-activate"))
+        .arg("--reconcile-journal")
+        .arg(format!("--config={}", configuration_file.display()))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let cli_report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(cli_report["state"], "candidate_active_durable");
+    assert_eq!(cli_report["launchdEffect"], "not_attempted");
+}
+
+#[test]
+fn offline_reconciliation_rejects_transplanted_or_noncanonical_journal_evidence() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new(&fixture);
+    activate_v1(&fixture.configuration, &mut port).unwrap();
+    let entry = fixture
+        .configuration
+        .transaction_directory
+        .join("activation-journal/0005.json");
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&entry).unwrap()).unwrap();
+    value["candidateManifestSha256"] = serde_json::Value::String("9".repeat(64));
+    fs::set_permissions(&entry, fs::Permissions::from_mode(0o600)).unwrap();
+    write(
+        &entry,
+        format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
+        0o400,
+    );
+    assert!(reconcile_activation_journal_v1(&fixture.configuration).is_err());
 }
 
 #[test]

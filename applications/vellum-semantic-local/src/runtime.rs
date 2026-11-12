@@ -624,6 +624,26 @@ where
         Self::from_uninstalled_adapter(adapter.into_adapter_for_retirement())
     }
 
+    /// Owns the displaced provider and exact remaining snapshot-close plan
+    /// after an ordered replacement. Converting the fresh-start wrapper cannot
+    /// restore installation authority; the product remains retirement-only.
+    pub fn from_replacement_retirement(
+        retirement: SemanticProviderRetirementV1<LspFreshStartedAdapterV1<T, G, R, U>>,
+    ) -> Self {
+        Self {
+            retirement: Some(
+                retirement.map_provider(LspFreshStartedAdapterV1::into_adapter_for_retirement),
+            ),
+            adapter: None,
+            forced_shutdown: false,
+            outcome: None,
+            terminal_evidence: None,
+            forced_abandonment: None,
+            usage: LocalSemanticRetirementUsageV1::default(),
+            quarantined_requests: 0,
+        }
+    }
+
     /// Starts terminal retirement from a source-free ordered bridge provider.
     /// The fresh-started wrapper is consumed and can never return to service;
     /// its exact provider-lifetime quarantine count is retained in the final

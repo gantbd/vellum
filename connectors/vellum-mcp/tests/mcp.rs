@@ -572,6 +572,23 @@ fn modern_discovery_is_per_request_and_initialize_is_always_legacy() {
             MEMBERSHIP_TOOL
         ]
     );
+    let workspace_edit = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == WORKSPACE_EDIT_TOOL)
+        .unwrap();
+    let success = &workspace_edit["outputSchema"]["oneOf"][0];
+    assert_eq!(success["additionalProperties"], false);
+    assert_eq!(
+        success["properties"]["persistence"]["const"],
+        "not_attempted"
+    );
+    assert_eq!(success["properties"]["documents"]["maxItems"], 16);
+    assert_eq!(
+        success["properties"]["documents"]["items"]["additionalProperties"],
+        false
+    );
 }
 
 #[test]

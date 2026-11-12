@@ -299,8 +299,12 @@ queries as stale without replay, clears their exact deadlines, and returns the
 displaced provider affinely. Resumption preserves accumulated actor usage and
 permanently fences every old sender. A physical-swap/broker-reconciliation
 failure yields a non-resumable fused owner. Fresh real-process candidate launch
-and both cleanup owners are not yet composed by the binary, so no CLI restart
-flag is advertised.
+derives initialization from a separately qualified workspace and admits only a
+fresh-started, pinned-ready provider. The installed runtime remains hidden until
+the displaced provider has terminal cleanup evidence; candidate refusal retains
+the exact refusal and cleanup authority, while the resumed current provider has
+its own terminal cleanup path. This product is not yet composed by the binary,
+so no CLI restart flag is advertised.
 
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority

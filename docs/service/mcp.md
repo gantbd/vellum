@@ -69,7 +69,9 @@ The implemented surface is deliberately closed:
   multi-file durability claim. Passive service evidence separately counts
   requests, refusals, requested/changed/unchanged documents, and
   changed/all-no-op transactions; those content-free counters never affect
-  admission or publication;
+  admission or publication. Its advertised output is a closed schema for the
+  bounded changed-document snapshots or one closed tool error, rather than an
+  unconstrained JSON object;
 - `vellum.poll_changes`, returning at most one content-free event, an opaque
   continuation, or an explicit retention gap;
 - `vellum.membership`, projecting add/remove operations only through the

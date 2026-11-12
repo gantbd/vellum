@@ -1,4 +1,4 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
 check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
@@ -12,6 +12,11 @@ check-artifact-lifecycle:
 	node --check scripts/release-reproducibility-lib.mjs
 	node --check scripts/compare-release-candidates.mjs
 	node scripts/release-reproducibility-lib.test.mjs
+
+check-clean-release-candidate:
+	node --check scripts/qualify-clean-release-candidate.mjs
+	node --check scripts/qualify-clean-release-candidate.test.mjs
+	node scripts/qualify-clean-release-candidate.test.mjs
 
 check-activation-transaction:
 	node --check scripts/activation-transaction-lib.mjs
