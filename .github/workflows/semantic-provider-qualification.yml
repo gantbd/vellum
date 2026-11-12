@@ -1,0 +1,64 @@
+name: Pinned semantic provider qualification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semantic-provider-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pinned-provider:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SEMANTIC_PROVIDER_ARCHIVE_URL: https://github.com/rust-lang/rust-analyzer/releases/download/2026-11-09/rust-analyzer-aarch64-apple-darwin.gz
+      SEMANTIC_PROVIDER_ARCHIVE_SHA256: e43a65008f8f4291320f33c0545dd577ad7623a7407b584a27155833d3722dfb
+      SEMANTIC_PROVIDER_EXECUTABLE_SHA256: f21b42b915d3f0d05a8c799f74ed54dda7b74de542a48f0ae5f8c394ec7f6b9f
+      SEMANTIC_PROVIDER_PROFILE: qualification/semantic-lsp-provider/profiles/rust-analyzer-v1.json
+    steps:
+      - name: Check out exact Vellum revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/vellum
+          ref: ${{ github.sha }}
+          path: vellum
+          persist-credentials: false
+      - name: Check out coordinated Keystone revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/keystone
+          ref: 3486252cdbaeb2d784756076f43ef6157ed0b7f8
+          path: keystone
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Require and verify the pinned provider artifact
+        working-directory: vellum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SEMANTIC_PROVIDER_PROFILE"
+          archive="$RUNNER_TEMP/semantic-provider.gz"
+          provider="$RUNNER_TEMP/semantic-provider"
+          curl --proto '=https' --tlsv1.2 --fail --location \
+            "$SEMANTIC_PROVIDER_ARCHIVE_URL" --output "$archive"
+          printf '%s  %s\n' "$SEMANTIC_PROVIDER_ARCHIVE_SHA256" "$archive" \
+            | shasum -a 256 -c -
+          gzip -dc "$archive" > "$provider"
+          printf '%s  %s\n' "$SEMANTIC_PROVIDER_EXECUTABLE_SHA256" "$provider" \
+            | shasum -a 256 -c -
+          chmod 0500 "$provider"
+      - name: Fetch the standalone locked qualification closure
+        working-directory: vellum
+        run: cargo fetch --locked --manifest-path qualification/semantic-lsp-provider/Cargo.toml
+      - name: Run pinned-provider qualification
+        working-directory: vellum
+        env:
+          SEMANTIC_PROVIDER_EXECUTABLE: ${{ runner.temp }}/semantic-provider
+        run: make qualify-semantic-provider

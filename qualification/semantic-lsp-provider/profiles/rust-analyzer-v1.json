@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "profile_id": "rust-analyzer-v1",
+  "fixture": {
+    "manifest": "rust-analyzer-v1/manifest.json",
+    "sha256": "c83d1531502165da227ce6f7c7e53d500f75d2ec132d754fe911dbd1bcd06473",
+    "file_count": 2,
+    "total_bytes": 402
+  },
+  "qualification": {
+    "kind": "pinned",
+    "platform": {
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    "resource_policy": {
+      "kind": "unbounded"
+    },
+    "artifact": {
+      "source_url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-11-09/rust-analyzer-aarch64-apple-darwin.gz",
+      "archive_sha256": "e43a65008f8f4291320f33c0545dd577ad7623a7407b584a27155833d3722dfb",
+      "compression": "gzip",
+      "sha256": "f21b42b915d3f0d05a8c799f74ed54dda7b74de542a48f0ae5f8c394ec7f6b9f",
+      "bytes": 38933072
+    },
+    "provider": {
+      "server_name": "rust-analyzer",
+      "server_version": "0.3.3113-standalone (e5e7830640 2026-11-08)",
+      "argv": [],
+      "environment": {
+        "RUSTUP_TOOLCHAIN": "1.95.0"
+      },
+      "readiness": {
+        "method": "experimental/serverStatus",
+        "schema_version": 1
+      }
+    },
+    "ceilings": {
+      "launch_ms": 10000,
+      "readiness_ms": 120000,
+      "operation_ms": 30000,
+      "graceful_stop_ms": 5000,
+      "forced_stop_ms": 10000
+    }
+  }
+}

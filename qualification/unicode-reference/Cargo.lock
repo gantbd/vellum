@@ -736,7 +736,12 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "vellum-engine",
+ "vellum-protocol",
 ]
+
+[[package]]
+name = "vellum-protocol"
+version = "0.1.0"
 
 [[package]]
 name = "vellum-unicode-reference"

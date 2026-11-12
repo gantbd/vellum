@@ -1,5 +1,6 @@
 //! Codec-owned temporary source preparation; not destination authority or a task.
 use super::*;
+use sha2::{Digest, Sha256};
 #[cfg(test)]
 mod tests;
 
@@ -105,6 +106,66 @@ impl SourceCoordinator {
         r: &mut Recorder,
     ) -> Result<ResourceArtifactId, ResourceError> {
         self.retain_prepared_source_artifact_catalog(prepared, None, r)
+    }
+
+    /// Consume the original codec preparation into a one-use immutable carrier.
+    /// This is intentionally separate from destination authority: callers must
+    /// acquire that authority before requesting content-bearing capture. Later
+    /// source edits do not refresh the already prepared bytes.
+    pub fn capture_prepared_source_serialization(
+        &mut self,
+        prepared: &PreparedSourceArtifactIdV1,
+        r: &mut Recorder,
+    ) -> Result<CapturedSourceSerializationV1, ResourceError> {
+        let out = (|| {
+            self.ensure_ordinary_admission().map_err(owner_error)?;
+            let p = self.source_preparation(prepared)?;
+            self.artifact_charge_intact()?;
+            if !p.serialization.valid() {
+                return Err(ResourceError::Faulted);
+            }
+            let held = self
+                .resources
+                .held_artifact_bytes
+                .checked_sub(p.bytes.0.len())
+                .ok_or(ResourceError::Faulted)?;
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(p.bytes.0.len())
+                .map_err(|_| ResourceError::Capacity)?;
+            bytes.extend_from_slice(&p.bytes.0);
+            let p = self
+                .resources
+                .source_preparation
+                .take()
+                .expect("validated original preparation");
+            let mut digest = Sha256::new();
+            digest.update(b"vellum.source-serialization-capture.v1\0");
+            digest.update(p.source.document.slot.to_le_bytes());
+            digest.update(p.source.revision.to_le_bytes());
+            digest.update(p.serialization.generation.to_le_bytes());
+            digest.update([match p.serialization.serialization.profile {
+                SourceSerializationProfileV1::StrictUtf8OneBom => 1,
+            }]);
+            digest.update([u8::from(p.serialization.serialization.bom)]);
+            digest.update(p.bytes.0.len().to_le_bytes());
+            digest.update(&*p.bytes.0);
+            let digest = digest.finalize();
+            let mut witness = [0_u8; 16];
+            witness.copy_from_slice(&digest[..16]);
+            self.resources.held_artifact_bytes = held;
+            Ok(CapturedSourceSerializationV1 {
+                witness: SourceSerializationCaptureWitnessV1(witness),
+                source: p.source,
+                serialization: p.serialization,
+                bytes,
+            })
+        })();
+        if matches!(out, Err(ResourceError::Faulted)) {
+            self.faulted = true;
+        }
+        capture(r, Boundary::SourceArtifactExportCapture, &out);
+        out
     }
     pub(in crate::coordinator) fn retain_prepared_source_artifact_catalog(
         &mut self,

@@ -1,0 +1,68 @@
+name: Coordinated qualification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coordinated-qualification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vellum-and-keystone:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact Vellum revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/vellum
+          ref: ${{ github.sha }}
+          path: vellum
+          persist-credentials: false
+      - name: Check out coordinated Keystone revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/keystone
+          ref: 3486252cdbaeb2d784756076f43ef6157ed0b7f8
+          path: keystone
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
+      - name: Fetch locked registry sources
+        working-directory: vellum
+        run: |
+          cargo fetch --locked
+          cargo fetch --locked --manifest-path qualification/semantic-lsp-provider/Cargo.toml
+      - name: Check dependency, effect, and release policies offline
+        working-directory: vellum
+        run: >-
+          make check-release-contract check-boundaries check-effect-boundaries
+          check-compatibility check-supply-chain
+      - name: Check formatting
+        working-directory: vellum
+        run: cargo fmt --all -- --check
+      - name: Lint every target and feature offline
+        working-directory: vellum
+        run: cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+      - name: Test every target and feature offline
+        working-directory: vellum
+        run: cargo test --workspace --all-targets --all-features --locked --offline
+      - name: Test deterministic semantic-provider qualification offline
+        working-directory: vellum
+        run: make check-semantic-provider-qualification
+      - name: Build warnings-denied documentation offline
+        working-directory: vellum
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps --locked --offline
+      - name: Test documentation offline
+        working-directory: vellum
+        run: cargo test --workspace --doc --locked --offline
+      - name: Qualify the portable Unicode adapter offline
+        working-directory: vellum
+        run: make qualify-unicode-portable

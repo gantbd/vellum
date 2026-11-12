@@ -9,7 +9,8 @@ publish.workspace = true
 description = "Bounded headless semantic editing engine for code and prose"
 
 [dependencies]
-keystone-observe = { version = "=0.0.1", path = "../../../keystone/crates/keystone-observe" }
+keystone-observe = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "3486252cdbaeb2d784756076f43ef6157ed0b7f8" }
+sha2.workspace = true
 
 [lints]
 workspace = true

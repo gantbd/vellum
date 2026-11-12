@@ -1,0 +1,37 @@
+[workspace]
+members = ["."]
+resolver = "3"
+[package]
+name = "vellum-semantic-lsp-provider-qualification"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gantbd/vellum"
+publish = false
+description = "Repository-only pinned LSP provider qualification for Vellum"
+
+[[bin]]
+name = "qualify-semantic-provider"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-adapter-semantic-lsp = { version = "=0.1.0", path = "../../adapters/semantic-lsp" }
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-semantic-apply-service = { version = "=0.1.0", path = "../../service/vellum-semantic-apply" }
+vellum-semantic-local = { version = "=0.1.0", path = "../../applications/vellum-semantic-local" }
+vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
+vellum-semantic-service = { version = "=0.1.0", path = "../../service/vellum-semantic-service" }
+vellum-semantic-session-actor = { version = "=0.1.0", path = "../../service/vellum-semantic-session-actor" }
+vellum-semantic-session-broker = { version = "=0.1.0", path = "../../service/vellum-semantic-session-broker" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

@@ -1,0 +1,16 @@
+[package]
+name = "vellum-semantic-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Closed provider-neutral local semantic session protocol for Vellum"
+
+[dependencies]
+sha2.workspace = true
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+
+[lints]
+workspace = true

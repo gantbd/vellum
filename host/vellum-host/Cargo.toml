@@ -10,6 +10,7 @@ description = "Adapter-neutral host contracts for embedding the Vellum engine"
 
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
 serde = { version = "=1.0.229", features = ["derive"] }
 
 [lints]

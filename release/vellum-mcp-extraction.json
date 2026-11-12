@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "targetRepository": "https://github.com/gantbd/vellum-mcp",
+  "targetSibling": "../vellum-mcp",
+  "archiveRoot": "vellum-mcp",
+  "sourceRevisionPolicy": "exact committed Vellum revision at extraction",
+  "publicSdk": {
+    "package": "vellum-sdk-client",
+    "repository": "https://github.com/gantbd/vellum",
+    "revisionPolicy": "exact source Vellum revision"
+  },
+  "credentialAdapter": {
+    "package": "vellum-adapter-local-authentication",
+    "repository": "https://github.com/gantbd/vellum",
+    "revisionPolicy": "exact source Vellum revision",
+    "role": "private-file credential provider only; never authority"
+  },
+  "immutableDependencyBlockers": [],
+  "qualifiedImmutableDependencies": [
+    {
+      "via": "vellum-sdk-client -> vellum-transport -> vellum-wire",
+      "dependency": "keystone-codec",
+      "repository": "https://github.com/gantbd/keystone",
+      "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+    }
+  ],
+  "normalDependencies": [
+    "serde_json",
+    "vellum-adapter-local-authentication",
+    "vellum-sdk-client"
+  ],
+  "copy": [
+    { "from": "connectors/vellum-mcp/src/lib.rs", "to": "src/lib.rs" },
+    { "from": "connectors/vellum-mcp/src/cli.rs", "to": "src/cli.rs" },
+    { "from": "connectors/vellum-mcp/src/main.rs", "to": "src/main.rs" },
+    { "from": "connectors/vellum-mcp/tests/mcp.rs", "to": "tests/mcp.rs" },
+    { "from": "connectors/vellum-mcp/README.md", "to": "README.md" },
+    { "from": "connectors/vellum-mcp/CHANGELOG.md", "to": "CHANGELOG.md" },
+    { "from": "connectors/vellum-mcp/SECURITY.md", "to": "SECURITY.md" },
+    { "from": "LICENSE-APACHE", "to": "LICENSE-APACHE" },
+    { "from": "LICENSE-MIT", "to": "LICENSE-MIT" },
+    { "from": "rust-toolchain.toml", "to": "rust-toolchain.toml" }
+  ],
+  "retainedVellumQualification": [
+    "connectors/vellum-mcp/tests/live_daemon.rs"
+  ],
+  "protocol": {
+    "version": "2026-07-28",
+    "compatibilityOwner": "vellum-mcp",
+    "nativeContractOwner": "vellum-sdk-client",
+    "capabilities": ["resources", "tools"],
+    "resourceMethods": ["resources/list", "resources/read"],
+    "tools": [
+      "vellum.snapshot",
+      "vellum.replace",
+      "vellum.replace_and_save",
+      "vellum.poll_changes",
+      "vellum.membership"
+    ]
+  },
+  "publication": "none"
+}

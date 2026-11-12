@@ -1,5 +1,5 @@
 //! Direct default word rules from UAX #29 revision 49, §4.1.1:
-//! https://www.unicode.org/reports/tr29/tr29-49.html#Default_Word_Boundaries
+//! <https://www.unicode.org/reports/tr29/tr29-49.html#Default_Word_Boundaries>
 //! No editor-language policy, dictionary, normalization or patched source grids.
 //! Two monotone scalar iterators, two previous significant classes and RI parity
 //! make lookahead/ignored-character handling linear, with constant extra storage.

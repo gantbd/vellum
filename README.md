@@ -34,9 +34,34 @@ package boundaries.
 make check
 ```
 
-The workspace requires the sibling `keystone` checkout for the canonical wire
-codec. The engine crate itself has no upward Vellum, UI, filesystem, clipboard,
-ICU, service-runtime, or application-framework dependency.
+Development and CI use the toolchain pinned by `rust-toolchain.toml`. See the
+[release policy](docs/release-policy.md), [security policy](SECURITY.md), and
+[changelog](CHANGELOG.md) for the source-distribution contract.
+
+Shared Keystone mechanisms, including the canonical wire codec, resolve from
+one exact Git revision. A sibling checkout is used only by local qualification
+to inspect that pinned object; ordinary Cargo builds do not compile sibling
+working-tree bytes. The engine crate itself has no upward
+Vellum, UI, filesystem, clipboard, ICU, service-runtime, or
+application-framework dependency.
+
+Install both first-release executables from one source checkout with:
+
+```sh
+cargo install --locked --path distribution/cargo-install
+```
+
+That installation-only package contains no engine behavior. It installs the
+independent `vellum-daemon` service and `vellum-mcp` peer connector. The
+equivalent command for a remotely available Vellum release commit is:
+
+```sh
+cargo install --locked --git https://github.com/gantbd/vellum --rev RELEASE_COMMIT vellum
+```
+
+The Git form is locally qualified against immutable Git objects. Remote
+installability remains deliberately unclaimed until the pinned Keystone object
+and the Vellum release commit are both reachable from their declared URLs.
 
 Run the headless example with:
 
@@ -44,6 +69,7 @@ Run the headless example with:
 cargo run --offline -p vellum-engine --example headless_edit
 ```
 
-The UI repositories are currently source-distributed and explicitly
-non-publishable. Neither is part of this workspace or a dependency of the
-other. No crate is being released to crates.io yet.
+Every crate in this repository, as well as the UI repositories, is currently
+source-distributed and explicitly non-publishable. Neither UI is part of this
+workspace or a dependency of the other. No crate is being released to
+crates.io yet; `make check-release-contract` fails if that policy drifts.

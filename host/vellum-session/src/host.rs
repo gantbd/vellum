@@ -25,7 +25,10 @@ pub use annotations::AnnotationCommit;
 mod annotation_storage;
 pub use annotation_storage::{AnnotationReadAttempt, AnnotationReadReport, AnnotationResource};
 mod source_export;
-pub use source_export::{SaveAsActivation, SourceExportAttempt, SourceExportPreparation};
+pub use source_export::{
+    SaveAsActivation, SourceExportAttempt, SourceExportCopyPreparationErrorV1,
+    SourceExportPreparation,
+};
 mod invocation_claims;
 mod invocations;
 pub use invocation_claims::{

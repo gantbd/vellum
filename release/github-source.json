@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "channel": "github-coordinated-source",
+  "installLockContract": "workspace-build-locked; path-install-is-smoke-only",
+  "vellumRepository": "https://github.com/gantbd/vellum",
+  "keystone": {
+    "repository": "https://github.com/gantbd/keystone",
+    "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+    "relativePath": "../keystone",
+    "crates": [
+      "keystone-codec",
+      "keystone-lifecycle",
+      "keystone-observe",
+      "keystone-replay"
+    ],
+    "apiClosure": [
+      {
+        "package": "keystone-observe",
+        "status": "qualified",
+        "consumers": [
+          "vellum-daemon",
+          "vellum-engine"
+        ],
+        "requiredSourceFiles": [
+          "crates/keystone-observe/src/histogram.rs",
+          "crates/keystone-observe/src/saturation.rs"
+        ],
+        "requiredPublicItems": [
+          "FixedDurationHistogram",
+          "FixedDurationHistogramSnapshot"
+        ],
+        "reason": "the pinned revision contains the exact fixed-duration histogram and sticky-saturation API compiled by Vellum"
+      }
+    ]
+  },
+  "sourceInstallProfiles": [
+    {
+      "package": "vellum",
+      "path": "distribution/cargo-install",
+      "binaries": [
+        "vellum-daemon",
+        "vellum-mcp"
+      ],
+      "platform": "macos",
+      "role": "installation-only composition of the daemon and its peer MCP connector"
+    }
+  ],
+  "releaseCandidate": {
+    "workflow": ".github/workflows/release-candidate.yml",
+    "platform": "macos",
+    "packages": [
+      "vellum-daemon",
+      "vellum-mcp"
+    ],
+    "publishing": "none",
+    "signing": "none",
+    "attestation": "none"
+  },
+  "excludedPresentations": [
+    "vellum-tui",
+    "vellum-gui-macos"
+  ],
+  "requiredArchiveFiles": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "Makefile",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "SECURITY.md",
+    "docs/release-policy.md",
+    "docs/mcp-extraction.md",
+    "docs/security-threat-model.md",
+    "docs/supply-chain.md",
+    "docs/compatibility-baseline.md",
+    "docs/artifact-lifecycle.md",
+    "docs/fuzz-soak-qualification.md",
+    "docs/launchd-distribution.md",
+    "release/compatibility-baseline.json",
+    "release/dependency-policy.json",
+    "release/github-source.json",
+    "release/source-sbom.manifest.json",
+    "release/vellum-mcp-extraction.json",
+    "rust-toolchain.toml",
+    "scripts/check-release-contract.mjs",
+    "scripts/check-compatibility-baseline.mjs",
+    "scripts/check-compatibility-baseline.test.mjs",
+    "scripts/check-supply-chain.mjs",
+    "scripts/check-supply-chain.test.mjs",
+    "scripts/supply-chain-lib.mjs",
+    "scripts/verify-mcp-extraction.mjs",
+    "scripts/build-release-candidate.mjs",
+    "scripts/build-release-candidate.test.mjs",
+    "scripts/release-candidate-lib.mjs",
+    "scripts/qualify-release-candidate.mjs",
+    "scripts/qualify-release-candidate.test.mjs",
+    "scripts/cargo-install-qualification-lib.mjs",
+    "scripts/qualify-github-source.mjs",
+    "scripts/qualify-github-source.test.mjs",
+    "scripts/run-fuzz-soak.mjs",
+    "distribution/launchd/render-plist.mjs",
+    "distribution/launchd/render-plist.test.mjs",
+    "distribution/cargo-install/Cargo.toml",
+    "distribution/cargo-install/src/bin/vellum-daemon.rs",
+    "distribution/cargo-install/src/bin/vellum-mcp.rs",
+    "protocol/vellum-wire/tests/qualification.rs",
+    "transport/vellum-transport/tests/qualification.rs",
+    "service/vellum-service/tests/qualification.rs",
+    "applications/vellum-daemon/tests/qualification.rs",
+    ".github/workflows/release-candidate.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/fuzz-soak.yml"
+  ]
+}

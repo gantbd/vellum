@@ -1,0 +1,15 @@
+[package]
+name = "vellum-semantic-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded provider-neutral semantic snapshot and query service"
+
+[dependencies]
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+
+[lints]
+workspace = true

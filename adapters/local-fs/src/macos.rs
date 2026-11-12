@@ -61,19 +61,19 @@ impl std::fmt::Debug for ResourceHandle {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Stamp {
-    device: u64,
-    inode: u64,
-    size: u64,
-    modified: i64,
-    modified_ns: i64,
-    changed: i64,
-    changed_ns: i64,
-    mode: u32,
-    uid: u32,
-    gid: u32,
-    links: u64,
-    flags: u32,
+pub(crate) struct Stamp {
+    pub(crate) device: u64,
+    pub(crate) inode: u64,
+    pub(crate) size: u64,
+    pub(crate) modified: i64,
+    pub(crate) modified_ns: i64,
+    pub(crate) changed: i64,
+    pub(crate) changed_ns: i64,
+    pub(crate) mode: u32,
+    pub(crate) uid: u32,
+    pub(crate) gid: u32,
+    pub(crate) links: u64,
+    pub(crate) flags: u32,
 }
 impl Stamp {
     fn from(m: &Metadata) -> Self {
@@ -120,10 +120,10 @@ struct Entry {
     // Holding the inode prevents its identity being reused during this binding.
     current: File,
 }
-struct Snapshot {
-    file: File,
-    stamp: Stamp,
-    bytes: Vec<u8>,
+pub(crate) struct Snapshot {
+    pub(crate) file: File,
+    pub(crate) stamp: Stamp,
+    pub(crate) bytes: Vec<u8>,
 }
 /// One-use baseline observation paired with the engine probe; contains no callback.
 pub struct WriteProbe {
@@ -156,13 +156,16 @@ pub struct AnnotationReadCompletion {
     pub failure: Option<FilesystemError>,
 }
 pub struct LocalFilesystem {
-    port: ProviderPort,
-    limits: FilesystemLimits,
+    // Absent only for the deliberately effect-only daemon export interpreter.
+    // Ordinary resource methods fail closed through `provider()`.
+    port: Option<ProviderPort>,
+    pub(crate) limits: FilesystemLimits,
     owner: Arc<()>,
     entries: Vec<Entry>,
-    stage_sequence: u64,
+    pub(crate) stage_sequence: u64,
+    pub(crate) export_copy_usage: crate::ExportCopyUsageV1,
     #[cfg(test)]
-    fault: Option<Fault>,
+    pub(crate) fault: Option<Fault>,
 }
 struct ReplacementResult {
     file: File,
@@ -172,13 +175,19 @@ struct ReplacementResult {
 }
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Fault {
+pub(crate) enum Fault {
     BeforeReplace,
     Replacement,
     AfterReplace,
     Synchronization,
+    ExportBeforePublication,
+    ExportPublication,
+    ExportSynchronization,
 }
 impl LocalFilesystem {
+    fn provider(&self) -> Result<&ProviderPort, FilesystemError> {
+        self.port.as_ref().ok_or(FilesystemError::Unavailable)
+    }
     /// Resolve an existing adapter entry; no read or permission is inferred from
     /// naming it. Admission and launch remain separate engine operations.
     pub fn annotation_read_target(
@@ -186,7 +195,7 @@ impl LocalFilesystem {
         handle: &ResourceHandle,
     ) -> Result<AnnotationReadTarget, FilesystemError> {
         self.entry(handle)?;
-        self.port
+        self.provider()?
             .annotation_read_target(&(handle.slot as u64).to_le_bytes())
             .map_err(Into::into)
     }
@@ -200,7 +209,7 @@ impl LocalFilesystem {
     ) -> Result<AnnotationReadCompletion, FilesystemError> {
         let started = Instant::now();
         let result = (|| {
-            let quiescence = self.port.annotation_read_quiescence(dispatch)?;
+            let quiescence = self.provider()?.annotation_read_quiescence(dispatch)?;
             if dispatch.strength() != ReadStrength::CapturedRead {
                 return Err(FilesystemError::Resource(ResourceError::Unsupported));
             }
@@ -224,16 +233,16 @@ impl LocalFilesystem {
                 let version = snapshot.stamp.validator();
                 // Construct every bounded receipt before returning any of them;
                 // a producer limit failure emits failure, never truncated EOF.
-                let start = self.port.annotation_read_start(dispatch, &version)?;
+                let start = self.provider()?.annotation_read_start(dispatch, &version)?;
                 let chunk = if snapshot.bytes.is_empty() {
                     None
                 } else {
                     Some(
-                        self.port
+                        self.provider()?
                             .annotation_read_chunk(dispatch, 0, 0, &snapshot.bytes)?,
                     )
                 };
-                let end = self.port.annotation_read_end(
+                let end = self.provider()?.annotation_read_end(
                     dispatch,
                     &version,
                     usize::from(chunk.is_some()),
@@ -257,7 +266,7 @@ impl LocalFilesystem {
                     }
                     _ => ReadFailure::Unavailable,
                 };
-                receipts.push(self.port.annotation_read_failure(dispatch, reason)?);
+                receipts.push(self.provider()?.annotation_read_failure(dispatch, reason)?);
             }
             Ok(AnnotationReadCompletion {
                 receipts,
@@ -279,11 +288,25 @@ impl LocalFilesystem {
     /// Port provisioning is an explicit trusted-host choice, not document authority.
     pub fn new(port: ProviderPort, limits: FilesystemLimits) -> Self {
         Self {
-            port,
+            port: Some(port),
             limits,
             owner: Arc::new(()),
             entries: Vec::new(),
             stage_sequence: 0,
+            export_copy_usage: crate::ExportCopyUsageV1::default(),
+            #[cfg(test)]
+            fault: None,
+        }
+    }
+
+    pub(crate) fn new_export_only(limits: FilesystemLimits) -> Self {
+        Self {
+            port: None,
+            limits,
+            owner: Arc::new(()),
+            entries: Vec::new(),
+            stage_sequence: 0,
+            export_copy_usage: crate::ExportCopyUsageV1::default(),
             #[cfg(test)]
             fault: None,
         }
@@ -337,7 +360,7 @@ impl LocalFilesystem {
         if existing.is_none() && slot >= self.limits.max_resources {
             return Err(FilesystemError::Limit);
         }
-        let read = self.port.read_result(
+        let read = self.provider()?.read_result(
             &(slot as u64).to_le_bytes(),
             &snapshot.stamp.validator(),
             &snapshot.bytes,
@@ -370,7 +393,7 @@ impl LocalFilesystem {
         let result = (|| {
             let entry = self.entry(handle)?;
             let snapshot = snapshot(&entry.directory, &entry.name, self.limits.max_bytes)?;
-            let read = self.port.read_result(
+            let read = self.provider()?.read_result(
                 &(handle.slot as u64).to_le_bytes(),
                 &snapshot.stamp.validator(),
                 &snapshot.bytes,
@@ -397,7 +420,7 @@ impl LocalFilesystem {
     ) -> Result<OrdinaryPairEvidence, FilesystemError> {
         let started = Instant::now();
         let result = (|| {
-            let (source, annotations) = self.port.ordinary_pair_keys(check)?;
+            let (source, annotations) = self.provider()?.ordinary_pair_keys(check)?;
             let read = |key: &[u8]| -> Result<Snapshot, FilesystemError> {
                 let key: [u8; 8] = key.try_into().map_err(|_| FilesystemError::Unavailable)?;
                 let slot = usize::try_from(u64::from_le_bytes(key))
@@ -414,7 +437,7 @@ impl LocalFilesystem {
                 Some(_) => ResourceRelation::Distinct,
                 None => ResourceRelation::Unknown,
             };
-            self.port
+            self.provider()?
                 .attest_ordinary_pair(check, relation)
                 .map_err(Into::into)
         })();
@@ -462,8 +485,8 @@ impl LocalFilesystem {
         // Validate original provider attribution BEFORE any physical I/O. These
         // receipts can be prebuilt because they are returned only after this
         // synchronous execution has no remaining write-producing continuation.
-        let no_future_effects = self.port.no_future_effects(&dispatch)?;
-        let quiescence = self.port.quiescence(&dispatch)?;
+        let no_future_effects = self.provider()?.no_future_effects(&dispatch)?;
+        let quiescence = self.provider()?.quiescence(&dispatch)?;
         let started = Instant::now();
         let mut cleanup_failed = false;
         let attempt = self.replace(&dispatch, &probe, recorder, &mut cleanup_failed);
@@ -484,7 +507,7 @@ impl LocalFilesystem {
                 Some(error),
             ),
         };
-        let result = self.port.result(
+        let result = self.provider()?.result(
             &dispatch,
             application,
             if application == Application::Written {
@@ -507,7 +530,8 @@ impl LocalFilesystem {
         Ok(WriteCompletion {
             written_observation: if observe_written && application == Application::Written {
                 version.as_ref().and_then(|version| {
-                    self.port
+                    self.provider()
+                        .ok()?
                         .read_result(dispatch.resource_key(), version, dispatch.bytes())
                         .ok()
                 })
@@ -695,7 +719,7 @@ impl LocalFilesystem {
 #[cfg(test)]
 mod tests;
 
-fn observe<T, E>(
+pub(crate) fn observe<T, E>(
     recorder: &mut Recorder,
     boundary: Boundary,
     started: Instant,
@@ -711,7 +735,11 @@ fn observe<T, E>(
         service_time: Some(started.elapsed()),
     });
 }
-fn snapshot(directory: &File, name: &OsString, limit: usize) -> Result<Snapshot, FilesystemError> {
+pub(crate) fn snapshot(
+    directory: &File,
+    name: &OsString,
+    limit: usize,
+) -> Result<Snapshot, FilesystemError> {
     let mut file = File::from(fs::openat(
         directory,
         name,
@@ -755,7 +783,7 @@ fn snapshot(directory: &File, name: &OsString, limit: usize) -> Result<Snapshot,
     file.seek(SeekFrom::Start(0))?;
     Ok(Snapshot { file, stamp, bytes })
 }
-fn plain_metadata(file: &File) -> Result<(), FilesystemError> {
+pub(crate) fn plain_metadata(file: &File) -> Result<(), FilesystemError> {
     let m = file.metadata()?;
     if !m.is_file() || m.nlink() != 1 {
         return Err(FilesystemError::UnsupportedFile);
@@ -775,7 +803,10 @@ fn plain_metadata(file: &File) -> Result<(), FilesystemError> {
 }
 // Read and compare every enumerable name/value, with one aggregate byte budget.
 // No best-effort dropping, truncated list or allowlist of supposedly harmless attrs.
-fn attributes(file: &File, limit: usize) -> Result<Vec<(CString, Vec<u8>)>, FilesystemError> {
+pub(crate) fn attributes(
+    file: &File,
+    limit: usize,
+) -> Result<Vec<(CString, Vec<u8>)>, FilesystemError> {
     let size = limit.checked_add(1).ok_or(FilesystemError::Limit)?;
     let mut scratch = Vec::new();
     scratch
@@ -815,14 +846,14 @@ fn attributes(file: &File, limit: usize) -> Result<Vec<(CString, Vec<u8>)>, File
     result.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(result)
 }
-struct Staged<'a> {
+pub(crate) struct Staged<'a> {
     directory: &'a File,
-    name: OsString,
-    file: File,
-    linked: bool,
+    pub(crate) name: OsString,
+    pub(crate) file: File,
+    pub(crate) linked: bool,
 }
 impl Staged<'_> {
-    fn cleanup(&mut self) -> Result<(), FilesystemError> {
+    pub(crate) fn cleanup(&mut self) -> Result<(), FilesystemError> {
         if self.linked {
             fs::unlinkat(self.directory, &self.name, AtFlags::empty())?;
             self.linked = false;
@@ -835,7 +866,7 @@ impl Drop for Staged<'_> {
         let _ = self.cleanup();
     }
 }
-fn stage<'a>(
+pub(crate) fn stage<'a>(
     directory: &'a File,
     sequence: &mut u64,
     attempts: u32,
@@ -867,7 +898,7 @@ fn stage<'a>(
 // macOS ACLs are not enumerable xattrs. This isolated native seam checks absence
 // and copies xattrs to our private stage. It never edits source metadata or ACLs.
 #[allow(unsafe_code)]
-mod native_acl {
+pub(crate) mod native_acl {
     use super::FilesystemError;
     use std::ffi::{c_int, c_void};
     use std::fs::File;
@@ -879,7 +910,7 @@ mod native_acl {
         fn acl_free(object: *mut c_void) -> c_int;
         fn fcopyfile(from: c_int, to: c_int, state: *mut c_void, flags: u32) -> c_int;
     }
-    pub(super) fn copy_attributes(from: &File, to: &File) -> Result<(), FilesystemError> {
+    pub(crate) fn copy_attributes(from: &File, to: &File) -> Result<(), FilesystemError> {
         // SAFETY: live borrowed descriptors; documented null optional state and
         // COPYFILE_XATTR only. Destination is an exclusively created private stage.
         let status = unsafe {
@@ -896,7 +927,7 @@ mod native_acl {
             Err(FilesystemError::UnsupportedMetadata)
         }
     }
-    pub(super) fn is_empty(file: &File) -> Result<bool, FilesystemError> {
+    pub(crate) fn is_empty(file: &File) -> Result<bool, FilesystemError> {
         // SAFETY: live borrowed descriptor, SDK ACL_TYPE_EXTENDED; returned
         // allocation is private, validated before reading, and freed exactly once.
         let acl = unsafe { acl_get_fd_np(file.as_raw_fd(), 0x100) };

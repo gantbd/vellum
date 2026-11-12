@@ -53,15 +53,15 @@ The current protocol supports:
   reclamation of that client's requests and witnesses;
 - bounded Unix framing, remote-client access errors, I/O timeouts, and a local
   daemon composition;
-- a bounded, current-version MCP stdio projection with deterministic closed
-  tool schemas for snapshot and revision-checked, natively witness-bound
-  replacement.
+- a bounded, current-version MCP stdio projection with content-free paginated
+  resources and five deterministic tools for snapshot, replacement, durable
+  replacement, change polling and authority-mediated membership.
 
 The service projects the replacement before publication and reserves its
 retained response slot before changing the workspace. It supplies the engine
-with the exact expected source fragment from the retained witness. No cursor,
-selection, active tab, filesystem path, or engine identity crosses the
-protocol.
+with the exact expected source fragment from the retained witness. Opaque
+inventory/change cursors and scoped workspace/document/root identities cross
+the protocol; UI cursor, active tab, filesystem path and engine identity do not.
 
 ## Operational evidence
 
@@ -108,19 +108,23 @@ retention. The local-user review must not be inherited as a network claim.
 
 This profile does not yet claim:
 
-- principal authentication, Aegis authorization, durable client registration,
-  reconnect, or session-resumption semantics;
+- a shipped credential provider, Aegis authorization, durable client
+  registration, reconnect, or session-resumption semantics;
 - TCP, HTTP, cross-user, or network transport;
-- legacy MCP revisions, Streamable HTTP, subscriptions, prompts, resources,
+- legacy MCP revisions, Streamable HTTP, subscriptions, prompts,
   server-to-client requests, or asynchronous cancellation;
-- event subscriptions, recovery, or durable request receipts;
-- cross-process replay after restart;
+- durable event subscriptions or change-feed recovery; the implemented bounded
+  pull change feed is process-local and reports retention gaps explicitly;
+- cross-process replay for non-effectful commands or owner-only sessions; the
+  persistent required-authentication composition has a separate bounded
+  effectful-operation journal described in
+  [durable-request-replay.md](durable-request-replay.md);
 - background coexistence with the current directly embedded TUI or GUI;
 - platform qualification beyond the existing application and adapter profiles.
 
-The current protocol operates on the initial document in each independent
-view; document enumeration and explicit view selection have not yet crossed
-the protocol boundary. The richer legacy `Editor` still combines its own UI
+The current protocol enumerates scoped document/root identities and selects an
+explicit document inside each self-contained MCP read/edit request. The richer
+legacy `Editor` still combines its own UI
 state with a host for directly embedded TUI/GUI use. Those applications have
 not yet migrated through `vellum-client` and make no background-service parity
 claim.
@@ -129,9 +133,11 @@ claim.
 
 1. Add durable registration/reconnect and bounded event delivery.
 2. Migrate the TUI and macOS GUI through the client port.
-3. Add explicit document enumeration/selection before exposing MCP resources.
+3. Add separately durable operation receipts before any horizontal connector
+   composition or process-independent recovery claim.
 4. Qualify a separately authenticated network adapter if remote use is needed.
 
-The MCP adapter exposes semantic tools; it does not accept keystrokes, borrow a
-human view, or receive raw host capability objects. Resource projection waits
-for explicit document identity rather than fabricating an “active document” URI.
+The MCP adapter exposes workspace tools; it does not accept keystrokes, borrow a
+human view, receive raw host capability objects or project semantic-provider
+queries. Resource projection uses explicit scoped identity rather than
+fabricating an “active document” URI.

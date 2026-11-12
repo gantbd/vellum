@@ -12,6 +12,10 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
 #[cfg(target_os = "macos")]
+mod export_copy;
+#[cfg(target_os = "macos")]
+pub use export_copy::*;
+#[cfg(target_os = "macos")]
 mod host;
 #[cfg(target_os = "macos")]
 pub use host::LocalFilesystemFactory;
@@ -19,3 +23,15 @@ pub use host::LocalFilesystemFactory;
 mod workspace;
 #[cfg(target_os = "macos")]
 pub use workspace::*;
+#[cfg(target_os = "macos")]
+mod workspace_identity;
+#[cfg(target_os = "macos")]
+pub use workspace_identity::*;
+#[cfg(target_os = "macos")]
+mod request_journal;
+#[cfg(target_os = "macos")]
+pub use request_journal::*;
+#[cfg(target_os = "macos")]
+mod append_journal;
+#[cfg(target_os = "macos")]
+pub use append_journal::*;

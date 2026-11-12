@@ -1,0 +1,22 @@
+[package]
+name = "vellum-semantic-apply-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Authorized stale-safe semantic plan application for Vellum"
+
+[dependencies]
+sha2 = "0.10"
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-semantic-service = { version = "=0.1.0", path = "../vellum-semantic-service" }
+
+[dev-dependencies]
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+
+[lints]
+workspace = true

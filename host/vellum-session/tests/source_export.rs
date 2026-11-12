@@ -327,3 +327,210 @@ fn missing_files_and_annotation_aliases_preserve_native_preparation_consumption_
     assert!(!f.path("missing").exists());
     assert_eq!(fs::read(f.path("copy")).unwrap(), b"OLD");
 }
+
+#[test]
+fn denied_copy_authority_precedes_codec_capture_and_leaves_preparation_dischargeable() {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{
+        ExportCopyAuthorityDecisionV1, ExportCopyAuthorityPortV1, ExportCopySourceRequestV1,
+    };
+
+    struct Denied;
+    impl ExportCopyAuthorityPortV1 for Denied {
+        fn authorize_export_copy(
+            &mut self,
+            _source: ExportCopySourceRequestV1,
+            _destination: SaveAsDestinationRequestV1,
+        ) -> ExportCopyAuthorityDecisionV1 {
+            ExportCopyAuthorityDecisionV1::Denied
+        }
+    }
+
+    let fixture = Fixture::new();
+    let mut host = LocalHost::new(config(128)).unwrap();
+    let document = host.open(&fixture.path("source")).unwrap();
+    let version = host.read(&document).unwrap().version;
+    let prepared = host.prepare_source_export(&version).unwrap();
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([7; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([9; 16]);
+    let result = host.authorize_prepared_source_export_copy(
+        &prepared,
+        &mut Denied,
+        AuthorityRequestV1 {
+            context,
+            resource,
+            action: AuthorityActionV1::ExportSourceCopy,
+        },
+        SaveAsDestinationRequestV1::new(
+            context,
+            resource,
+            fixture.path("copy"),
+            SaveAsDestinationEffectV1::CreateExclusive,
+        ),
+    );
+    assert!(matches!(
+        result,
+        Err(vellum_session::host::SourceExportCopyPreparationErrorV1::Authority(_))
+    ));
+    assert_eq!(host.resource_usage().prepared_sources, 1);
+    host.discard_source_export_preparation(&prepared).unwrap();
+    assert_eq!(host.resource_usage().prepared_sources, 0);
+}
+
+#[test]
+fn granted_copy_plan_consumes_the_exact_codec_preparation_once() {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationObjectV1,
+        SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{ExportCopySourceRequestV1, FixedExportCopyAuthorityV1};
+
+    let fixture = Fixture::new();
+    let mut host = LocalHost::new(config(128)).unwrap();
+    let document = host.open(&fixture.path("source")).unwrap();
+    let version = host.read(&document).unwrap().version;
+    let prepared = host.prepare_source_export(&version).unwrap();
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([17; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([19; 16]);
+    let source_request = AuthorityRequestV1 {
+        context,
+        resource,
+        action: AuthorityActionV1::ExportSourceCopy,
+    };
+    let destination_request = SaveAsDestinationRequestV1::new(
+        context,
+        resource,
+        fixture.path("copy"),
+        SaveAsDestinationEffectV1::CreateExclusive,
+    );
+    let mut authority = FixedExportCopyAuthorityV1::install(
+        ExportCopySourceRequestV1::new(source_request, version.clone()).unwrap(),
+        destination_request.clone(),
+        SaveAsDestinationObjectV1::install(destination_request.clone(), ()),
+    )
+    .unwrap();
+    let authorized = host
+        .authorize_prepared_source_export_copy(
+            &prepared,
+            &mut authority,
+            source_request,
+            destination_request,
+        )
+        .unwrap();
+    assert_eq!(host.resource_usage().prepared_sources, 0);
+    assert!(host.discard_source_export_preparation(&prepared).is_err());
+    let debug = format!("{authorized:?}");
+    assert!(debug.contains("<redacted>"));
+    assert!(!debug.contains(fixture.0.to_str().unwrap()));
+}
+
+#[test]
+fn direct_copy_denial_precedes_codec_preparation() {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{
+        ExportCopyAuthorityDecisionV1, ExportCopyAuthorityPortV1, ExportCopySourceRequestV1,
+    };
+
+    struct Denied;
+    impl ExportCopyAuthorityPortV1 for Denied {
+        fn authorize_export_copy(
+            &mut self,
+            _source: ExportCopySourceRequestV1,
+            _destination: SaveAsDestinationRequestV1,
+        ) -> ExportCopyAuthorityDecisionV1 {
+            ExportCopyAuthorityDecisionV1::Denied
+        }
+    }
+
+    let fixture = Fixture::new();
+    let mut host = LocalHost::new(config(128)).unwrap();
+    let document = host.open(&fixture.path("source")).unwrap();
+    let version = host.read(&document).unwrap().version;
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([31; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([32; 16]);
+    let result = host.authorize_source_export_copy(
+        &version,
+        &mut Denied,
+        AuthorityRequestV1 {
+            context,
+            resource,
+            action: AuthorityActionV1::ExportSourceCopy,
+        },
+        SaveAsDestinationRequestV1::new(
+            context,
+            resource,
+            fixture.path("copy"),
+            SaveAsDestinationEffectV1::CreateExclusive,
+        ),
+    );
+
+    assert!(matches!(
+        result,
+        Err(vellum_session::host::SourceExportCopyPreparationErrorV1::Authority(_))
+    ));
+    assert_eq!(host.resource_usage().prepared_sources, 0);
+}
+
+#[test]
+fn mismatched_destination_object_refuses_before_codec_capture() {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationObjectV1,
+        SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{ExportCopySourceRequestV1, FixedExportCopyAuthorityV1};
+
+    let fixture = Fixture::new();
+    let mut host = LocalHost::new(config(128)).unwrap();
+    let document = host.open(&fixture.path("source")).unwrap();
+    let version = host.read(&document).unwrap().version;
+    let prepared = host.prepare_source_export(&version).unwrap();
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([27; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([29; 16]);
+    let source_request = AuthorityRequestV1 {
+        context,
+        resource,
+        action: AuthorityActionV1::ExportSourceCopy,
+    };
+    let installed_request = SaveAsDestinationRequestV1::new(
+        context,
+        resource,
+        fixture.path("as"),
+        SaveAsDestinationEffectV1::CreateExclusive,
+    );
+    let authorized_request = SaveAsDestinationRequestV1::new(
+        context,
+        resource,
+        fixture.path("copy"),
+        SaveAsDestinationEffectV1::CreateExclusive,
+    );
+    let result = FixedExportCopyAuthorityV1::install(
+        ExportCopySourceRequestV1::new(source_request, version).unwrap(),
+        authorized_request,
+        SaveAsDestinationObjectV1::install(installed_request, ()),
+    );
+
+    assert!(result.is_err());
+    assert_eq!(host.resource_usage().prepared_sources, 1);
+    host.discard_source_export_preparation(&prepared).unwrap();
+    assert_eq!(host.resource_usage().prepared_sources, 0);
+}

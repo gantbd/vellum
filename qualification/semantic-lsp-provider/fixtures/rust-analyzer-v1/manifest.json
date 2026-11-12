@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "fixture_id": "rust-analyzer-v1",
+  "files": [
+    {
+      "path": "rust-project.json",
+      "sha256": "0424db80ddd6f59c775f755160a3c00cf593f56c75687e264e07a004c7851f27",
+      "bytes": 170
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "10e742118c92e50a371c06707d275a0838a03edc4d2e61aa27bd56619f424c90",
+      "bytes": 232
+    }
+  ]
+}

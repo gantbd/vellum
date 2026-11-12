@@ -6,15 +6,29 @@ members = [
     "host/vellum-editor",
     "protocol/vellum-protocol",
     "protocol/vellum-wire",
+    "protocol/vellum-semantic-protocol",
+    "protocol/vellum-semantic-wire",
     "service/vellum-service",
+    "service/vellum-semantic-service",
+    "service/vellum-semantic-session-broker",
+    "service/vellum-semantic-session-actor",
+    "service/vellum-semantic-apply",
     "client/vellum-client",
+    "client/vellum-semantic-client",
+    "client/vellum-semantic-session-client",
     "transport/vellum-transport",
+    "transport/vellum-semantic-transport",
     "adapters/local-fs",
+    "adapters/local-authentication",
     "adapters/annotation-json",
     "adapters/unicode-icu",
+    "adapters/semantic-lsp",
     "adapters/clipboard-macos",
     "connectors/vellum-mcp",
+    "connectors/vellum-semantic-mcp",
     "applications/vellum-daemon",
+    "applications/vellum-semantic-local",
+    "distribution/cargo-install",
     "sdk/embedded",
     "sdk/client",
 ]
@@ -22,6 +36,7 @@ resolver = "3"
 exclude = [
     "qualification/unicode-reference",
     "qualification/clipboard-macos",
+    "qualification/semantic-lsp-provider",
     "vendor/objc2-app-kit",
 ]
 
@@ -31,7 +46,12 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/gantbd/vellum"
-publish = true
+publish = false
+
+[workspace.dependencies]
+getrandom = "=0.4.3"
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

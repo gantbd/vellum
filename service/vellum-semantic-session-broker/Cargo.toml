@@ -1,0 +1,16 @@
+[package]
+name = "vellum-semantic-session-broker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Pure serialized semantic session broker for Vellum"
+
+[dependencies]
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
+
+[lints]
+workspace = true

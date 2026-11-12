@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "lockfile": "Cargo.lock",
+  "allowedRegistries": [
+    "registry+https://github.com/rust-lang/crates.io-index"
+  ],
+  "allowedGitSources": [
+    "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+  ],
+  "allowedLicenseExpressions": [
+    "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+    "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "Apache-2.0 OR MIT",
+    "Apache-2.0/MIT",
+    "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+    "BSD-3-Clause",
+    "MIT",
+    "MIT OR Apache-2.0",
+    "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+    "MIT/Apache-2.0",
+    "Unicode-3.0",
+    "Unlicense OR MIT",
+    "Zlib OR Apache-2.0 OR MIT"
+  ],
+  "licenseNormalization": {
+    "Apache-2.0/MIT": "Apache-2.0 OR MIT",
+    "MIT/Apache-2.0": "MIT OR Apache-2.0"
+  },
+  "pathPolicy": {
+    "workspaceRoot": ".",
+    "external": []
+  },
+  "gitPolicy": {
+    "sources": [
+      {
+        "name": "keystone",
+        "repository": "https://github.com/gantbd/keystone",
+        "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+        "source": "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+        "releaseStatus": "qualified-immutable-source",
+        "packages": [
+          { "name": "keystone-codec", "version": "0.0.1", "manifest": "crates/keystone-codec/Cargo.toml", "revisionStatus": "present-at-pinned-revision" },
+          { "name": "keystone-lifecycle", "version": "0.0.1", "manifest": "crates/keystone-lifecycle/Cargo.toml", "revisionStatus": "present-at-pinned-revision" },
+          { "name": "keystone-observe", "version": "0.0.1", "manifest": "crates/keystone-observe/Cargo.toml", "revisionStatus": "present-at-pinned-revision" },
+          { "name": "keystone-replay", "version": "0.0.1", "manifest": "crates/keystone-replay/Cargo.toml", "revisionStatus": "present-at-pinned-revision" }
+        ]
+      }
+    ]
+  },
+  "requireRegistryChecksums": true,
+  "rejectUnknownSources": true,
+  "sbom": {
+    "format": "CycloneDX",
+    "specVersion": "1.5",
+    "manifest": "release/source-sbom.manifest.json"
+  }
+}

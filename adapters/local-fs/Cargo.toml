@@ -11,9 +11,10 @@ description = "Bounded local filesystem resource adapter for Vellum"
 [dependencies]
 vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
 vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-rustix = { version = "=1.1.4", features = ["fs"] }
+rustix = { version = "=1.1.4", features = ["fs", "process"] }
 
 [lints.rust]
 unsafe_code = "deny"

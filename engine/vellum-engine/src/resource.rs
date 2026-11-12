@@ -70,6 +70,80 @@ impl std::fmt::Debug for PreparedSourceArtifactIdV1 {
         f.write_str("PreparedSourceArtifactIdV1(<opaque>)")
     }
 }
+
+/// Content-correlation witness for codec-owned serialized source bytes. Exact
+/// source-incarnation congruence must use the opaque `DocumentVersion` retained
+/// by `CapturedSourceSerializationV1`; this truncated digest is not authority or
+/// a globally unique process identity.
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SourceSerializationCaptureWitnessV1(pub(crate) [u8; 16]);
+
+impl SourceSerializationCaptureWitnessV1 {
+    pub const fn into_bytes(self) -> [u8; 16] {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for SourceSerializationCaptureWitnessV1 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceSerializationCaptureWitnessV1(<opaque>)")
+    }
+}
+
+/// One-use transfer of an exact source serialization out of the engine codec.
+/// The carrier cannot be constructed or cloned outside the engine. Consuming it
+/// transfers the immutable bytes without re-encoding or consulting current text.
+///
+/// ```compile_fail
+/// use vellum_engine::resource::CapturedSourceSerializationV1;
+///
+/// // Only the engine's codec preparation can construct this carrier.
+/// let _forged = CapturedSourceSerializationV1 {};
+/// ```
+///
+/// ```compile_fail
+/// use vellum_engine::resource::CapturedSourceSerializationV1;
+///
+/// fn duplicate(capture: CapturedSourceSerializationV1) {
+///     let _second_effect = capture.clone();
+/// }
+/// ```
+pub struct CapturedSourceSerializationV1 {
+    pub(crate) witness: SourceSerializationCaptureWitnessV1,
+    pub(crate) source: DocumentVersion,
+    pub(crate) serialization: SourceSerializationStateV1,
+    pub(crate) bytes: Vec<u8>,
+}
+
+impl CapturedSourceSerializationV1 {
+    pub const fn witness(&self) -> SourceSerializationCaptureWitnessV1 {
+        self.witness
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Exact opaque native incarnation and revision captured by the codec.
+    /// `DocumentId` cannot be forged outside its issuing coordinator.
+    pub fn source(&self) -> &DocumentVersion {
+        &self.source
+    }
+
+    pub const fn serialization(&self) -> SourceSerializationStateV1 {
+        self.serialization
+    }
+
+    pub fn into_parts(self) -> (SourceSerializationCaptureWitnessV1, Vec<u8>) {
+        (self.witness, self.bytes)
+    }
+}
+
+impl std::fmt::Debug for CapturedSourceSerializationV1 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CapturedSourceSerializationV1(<redacted>)")
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavePurpose {
     OrdinarySource,

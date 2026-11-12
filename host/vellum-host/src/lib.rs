@@ -7,5 +7,12 @@
 #![forbid(unsafe_code)]
 
 pub mod annotation;
+pub mod append_journal;
+pub mod authentication;
+pub mod authority;
+pub mod export_copy;
+pub mod request_journal;
 pub mod resource;
+pub mod semantic;
 pub mod unicode;
+pub mod workspace;

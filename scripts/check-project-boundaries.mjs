@@ -21,15 +21,29 @@ const locations = new Map([
   ['vellum-editor', '/host/'],
   ['vellum-protocol', '/protocol/'],
   ['vellum-wire', '/protocol/'],
+  ['vellum-semantic-protocol', '/protocol/'],
+  ['vellum-semantic-wire', '/protocol/'],
   ['vellum-service', '/service/'],
+  ['vellum-semantic-service', '/service/'],
+  ['vellum-semantic-session-broker', '/service/'],
+  ['vellum-semantic-session-actor', '/service/'],
+  ['vellum-semantic-apply-service', '/service/'],
   ['vellum-client', '/client/'],
+  ['vellum-semantic-client', '/client/'],
+  ['vellum-semantic-session-client', '/client/'],
   ['vellum-transport', '/transport/'],
+  ['vellum-semantic-transport', '/transport/'],
+  ['vellum-adapter-local-authentication', '/adapters/'],
   ['vellum-adapter-local-fs', '/adapters/'],
   ['vellum-adapter-annotation-json', '/adapters/'],
   ['vellum-adapter-unicode-icu', '/adapters/'],
+  ['vellum-adapter-semantic-lsp', '/adapters/'],
   ['vellum-adapter-clipboard-macos', '/adapters/'],
   ['vellum-mcp', '/connectors/'],
+  ['vellum-semantic-mcp', '/connectors/'],
   ['vellum-daemon', '/applications/'],
+  ['vellum-semantic-local', '/applications/'],
+  ['vellum', '/distribution/'],
   ['vellum-sdk-embedded', '/sdk/'],
   ['vellum-sdk-client', '/sdk/'],
 ]);
@@ -77,26 +91,200 @@ forbidEdges(
   'vellum-client',
   ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service'],
 );
+requireEdges('vellum-semantic-service', ['vellum-host']);
+requireEdges('vellum-semantic-session-broker', ['vellum-host', 'vellum-semantic-protocol']);
+forbidEdges(
+  'vellum-semantic-session-broker',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service', 'vellum-semantic-service'],
+);
+requireEdges('vellum-semantic-session-actor', [
+  'vellum-host',
+  'vellum-semantic-protocol',
+  'vellum-semantic-session-broker',
+]);
+forbidEdges(
+  'vellum-semantic-session-actor',
+  [
+    'vellum-engine',
+    'vellum-editor',
+    'vellum-session',
+    'vellum-service',
+    'vellum-semantic-service',
+    'vellum-wire',
+    'vellum-semantic-wire',
+    'vellum-transport',
+    'vellum-mcp',
+    'vellum-semantic-mcp',
+    'vellum-semantic-local',
+  ],
+);
+forbidEdges(
+  'vellum-semantic-service',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service'],
+);
+requireEdges(
+  'vellum-semantic-apply-service',
+  ['vellum-engine', 'vellum-editor', 'vellum-host', 'vellum-semantic-service'],
+  false,
+);
+forbidEdges(
+  'vellum-semantic-apply-service',
+  [
+    'vellum-client',
+    'vellum-semantic-client',
+    'vellum-service',
+    'vellum-session',
+    'vellum-adapter-local-authentication',
+    'vellum-adapter-local-fs',
+    'vellum-adapter-annotation-json',
+    'vellum-adapter-unicode-icu',
+    'vellum-adapter-semantic-lsp',
+    'vellum-adapter-clipboard-macos',
+    'vellum-mcp',
+    'vellum-protocol',
+    'vellum-wire',
+    'vellum-transport',
+  ],
+  false,
+);
+requireEdges('vellum-semantic-client', ['vellum-host', 'vellum-semantic-service']);
+requireEdges('vellum-semantic-session-client', ['vellum-host', 'vellum-semantic-protocol']);
+forbidEdges(
+  'vellum-semantic-session-client',
+  [
+    'vellum-engine',
+    'vellum-editor',
+    'vellum-session',
+    'vellum-service',
+    'vellum-semantic-service',
+    'vellum-semantic-session-broker',
+    'vellum-wire',
+    'vellum-semantic-wire',
+    'vellum-transport',
+  ],
+);
+forbidEdges(
+  'vellum-semantic-client',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service'],
+);
 requireEdges('vellum-wire', ['keystone-codec', 'vellum-protocol']);
 forbidEdges(
   'vellum-wire',
   ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service'],
 );
+requireEdges('vellum-semantic-protocol', ['vellum-host']);
+forbidEdges(
+  'vellum-semantic-protocol',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service', 'vellum-semantic-service'],
+);
+requireEdges('vellum-semantic-wire', [
+  'keystone-codec',
+  'vellum-host',
+  'vellum-semantic-protocol',
+]);
+forbidEdges(
+  'vellum-semantic-wire',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service', 'vellum-semantic-service'],
+);
 requireEdges('vellum-transport', ['vellum-protocol', 'vellum-wire']);
+requireEdges('vellum-semantic-transport', [
+  'vellum-semantic-protocol',
+  'vellum-semantic-session-client',
+  'vellum-semantic-wire',
+]);
+forbidEdges(
+  'vellum-semantic-transport',
+  [
+    'vellum-engine',
+    'vellum-editor',
+    'vellum-host',
+    'vellum-session',
+    'vellum-service',
+    'vellum-semantic-service',
+    'vellum-semantic-session-broker',
+    'vellum-semantic-session-actor',
+    'vellum-mcp',
+    'vellum-semantic-mcp',
+    'vellum-semantic-local',
+  ],
+);
 requireEdges(
   'vellum-daemon',
-  ['vellum-service', 'vellum-transport', 'vellum-editor', 'vellum-adapter-local-fs'],
+  [
+    'vellum-service',
+    'vellum-transport',
+    'vellum-editor',
+    'vellum-adapter-local-fs',
+    'vellum-adapter-local-authentication',
+  ],
 );
-requireEdges('vellum-mcp', ['vellum-client', 'vellum-protocol', 'vellum-transport'], false);
+requireEdges(
+  'vellum-semantic-local',
+  ['vellum-adapter-semantic-lsp', 'vellum-host'],
+  false,
+);
+forbidEdges(
+  'vellum-semantic-local',
+  ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service', 'vellum-mcp'],
+  false,
+);
+requireEdges(
+  'vellum-mcp',
+  ['vellum-sdk-client', 'vellum-adapter-local-authentication'],
+  false,
+);
+requireEdges(
+  'vellum-semantic-mcp',
+  ['vellum-semantic-client'],
+  false,
+);
+forbidEdges(
+  'vellum-semantic-mcp',
+  [
+    'vellum-semantic-service',
+    'vellum-host',
+    'vellum-semantic-apply-service',
+    'vellum-adapter-semantic-lsp',
+    'vellum-editor',
+    'vellum-engine',
+    'vellum-session',
+    'vellum-service',
+    'vellum-semantic-local',
+  ],
+  false,
+);
 forbidEdges(
   'vellum-mcp',
-  ['vellum-engine', 'vellum-host', 'vellum-session', 'vellum-editor', 'vellum-service'],
+  [
+    'vellum-client',
+    'vellum-protocol',
+    'vellum-transport',
+    'vellum-engine',
+    'vellum-host',
+    'vellum-session',
+    'vellum-editor',
+    'vellum-service',
+  ],
   false,
 );
 requireEdges('vellum-sdk-embedded', ['vellum-host', 'vellum-session', 'vellum-editor']);
 requireEdges(
   'vellum-sdk-client',
   ['vellum-client', 'vellum-protocol', 'vellum-wire', 'vellum-transport'],
+);
+requireEdges('vellum', ['vellum-daemon', 'vellum-mcp'], false);
+forbidEdges(
+  'vellum',
+  [
+    'vellum-engine',
+    'vellum-editor',
+    'vellum-host',
+    'vellum-service',
+    'vellum-transport',
+    'vellum-adapter-local-fs',
+    'vellum-adapter-local-authentication',
+  ],
+  false,
 );
 
 for (const pkg of packages.values()) {
@@ -108,7 +296,7 @@ for (const pkg of packages.values()) {
     if (
       kind !== 'dev' &&
       dependency.name.startsWith('vellum-adapter-') &&
-      pkg.name !== 'vellum-daemon' &&
+      !['vellum-daemon', 'vellum-mcp', 'vellum-semantic-local'].includes(pkg.name) &&
       !pkg.name.startsWith('vellum-adapter-')
     ) {
       failures.push(`${pkg.name} has forbidden concrete-adapter dependency on ${dependency.name}`);
@@ -172,6 +360,42 @@ if (unicodeCargo.status !== 0) {
   }
 }
 
+const semanticProviderCargo = spawnSync(
+  'cargo',
+  [
+    'metadata', '--offline', '--locked', '--no-deps', '--format-version', '1',
+    '--manifest-path', 'qualification/semantic-lsp-provider/Cargo.toml',
+  ],
+  { encoding: 'utf8' },
+);
+if (semanticProviderCargo.status !== 0) {
+  failures.push(`semantic-provider qualification metadata failed: ${semanticProviderCargo.stderr}`);
+} else {
+  const semanticProviderMetadata = JSON.parse(semanticProviderCargo.stdout);
+  const qualification = semanticProviderMetadata.packages.find(
+    (pkg) => pkg.name === 'vellum-semantic-lsp-provider-qualification',
+  );
+  if (qualification === undefined) {
+    failures.push('semantic-provider qualification package is missing');
+  } else {
+    if (qualification.publish?.length !== 0) {
+      failures.push('semantic-provider qualification must remain unpublished');
+    }
+    const edges = new Set(qualification.dependencies.map((dependency) => dependency.name));
+    if (!edges.has('vellum-semantic-local')) {
+      failures.push('semantic-provider qualification must exercise vellum-semantic-local');
+    }
+    for (const forbidden of ['vellum-mcp', 'vellum-semantic-mcp', 'vellum-tui', 'vellum-gui-macos']) {
+      if (edges.has(forbidden)) {
+        failures.push(`semantic-provider qualification has forbidden presentation edge ${forbidden}`);
+      }
+    }
+  }
+  if (semanticProviderMetadata.workspace_members.length !== 1) {
+    failures.push('semantic-provider qualification must remain a standalone workspace');
+  }
+}
+
 const rootManifest = fs.readFileSync('Cargo.toml', 'utf8');
 const qualificationManifest = fs.readFileSync(
   'qualification/clipboard-macos/Cargo.toml',
@@ -189,5 +413,5 @@ if (failures.length !== 0) {
   process.exit(1);
 }
 process.stdout.write(
-  `Vellum boundaries closed; ${packages.size} crates, 2 zero-authority SDK facades, 1 declared production adapter edge\n`,
+  `Vellum boundaries closed; ${packages.size} crates, 2 zero-authority SDK facades, 2 adapter-selecting composition roots, 3 standalone qualification packages\n`,
 );

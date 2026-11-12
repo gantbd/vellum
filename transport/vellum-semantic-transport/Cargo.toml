@@ -1,0 +1,17 @@
+[package]
+name = "vellum-semantic-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Phase-aware transport-neutral exchange adapter for Vellum semantic sessions"
+
+[dependencies]
+vellum-semantic-protocol = { version = "=0.1.0", path = "../../protocol/vellum-semantic-protocol" }
+vellum-semantic-session-client = { version = "=0.1.0", path = "../../client/vellum-semantic-session-client" }
+vellum-semantic-wire = { version = "=0.1.0", path = "../../protocol/vellum-semantic-wire" }
+
+[lints]
+workspace = true

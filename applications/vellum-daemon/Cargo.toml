@@ -16,11 +16,18 @@ name = "vellum-daemon"
 path = "src/main.rs"
 
 [dependencies]
+keystone-observe = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "3486252cdbaeb2d784756076f43ef6157ed0b7f8" }
+keystone-lifecycle = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "3486252cdbaeb2d784756076f43ef6157ed0b7f8" }
+rustix = { version = "=1.1.4", features = ["fs", "process"] }
+signal-hook = { version = "=0.3.18", default-features = false, features = ["iterator"] }
 vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-adapter-local-authentication = { version = "=0.1.0", path = "../../adapters/local-authentication" }
 vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
 vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
 vellum-service = { version = "=0.1.0", path = "../../service/vellum-service" }
 vellum-transport = { version = "=0.1.0", path = "../../transport/vellum-transport" }
+vellum-wire = { version = "=0.1.0", path = "../../protocol/vellum-wire" }
 
 [dev-dependencies]
 vellum-client = { version = "=0.1.0", path = "../../client/vellum-client" }

@@ -1,0 +1,971 @@
+{
+  "schemaVersion": 2,
+  "policy": {
+    "mode": "exact-conservative-change-detection",
+    "rustSemverAnalysis": false,
+    "rustSourceEvidence": "reviewed-change-tripwire-not-public-api",
+    "wireCompatibility": "exact-frozen-fixtures"
+  },
+  "workspace": {
+    "members": [
+      "adapters/annotation-json",
+      "adapters/clipboard-macos",
+      "adapters/local-authentication",
+      "adapters/local-fs",
+      "adapters/semantic-lsp",
+      "adapters/unicode-icu",
+      "applications/vellum-daemon",
+      "applications/vellum-semantic-local",
+      "client/vellum-client",
+      "client/vellum-semantic-client",
+      "client/vellum-semantic-session-client",
+      "connectors/vellum-mcp",
+      "connectors/vellum-semantic-mcp",
+      "distribution/cargo-install",
+      "engine/vellum-engine",
+      "host/vellum-editor",
+      "host/vellum-host",
+      "host/vellum-session",
+      "protocol/vellum-protocol",
+      "protocol/vellum-semantic-protocol",
+      "protocol/vellum-semantic-wire",
+      "protocol/vellum-wire",
+      "sdk/client",
+      "sdk/embedded",
+      "service/vellum-semantic-apply",
+      "service/vellum-semantic-service",
+      "service/vellum-semantic-session-actor",
+      "service/vellum-semantic-session-broker",
+      "service/vellum-service",
+      "transport/vellum-semantic-transport",
+      "transport/vellum-transport"
+    ],
+    "version": "0.1.0",
+    "edition": "2024",
+    "rustVersion": "1.95",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/gantbd/vellum",
+    "publish": false
+  },
+  "packages": [
+    {
+      "manifest": "distribution/cargo-install/Cargo.toml",
+      "name": "vellum",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "bin",
+          "name": "vellum-daemon",
+          "path": "distribution/cargo-install/src/bin/vellum-daemon.rs"
+        },
+        {
+          "kind": "bin",
+          "name": "vellum-mcp",
+          "path": "distribution/cargo-install/src/bin/vellum-mcp.rs"
+        }
+      ],
+      "sourceTree": null
+    },
+    {
+      "manifest": "adapters/annotation-json/Cargo.toml",
+      "name": "vellum-adapter-annotation-json",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_annotation_json",
+          "path": "adapters/annotation-json/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/annotation-json/src",
+        "fileCount": 3,
+        "sha256": "3cee816159492787f8018f37e865731873586ab3bd054704b846ba59c800fa07"
+      }
+    },
+    {
+      "manifest": "adapters/clipboard-macos/Cargo.toml",
+      "name": "vellum-adapter-clipboard-macos",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [
+        "qualification-harness"
+      ],
+      "featureTableSha256": "9e5e0a26676e1ae33214656eae12a90071a2ffa1c54023700d163114caea816c",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_clipboard_macos",
+          "path": "adapters/clipboard-macos/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/clipboard-macos/src",
+        "fileCount": 8,
+        "sha256": "9666fe5519d940cd3e53574a14e6dcfa742f25870f6df234ceaa01dbbb0c1efc"
+      }
+    },
+    {
+      "manifest": "adapters/local-authentication/Cargo.toml",
+      "name": "vellum-adapter-local-authentication",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_local_authentication",
+          "path": "adapters/local-authentication/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/local-authentication/src",
+        "fileCount": 2,
+        "sha256": "69a4e9f9ea20c3c56d44f40c51e93c415c464b7732eae77a3a250ddf6544a00a"
+      }
+    },
+    {
+      "manifest": "adapters/local-fs/Cargo.toml",
+      "name": "vellum-adapter-local-fs",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_local_fs",
+          "path": "adapters/local-fs/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/local-fs/src",
+        "fileCount": 9,
+        "sha256": "ead2862232cf8a0a97e15efe7334b7ff2384b5d440e02bc2fa0c7119a73bd983"
+      }
+    },
+    {
+      "manifest": "adapters/semantic-lsp/Cargo.toml",
+      "name": "vellum-adapter-semantic-lsp",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_semantic_lsp",
+          "path": "adapters/semantic-lsp/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/semantic-lsp/src",
+        "fileCount": 1,
+        "sha256": "b12bc6f24b8358a435b4d39c135a7ddb5942b55593bb424ef183c0f469db6555"
+      }
+    },
+    {
+      "manifest": "adapters/unicode-icu/Cargo.toml",
+      "name": "vellum-adapter-unicode-icu",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_adapter_unicode_icu",
+          "path": "adapters/unicode-icu/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "adapters/unicode-icu/src",
+        "fileCount": 3,
+        "sha256": "8b5a18c635724a6167dd47c844e1ef6865be8e3ac65ff27fbaf7799922ee89b6"
+      }
+    },
+    {
+      "manifest": "client/vellum-client/Cargo.toml",
+      "name": "vellum-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_client",
+          "path": "client/vellum-client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "client/vellum-client/src",
+        "fileCount": 1,
+        "sha256": "d9b3906d6450e0c733bc43f80c1dbc57604fd8dc7fbf95556e4d845a5bcfdbef"
+      }
+    },
+    {
+      "manifest": "applications/vellum-daemon/Cargo.toml",
+      "name": "vellum-daemon",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "bin",
+          "name": "vellum-daemon",
+          "path": "applications/vellum-daemon/src/main.rs"
+        },
+        {
+          "kind": "lib",
+          "name": "vellum_daemon",
+          "path": "applications/vellum-daemon/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "applications/vellum-daemon/src",
+        "fileCount": 3,
+        "sha256": "3ce04397f099e2154c5dc1d2e2e271c52838b6ffb112038105993c36ac75783e"
+      }
+    },
+    {
+      "manifest": "host/vellum-editor/Cargo.toml",
+      "name": "vellum-editor",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [
+        "native-unicode"
+      ],
+      "featureTableSha256": "a3cc26d6ae5a8d36c337b9e2b4bf4b2729d9c6b8983a9d812d241644ec7725f6",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_editor",
+          "path": "host/vellum-editor/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "host/vellum-editor/src",
+        "fileCount": 13,
+        "sha256": "cc32a9788623f22d0bfc81bff5d836224de738515923c4dcc9496dc5ad9143c4"
+      }
+    },
+    {
+      "manifest": "engine/vellum-engine/Cargo.toml",
+      "name": "vellum-engine",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_engine",
+          "path": "engine/vellum-engine/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "engine/vellum-engine/src",
+        "fileCount": 643,
+        "sha256": "46d516e5432ff9293af5b8ecc4ffc1fe5a5b2fbf98fe3200237a3ccc46f645ea"
+      }
+    },
+    {
+      "manifest": "host/vellum-host/Cargo.toml",
+      "name": "vellum-host",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_host",
+          "path": "host/vellum-host/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "host/vellum-host/src",
+        "fileCount": 11,
+        "sha256": "14545cb3ddaacb9d05452e57db63a67db403c4602ce8ad19e3f69b09bbb58aef"
+      }
+    },
+    {
+      "manifest": "connectors/vellum-mcp/Cargo.toml",
+      "name": "vellum-mcp",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "bin",
+          "name": "vellum-mcp",
+          "path": "connectors/vellum-mcp/src/main.rs"
+        },
+        {
+          "kind": "lib",
+          "name": "vellum_mcp",
+          "path": "connectors/vellum-mcp/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "connectors/vellum-mcp/src",
+        "fileCount": 3,
+        "sha256": "7c41380263e472a97580c5772705045752bc5fff4cb5d9c46f98a4d75022d058"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-protocol/Cargo.toml",
+      "name": "vellum-protocol",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_protocol",
+          "path": "protocol/vellum-protocol/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-protocol/src",
+        "fileCount": 1,
+        "sha256": "e8780383db557a85d646260acc79b7bea71e8d49d61cf165dc101b2200f31a97"
+      }
+    },
+    {
+      "manifest": "sdk/client/Cargo.toml",
+      "name": "vellum-sdk-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_sdk_client",
+          "path": "sdk/client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "sdk/client/src",
+        "fileCount": 1,
+        "sha256": "860977ddc91ed4432bf88386820116afd54341fec8104ba7e8779529d812ec80"
+      }
+    },
+    {
+      "manifest": "sdk/embedded/Cargo.toml",
+      "name": "vellum-sdk-embedded",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_sdk_embedded",
+          "path": "sdk/embedded/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "sdk/embedded/src",
+        "fileCount": 1,
+        "sha256": "bbc6a424c6352c5ddbf14ed4ad7e409ae77d7b6ab36cc4126de0748ddf243707"
+      }
+    },
+    {
+      "manifest": "service/vellum-semantic-apply/Cargo.toml",
+      "name": "vellum-semantic-apply-service",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_apply_service",
+          "path": "service/vellum-semantic-apply/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "service/vellum-semantic-apply/src",
+        "fileCount": 3,
+        "sha256": "7a2f9a0d1d027176850c0e80fe7a913a46f7f6a480c050b74b73faaec077df71"
+      }
+    },
+    {
+      "manifest": "client/vellum-semantic-client/Cargo.toml",
+      "name": "vellum-semantic-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_client",
+          "path": "client/vellum-semantic-client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "client/vellum-semantic-client/src",
+        "fileCount": 1,
+        "sha256": "964bd7320a109839f930a966d63fc4b751766d49755b4a0de2d67c036c89e7d6"
+      }
+    },
+    {
+      "manifest": "applications/vellum-semantic-local/Cargo.toml",
+      "name": "vellum-semantic-local",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "bin",
+          "name": "vellum-semantic-local",
+          "path": "applications/vellum-semantic-local/src/main.rs"
+        },
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_local",
+          "path": "applications/vellum-semantic-local/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "applications/vellum-semantic-local/src",
+        "fileCount": 7,
+        "sha256": "6d7b495ec8c5d7a59f99db37eccbf823d30b341d7eea00c5896181e08a6c6002"
+      }
+    },
+    {
+      "manifest": "connectors/vellum-semantic-mcp/Cargo.toml",
+      "name": "vellum-semantic-mcp",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_mcp",
+          "path": "connectors/vellum-semantic-mcp/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "connectors/vellum-semantic-mcp/src",
+        "fileCount": 2,
+        "sha256": "3a6ec483ecf702ff69d3c101da6acd8e12dfdc4c47b184503da0299e9a1b1c71"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-semantic-protocol/Cargo.toml",
+      "name": "vellum-semantic-protocol",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_protocol",
+          "path": "protocol/vellum-semantic-protocol/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-semantic-protocol/src",
+        "fileCount": 1,
+        "sha256": "c09a49d4fde602fb08b635c70a93f4be7c6cc20bd558cc18369abf1ab5b3bca2"
+      }
+    },
+    {
+      "manifest": "service/vellum-semantic-service/Cargo.toml",
+      "name": "vellum-semantic-service",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_service",
+          "path": "service/vellum-semantic-service/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "service/vellum-semantic-service/src",
+        "fileCount": 1,
+        "sha256": "6cc7c375da779c9b0673440e7288ac86e81bc1a619524e1c9a55cc2d7d8f9d99"
+      }
+    },
+    {
+      "manifest": "service/vellum-semantic-session-actor/Cargo.toml",
+      "name": "vellum-semantic-session-actor",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_session_actor",
+          "path": "service/vellum-semantic-session-actor/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "service/vellum-semantic-session-actor/src",
+        "fileCount": 1,
+        "sha256": "75fce6066d854cf47efc32017a7cc9bb7a6300d9725c3406709f04d280ece9d9"
+      }
+    },
+    {
+      "manifest": "service/vellum-semantic-session-broker/Cargo.toml",
+      "name": "vellum-semantic-session-broker",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_session_broker",
+          "path": "service/vellum-semantic-session-broker/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "service/vellum-semantic-session-broker/src",
+        "fileCount": 1,
+        "sha256": "b7a02505f3b2ff05f834f3351cadb34ecc3d6c628bc599c599258481a9f7fab4"
+      }
+    },
+    {
+      "manifest": "client/vellum-semantic-session-client/Cargo.toml",
+      "name": "vellum-semantic-session-client",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_session_client",
+          "path": "client/vellum-semantic-session-client/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "client/vellum-semantic-session-client/src",
+        "fileCount": 2,
+        "sha256": "8c3a7e5f97aa70fd532b6294a72c0781a04eb0babd9ce688f3f38a750e77ebe3"
+      }
+    },
+    {
+      "manifest": "transport/vellum-semantic-transport/Cargo.toml",
+      "name": "vellum-semantic-transport",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_transport",
+          "path": "transport/vellum-semantic-transport/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "transport/vellum-semantic-transport/src",
+        "fileCount": 2,
+        "sha256": "9dc445ed253bb954761b52a087cbc6905d77d7e68ac48ed3db24fb66f86e0bcf"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-semantic-wire/Cargo.toml",
+      "name": "vellum-semantic-wire",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_semantic_wire",
+          "path": "protocol/vellum-semantic-wire/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-semantic-wire/src",
+        "fileCount": 1,
+        "sha256": "91b03e99cfcc098f1c0e793d989e4cc69baef6a7a71b709aa391cf61eabb4ab1"
+      }
+    },
+    {
+      "manifest": "service/vellum-service/Cargo.toml",
+      "name": "vellum-service",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_service",
+          "path": "service/vellum-service/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "service/vellum-service/src",
+        "fileCount": 1,
+        "sha256": "05fb2adb0cd44ddfc6d9644f83e3e8817b31407bba338309186c06bdb297b21b"
+      }
+    },
+    {
+      "manifest": "host/vellum-session/Cargo.toml",
+      "name": "vellum-session",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_session",
+          "path": "host/vellum-session/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "host/vellum-session/src",
+        "fileCount": 15,
+        "sha256": "58fb59b1fdb93ace5aa2885add0e8e329a36a0a6ace6f8a0b15fd5f2ba6824e8"
+      }
+    },
+    {
+      "manifest": "transport/vellum-transport/Cargo.toml",
+      "name": "vellum-transport",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_transport",
+          "path": "transport/vellum-transport/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "transport/vellum-transport/src",
+        "fileCount": 1,
+        "sha256": "004c21015220de27cc6dcf5b336861eb63a9e261dc06b0c65132b5fa98f961c6"
+      }
+    },
+    {
+      "manifest": "protocol/vellum-wire/Cargo.toml",
+      "name": "vellum-wire",
+      "version": "0.1.0",
+      "edition": "2024",
+      "rustVersion": "1.95",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/gantbd/vellum",
+      "publish": false,
+      "features": [],
+      "featureTableSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targets": [
+        {
+          "kind": "lib",
+          "name": "vellum_wire",
+          "path": "protocol/vellum-wire/src/lib.rs"
+        }
+      ],
+      "sourceTree": {
+        "directory": "protocol/vellum-wire/src",
+        "fileCount": 1,
+        "sha256": "d40bdc5494ec8bfb5afb1faf7aae133166f205104963e355443b089c1ca088d8"
+      }
+    }
+  ],
+  "wire": {
+    "directory": "protocol/vellum-wire/tests/fixtures",
+    "fixtures": [
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/add-directory-request-v1.hex",
+        "byteLength": 26,
+        "sha256": "7a83b5cba53b76c0fa46de0de6512095424dc2ebc4d1a7027208ba29fffb7ce4"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/add-file-request-v1.hex",
+        "byteLength": 28,
+        "sha256": "cec53ecb69617a9e48edf761380c8cf6a50d7b99870f6b70f783bcbcb8c90a63"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/authority-denied-reply-v1.hex",
+        "byteLength": 4,
+        "sha256": "347c1d5a0dcd31a319f6e8303864f66e4af72716a99d8994ae5debad642974bb"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/authority-unavailable-reply-v1.hex",
+        "byteLength": 4,
+        "sha256": "251df96a0406bc83539ba0c1280d7eec410668c910cde29ea4975d2aba6ddce0"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/change-feed-reply-v1.hex",
+        "byteLength": 86,
+        "sha256": "b8e4c58644e0131e993260aa5671386baffc526d91b121093f6a03a8bfd103a9"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/change-feed-request-v1.hex",
+        "byteLength": 52,
+        "sha256": "34e8fa47601f33d20f155203a720fd3aac4746bab900369a2e487b4d4ae872f6"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/close-view-reply-v1.hex",
+        "byteLength": 5,
+        "sha256": "8d43de4cdaf79b224cc21b667b7161e4f1c3035d064a419c218d2ad29111d48d"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/close-view-request-v1.hex",
+        "byteLength": 19,
+        "sha256": "fb89a64586ca45781b95cd472263bcee490fdc24533643d061618085d18e72c4"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/connect-reply-v1.hex",
+        "byteLength": 10,
+        "sha256": "85dbbafbc003d2f3d9f4df42074d0dfd1acc1c96d4f8b5592c1de4166c106b74"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/connect-request-v1.hex",
+        "byteLength": 2,
+        "sha256": "d3b0729b7de8281fbaa36425d99f288005d2b02d8b1d4e280f103e82eb22e038"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/directory-admission-reply-v1.hex",
+        "byteLength": 56,
+        "sha256": "b4072df97e8189b25b8062d0585a66c24ed0c0aec56af937121062f17e9f832d"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/file-admission-reply-v1.hex",
+        "byteLength": 30,
+        "sha256": "77f20727dd2b791e7108c76387eadae5ba97e6f7fd641fdfc869b812bd962840"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/inventory-page-reply-v1.hex",
+        "byteLength": 38,
+        "sha256": "2ce9fc8b7755c0b8647e72ec2af6d090c7fc90db116349c656f3849e511fa266"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/inventory-page-request-v1.hex",
+        "byteLength": 52,
+        "sha256": "8eb3ace59b296d12558d29ffa95048cd6ba4dd4b1fe17ed1be9b5a9e72c5095e"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/inventory-reply-v1.hex",
+        "byteLength": 62,
+        "sha256": "bd16a96bdcdcd9f697c29c2363f0ca62ddbd20d316c82c0fe917651aa44f8313"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/inventory-request-v1.hex",
+        "byteLength": 19,
+        "sha256": "f60ae3d6b25f99cd2059f3f6dd6ec88fe04d9ea1e813b87452848f8027d7bfed"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/open-view-reply-v1.hex",
+        "byteLength": 21,
+        "sha256": "118995d4ef5c7a81279b2b230da9d6a40f7d537d2a36a1081fea4e23850c7fed"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/open-view-request-v1.hex",
+        "byteLength": 19,
+        "sha256": "b80b1222c6b12fa4135f17c879d09b39306ae0b32b5bb6a992803826b970dd63"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/remove-document-reply-v1.hex",
+        "byteLength": 21,
+        "sha256": "17f59e2113e8abf1a9676467706e03558331dbe7ed03b8d96f37cd190989ee81"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/remove-document-request-v1.hex",
+        "byteLength": 35,
+        "sha256": "8c2266cf99a91d6b3cd14a5ae8cfffccfce8322b54fbb21af273e4d4f05684aa"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/replace-and-save-reply-v1.hex",
+        "byteLength": 38,
+        "sha256": "b1a26cbda0980af9143cd5093c84747ae1b5a5cb3ea3dac3f398b1c7aa4bc54a"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/replace-and-save-request-v1.hex",
+        "byteLength": 49,
+        "sha256": "11c84d6e5f0ecf6e48a8ed2da20760f7f1b54db2686f3d3e2172860fbb5bb4f6"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/replace-request-v1.hex",
+        "byteLength": 49,
+        "sha256": "020e4180914cd5e108afc00b03b01f6d3cc0005b7e41f8965183f04d3e38bd9b"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/save-reply-v1.hex",
+        "byteLength": 12,
+        "sha256": "7352996879e3c660ea058d2df8f246740bbc64ac58e3dd9d4d05d23fb648bdb9"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/save-request-v1.hex",
+        "byteLength": 27,
+        "sha256": "8352dcd150e8fec82ef239be6eb192e44f43efda4148eee79d3a62c7ba406fd3"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/select-document-request-v1.hex",
+        "byteLength": 35,
+        "sha256": "ee5e8c0c8a197bc456e54d8653db43ac80f3507d92fda9e3bd51aa3b83522735"
+      },
+      {
+        "path": "protocol/vellum-wire/tests/fixtures/snapshot-reply-v1.hex",
+        "byteLength": 29,
+        "sha256": "70f18d923b55169fb3c2d55191521effe4a1c5155a4a057b07a11ac871e40690"
+      }
+    ]
+  },
+  "semanticWire": {
+    "directory": "protocol/vellum-semantic-wire/tests/fixtures",
+    "fixtures": [
+      {
+        "path": "protocol/vellum-semantic-wire/tests/fixtures/describe-command-v1.hex",
+        "byteLength": 28,
+        "sha256": "c429c75693c1753f42dc669c550a1f0ceba935ef9f35cacf1f5adae2126eadc4"
+      },
+      {
+        "path": "protocol/vellum-semantic-wire/tests/fixtures/describe-unavailable-reply-v1.hex",
+        "byteLength": 55,
+        "sha256": "a5e7d515b95ddefd3e191aeaeb12bfe4b014ac869ebb666345da5596e336bb4a"
+      }
+    ]
+  }
+}

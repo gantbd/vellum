@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "format": "CycloneDX 1.5",
+  "lockSha256": "e890e2280e4043cc937786b7f56c5627703411791d6285f4f166e98fbd26d9d6",
+  "sbomSha256": "07e5b320ee218e383cfd53bab420e7b4387bf0ef192d2d4fbda2935b6bef0f8b",
+  "componentCount": 121,
+  "blockers": []
+}

@@ -1,7 +1,10 @@
 //! Distribution facade for transport-neutral Vellum clients.
 //!
 //! This crate adds no protocol or transport behavior. It groups the native
-//! client contract, DTOs, canonical wire codec, and bounded transport.
+//! client contract, DTOs, canonical wire codec, and bounded transport. The
+//! transport module also exposes the local authenticated-handshake connector;
+//! concrete credential verification remains an adapter concern and no
+//! credential profile is selected by this facade.
 #![forbid(unsafe_code)]
 
 pub use vellum_client as client;

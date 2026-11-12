@@ -1,0 +1,39 @@
+name: Deterministic fuzz and soak qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-soak-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  bounded-qualification:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact Vellum revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/vellum
+          ref: ${{ github.sha }}
+          path: vellum
+          persist-credentials: false
+      - name: Check out coordinated Keystone revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/keystone
+          ref: 3486252cdbaeb2d784756076f43ef6157ed0b7f8
+          path: keystone
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Fetch locked registry sources
+        working-directory: vellum
+        run: cargo fetch --locked
+      - name: Run deterministic bounded qualification offline
+        working-directory: vellum
+        run: make check-fuzz-soak

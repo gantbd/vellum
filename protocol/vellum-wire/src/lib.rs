@@ -4,19 +4,583 @@
 use keystone_codec::{DecodeError, DecodeLimits, Decoder, encode_bytes};
 use std::{fmt, sync::Arc};
 use vellum_protocol::{
-    ClientId, CommandV1, OutcomeV1, RefusalV1, ReplyV1, RequestId, RequestV1, SnapshotV1,
-    VersionWitness,
+    ClientId, CommandV1, DirectoryAdmissionReceiptV1, DocumentRemovalReceiptV1,
+    DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
+    DurableExecuteRequestV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
+    DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
+    DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
+    DurableReplaceAndSaveReceiptV1, DurableSaveReceiptV1, EditPersistenceV1,
+    FileAdmissionReceiptV1, FileAdmissionStatusV1, MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1,
+    MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
+    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
+    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
+    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
+    WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
+    WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
+    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+    WorkspaceRootV1,
 };
+
+/// Canonical restart-stable durable intent encoding. This profile is separate
+/// from `WireRequestV1`: it contains no transport client/request correlation
+/// and no session witness.
+pub fn encode_durable_intent_v1(
+    intent: &DurableEffectIntentV1,
+    limits: WireLimits,
+) -> Result<Vec<u8>, WireEncodeError> {
+    let length = durable_intent_length(intent)?;
+    let mut encoder = Encoder::new(length, limits)?;
+    encoder.u8(VERSION_V1)?;
+    encode_durable_intent_fields(&mut encoder, intent)?;
+    encoder.finish(length)
+}
+
+fn encode_durable_intent_fields(
+    encoder: &mut Encoder,
+    intent: &DurableEffectIntentV1,
+) -> Result<(), WireEncodeError> {
+    match intent {
+        DurableEffectIntentV1::AddFile { locator } => {
+            encoder.u8(1)?;
+            encoder.text(locator)?;
+        }
+        DurableEffectIntentV1::AddDirectory { locator } => {
+            encoder.u8(2)?;
+            encoder.text(locator)?;
+        }
+        DurableEffectIntentV1::RemoveDocument { document } => {
+            encoder.u8(3)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())?;
+        }
+        DurableEffectIntentV1::RemoveRoot { root } => {
+            encoder.u8(4)?;
+            encoder.u64(root.workspace().get())?;
+            encoder.u64(root.get())?;
+        }
+        DurableEffectIntentV1::SaveDocument {
+            document,
+            expected_revision,
+        } => {
+            encoder.u8(5)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())?;
+            encoder.u64(*expected_revision)?;
+        }
+        DurableEffectIntentV1::ReplaceDocumentAndSave {
+            document,
+            expected_revision,
+            start,
+            end,
+            inserted,
+        } => {
+            encoder.u8(6)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())?;
+            encoder.u64(*expected_revision)?;
+            encoder.u64(*start)?;
+            encoder.u64(*end)?;
+            encoder.text(inserted)?;
+        }
+        DurableEffectIntentV1::ExportDocumentCopyExclusive {
+            document,
+            expected_revision,
+            destination,
+        } => {
+            encoder.u8(7)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())?;
+            encoder.u64(*expected_revision)?;
+            encoder.text(destination)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn decode_durable_intent_v1(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<DurableEffectIntentV1, WireDecodeError> {
+    let mut decoder = decoder(input, limits)?;
+    read_version(&mut decoder)?;
+    let intent = decode_durable_intent_fields(&mut decoder)?;
+    finish_decode(&decoder)?;
+    Ok(intent)
+}
+
+fn decode_durable_intent_fields(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableEffectIntentV1, WireDecodeError> {
+    Ok(match read_u8(decoder)? {
+        1 => DurableEffectIntentV1::AddFile {
+            locator: read_text(decoder)?,
+        },
+        2 => DurableEffectIntentV1::AddDirectory {
+            locator: read_text(decoder)?,
+        },
+        3 => DurableEffectIntentV1::RemoveDocument {
+            document: workspace_document_id(workspace_id(read_u64(decoder)?)?, read_u64(decoder)?)?,
+        },
+        4 => DurableEffectIntentV1::RemoveRoot {
+            root: workspace_root_id(workspace_id(read_u64(decoder)?)?, read_u64(decoder)?)?,
+        },
+        5 => DurableEffectIntentV1::SaveDocument {
+            document: workspace_document_id(workspace_id(read_u64(decoder)?)?, read_u64(decoder)?)?,
+            expected_revision: read_u64(decoder)?,
+        },
+        6 => DurableEffectIntentV1::ReplaceDocumentAndSave {
+            document: workspace_document_id(workspace_id(read_u64(decoder)?)?, read_u64(decoder)?)?,
+            expected_revision: read_u64(decoder)?,
+            start: read_u64(decoder)?,
+            end: read_u64(decoder)?,
+            inserted: read_text(decoder)?,
+        },
+        7 => DurableEffectIntentV1::ExportDocumentCopyExclusive {
+            document: workspace_document_id(workspace_id(read_u64(decoder)?)?, read_u64(decoder)?)?,
+            expected_revision: read_u64(decoder)?,
+            destination: read_text(decoder)?,
+        },
+        _ => return Err(WireDecodeError::UnknownTag),
+    })
+}
+
+fn durable_intent_length(intent: &DurableEffectIntentV1) -> Result<usize, WireEncodeError> {
+    match intent {
+        DurableEffectIntentV1::AddFile { locator }
+        | DurableEffectIntentV1::AddDirectory { locator } => {
+            check_wire_text_length(locator.len())?;
+            checked_add(6, locator.len())
+        }
+        DurableEffectIntentV1::RemoveDocument { .. } | DurableEffectIntentV1::RemoveRoot { .. } => {
+            Ok(18)
+        }
+        DurableEffectIntentV1::SaveDocument { .. } => Ok(26),
+        DurableEffectIntentV1::ReplaceDocumentAndSave { inserted, .. } => {
+            check_wire_text_length(inserted.len())?;
+            checked_add(46, inserted.len())
+        }
+        DurableEffectIntentV1::ExportDocumentCopyExclusive { destination, .. } => {
+            check_wire_text_length(destination.len())?;
+            checked_add(30, destination.len())
+        }
+    }
+}
+
+/// Canonical restart-stable durable outcome encoding used by the operation
+/// journal. Unlike an ordinary reply it contains no live session witness.
+pub fn encode_durable_outcome_v1(
+    outcome: &DurableExecuteOutcomeV1,
+    limits: WireLimits,
+) -> Result<Vec<u8>, WireEncodeError> {
+    let fields = validate_durable_outcome(outcome, limits)?;
+    check_field_limit(
+        fields
+            .checked_add(1)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        limits,
+    )?;
+    let length = durable_outcome_length(outcome)?
+        .checked_add(1)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    let mut encoder = Encoder::new(length, limits)?;
+    encoder.u8(VERSION_V1)?;
+    encode_durable_execute_outcome_fields(&mut encoder, outcome)?;
+    encoder.finish(length)
+}
+
+pub fn decode_durable_outcome_v1(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<DurableExecuteOutcomeV1, WireDecodeError> {
+    let mut decoder = decoder(input, limits)?;
+    read_version(&mut decoder)?;
+    let outcome = decode_durable_execute_outcome_fields(&mut decoder)?;
+    finish_decode(&decoder)?;
+    Ok(outcome)
+}
+
+fn encode_operation_ref(
+    encoder: &mut Encoder,
+    operation: DurableOperationRefV1,
+) -> Result<(), WireEncodeError> {
+    let bytes = operation.to_bytes();
+    encoder.u64(u64::from_be_bytes(
+        bytes[..8].try_into().expect("fixed width"),
+    ))?;
+    encoder.u64(u64::from_be_bytes(
+        bytes[8..].try_into().expect("fixed width"),
+    ))
+}
+
+fn decode_operation_ref(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableOperationRefV1, WireDecodeError> {
+    let mut bytes = [0_u8; 16];
+    bytes[..8].copy_from_slice(&read_u64(decoder)?.to_be_bytes());
+    bytes[8..].copy_from_slice(&read_u64(decoder)?.to_be_bytes());
+    DurableOperationRefV1::new(bytes).ok_or(WireDecodeError::InvalidIdentity)
+}
+
+fn encode_durable_execute_outcome_fields(
+    encoder: &mut Encoder,
+    outcome: &DurableExecuteOutcomeV1,
+) -> Result<(), WireEncodeError> {
+    match outcome {
+        DurableExecuteOutcomeV1::Completed(receipt) => {
+            encoder.u8(1)?;
+            encode_durable_receipt(encoder, receipt)
+        }
+        DurableExecuteOutcomeV1::Refused(refusal) => {
+            encoder.u8(2)?;
+            encoder.u8(refusal_tag(*refusal))
+        }
+        DurableExecuteOutcomeV1::Retired => encoder.u8(3),
+    }
+}
+
+fn decode_durable_execute_outcome_fields(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableExecuteOutcomeV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(DurableExecuteOutcomeV1::Completed(decode_durable_receipt(
+            decoder,
+        )?)),
+        2 => Ok(DurableExecuteOutcomeV1::Refused(decode_refusal(read_u8(
+            decoder,
+        )?)?)),
+        3 => Ok(DurableExecuteOutcomeV1::Retired),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn encode_durable_lookup_outcome_fields(
+    encoder: &mut Encoder,
+    outcome: &DurableReceiptLookupOutcomeV1,
+) -> Result<(), WireEncodeError> {
+    match outcome {
+        DurableReceiptLookupOutcomeV1::Complete(outcome) => {
+            encoder.u8(1)?;
+            encode_durable_execute_outcome_fields(encoder, outcome)
+        }
+        DurableReceiptLookupOutcomeV1::RequestConflict => encoder.u8(2),
+        DurableReceiptLookupOutcomeV1::OutcomeUnknown => encoder.u8(3),
+        DurableReceiptLookupOutcomeV1::AbsentOrForeign => encoder.u8(4),
+        DurableReceiptLookupOutcomeV1::Unavailable => encoder.u8(5),
+    }
+}
+
+fn decode_durable_lookup_outcome_fields(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableReceiptLookupOutcomeV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(DurableReceiptLookupOutcomeV1::Complete(
+            decode_durable_execute_outcome_fields(decoder)?,
+        )),
+        2 => Ok(DurableReceiptLookupOutcomeV1::RequestConflict),
+        3 => Ok(DurableReceiptLookupOutcomeV1::OutcomeUnknown),
+        4 => Ok(DurableReceiptLookupOutcomeV1::AbsentOrForeign),
+        5 => Ok(DurableReceiptLookupOutcomeV1::Unavailable),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn encode_durable_receipt(
+    encoder: &mut Encoder,
+    receipt: &DurableEffectReceiptV1,
+) -> Result<(), WireEncodeError> {
+    match receipt {
+        DurableEffectReceiptV1::FileAdmitted(receipt) => {
+            encoder.u8(1)?;
+            encode_file_admission(encoder, receipt)
+        }
+        DurableEffectReceiptV1::DirectoryAdmitted(receipt) => {
+            encoder.u8(2)?;
+            encode_directory_admission(encoder, receipt)
+        }
+        DurableEffectReceiptV1::DocumentRemoved(receipt) => {
+            encoder.u8(3)?;
+            encoder.u64(receipt.document.workspace().get())?;
+            encoder.u64(receipt.document.get())?;
+            encode_membership_removal_status(encoder, receipt.status)
+        }
+        DurableEffectReceiptV1::RootRemoved(receipt) => {
+            encoder.u8(4)?;
+            encoder.u64(receipt.root.workspace().get())?;
+            encoder.u64(receipt.root.get())?;
+            encode_membership_removal_status(encoder, receipt.status)
+        }
+        DurableEffectReceiptV1::DocumentSaved(receipt) => {
+            encoder.u8(5)?;
+            encode_durable_save(encoder, receipt)
+        }
+        DurableEffectReceiptV1::DocumentReplacedAndSaved(receipt) => {
+            encoder.u8(6)?;
+            encode_durable_replace_and_save(encoder, receipt)
+        }
+        DurableEffectReceiptV1::DocumentCopyExportedExclusive(receipt) => {
+            encoder.u8(7)?;
+            encode_durable_export_copy(encoder, receipt)
+        }
+    }
+}
+
+fn decode_durable_receipt(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableEffectReceiptV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(DurableEffectReceiptV1::FileAdmitted(decode_file_admission(
+            decoder,
+        )?)),
+        2 => Ok(DurableEffectReceiptV1::DirectoryAdmitted(
+            decode_directory_admission(decoder)?,
+        )),
+        3 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(DurableEffectReceiptV1::DocumentRemoved(
+                DocumentRemovalReceiptV1 {
+                    document: workspace_document_id(workspace, read_u64(decoder)?)?,
+                    status: decode_membership_removal_status(decoder)?,
+                },
+            ))
+        }
+        4 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(DurableEffectReceiptV1::RootRemoved(RootRemovalReceiptV1 {
+                root: workspace_root_id(workspace, read_u64(decoder)?)?,
+                status: decode_membership_removal_status(decoder)?,
+            }))
+        }
+        5 => Ok(DurableEffectReceiptV1::DocumentSaved(decode_durable_save(
+            decoder,
+        )?)),
+        6 => Ok(DurableEffectReceiptV1::DocumentReplacedAndSaved(
+            decode_durable_replace_and_save(decoder)?,
+        )),
+        7 => Ok(DurableEffectReceiptV1::DocumentCopyExportedExclusive(
+            decode_durable_export_copy(decoder)?,
+        )),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn encode_durable_export_copy(
+    encoder: &mut Encoder,
+    receipt: &DurableExportCopyReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u64(receipt.document().workspace().get())?;
+    encoder.u64(receipt.document().get())?;
+    encoder.u64(receipt.source_revision())?;
+    encoder.u8(match receipt.persistence() {
+        DurableExportCopyPersistenceV1::Durable => 1,
+        DurableExportCopyPersistenceV1::NotDurable => 2,
+        DurableExportCopyPersistenceV1::Unknown => 3,
+        DurableExportCopyPersistenceV1::NotAttempted => 4,
+    })?;
+    encoder.u8(match receipt.failure() {
+        None => 0,
+        Some(DurableExportCopyFailureV1::Conflict) => 1,
+        Some(DurableExportCopyFailureV1::Unsupported) => 2,
+        Some(DurableExportCopyFailureV1::Limit) => 3,
+        Some(DurableExportCopyFailureV1::Capacity) => 4,
+        Some(DurableExportCopyFailureV1::Io) => 5,
+    })?;
+    encoder.u8(u8::from(receipt.cleanup_failed()))
+}
+
+fn decode_durable_export_copy(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableExportCopyReceiptV1, WireDecodeError> {
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    let document = workspace_document_id(workspace, read_u64(decoder)?)?;
+    let source_revision = read_u64(decoder)?;
+    let persistence = match read_u8(decoder)? {
+        1 => DurableExportCopyPersistenceV1::Durable,
+        2 => DurableExportCopyPersistenceV1::NotDurable,
+        3 => DurableExportCopyPersistenceV1::Unknown,
+        4 => DurableExportCopyPersistenceV1::NotAttempted,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let failure = match read_u8(decoder)? {
+        0 => None,
+        1 => Some(DurableExportCopyFailureV1::Conflict),
+        2 => Some(DurableExportCopyFailureV1::Unsupported),
+        3 => Some(DurableExportCopyFailureV1::Limit),
+        4 => Some(DurableExportCopyFailureV1::Capacity),
+        5 => Some(DurableExportCopyFailureV1::Io),
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let cleanup_failed = match read_u8(decoder)? {
+        0 => false,
+        1 => true,
+        _ => return Err(WireDecodeError::Malformed),
+    };
+    DurableExportCopyReceiptV1::try_new(
+        document,
+        source_revision,
+        persistence,
+        failure,
+        cleanup_failed,
+    )
+    .ok_or(WireDecodeError::Malformed)
+}
+
+fn encode_durable_save(
+    encoder: &mut Encoder,
+    receipt: &DurableSaveReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u64(receipt.document.workspace().get())?;
+    encoder.u64(receipt.document.get())?;
+    encoder.u64(receipt.source_revision)?;
+    encode_compact_save_receipt(encoder, receipt.persistence)
+}
+
+fn decode_durable_save(decoder: &mut Decoder<'_>) -> Result<DurableSaveReceiptV1, WireDecodeError> {
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    Ok(DurableSaveReceiptV1 {
+        document: workspace_document_id(workspace, read_u64(decoder)?)?,
+        source_revision: read_u64(decoder)?,
+        persistence: decode_compact_save_receipt(decoder)?,
+    })
+}
+
+fn encode_durable_replace_and_save(
+    encoder: &mut Encoder,
+    receipt: &DurableReplaceAndSaveReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u64(receipt.document.workspace().get())?;
+    encoder.u64(receipt.document.get())?;
+    encoder.u64(receipt.source_revision)?;
+    encoder.text(&receipt.text)?;
+    encode_compact_edit_persistence(encoder, receipt.persistence)
+}
+
+fn decode_durable_replace_and_save(
+    decoder: &mut Decoder<'_>,
+) -> Result<DurableReplaceAndSaveReceiptV1, WireDecodeError> {
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    Ok(DurableReplaceAndSaveReceiptV1 {
+        document: workspace_document_id(workspace, read_u64(decoder)?)?,
+        source_revision: read_u64(decoder)?,
+        text: Arc::from(read_text(decoder)?),
+        persistence: decode_compact_edit_persistence(decoder)?,
+    })
+}
+
+fn encode_compact_save_receipt(
+    encoder: &mut Encoder,
+    receipt: SaveReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u8(match receipt.application {
+        SaveApplicationV1::Unknown => 1,
+        SaveApplicationV1::NotWritten => 2,
+        SaveApplicationV1::Written => 3,
+    })?;
+    encoder.u8(match receipt.synchronization {
+        SaveSynchronizationV1::Unknown => 1,
+        SaveSynchronizationV1::NotRequested => 2,
+        SaveSynchronizationV1::Succeeded => 3,
+        SaveSynchronizationV1::Failed => 4,
+    })?;
+    let flags = u8::from(receipt.no_future_effects)
+        | (u8::from(receipt.quiescent) << 1)
+        | (u8::from(receipt.adapter_failure) << 2)
+        | (u8::from(receipt.cleanup_failed) << 3)
+        | (u8::from(receipt.baseline_published) << 4)
+        | (u8::from(receipt.outcome_unknown) << 5);
+    encoder.u8(flags)
+}
+
+fn decode_compact_save_receipt(
+    decoder: &mut Decoder<'_>,
+) -> Result<SaveReceiptV1, WireDecodeError> {
+    let application = match read_u8(decoder)? {
+        1 => SaveApplicationV1::Unknown,
+        2 => SaveApplicationV1::NotWritten,
+        3 => SaveApplicationV1::Written,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let synchronization = match read_u8(decoder)? {
+        1 => SaveSynchronizationV1::Unknown,
+        2 => SaveSynchronizationV1::NotRequested,
+        3 => SaveSynchronizationV1::Succeeded,
+        4 => SaveSynchronizationV1::Failed,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let flags = read_u8(decoder)?;
+    if flags & !0x3f != 0 {
+        return Err(WireDecodeError::Malformed);
+    }
+    Ok(SaveReceiptV1 {
+        application,
+        synchronization,
+        no_future_effects: flags & 1 != 0,
+        quiescent: flags & 2 != 0,
+        adapter_failure: flags & 4 != 0,
+        cleanup_failed: flags & 8 != 0,
+        baseline_published: flags & 16 != 0,
+        outcome_unknown: flags & 32 != 0,
+    })
+}
+
+fn encode_compact_edit_persistence(
+    encoder: &mut Encoder,
+    persistence: EditPersistenceV1,
+) -> Result<(), WireEncodeError> {
+    match persistence {
+        EditPersistenceV1::Durable(receipt) => {
+            encoder.u8(1)?;
+            encode_compact_save_receipt(encoder, receipt)
+        }
+        EditPersistenceV1::NotDurable(receipt) => {
+            encoder.u8(2)?;
+            encode_compact_save_receipt(encoder, receipt)
+        }
+        EditPersistenceV1::Unknown(receipt) => {
+            encoder.u8(3)?;
+            encode_compact_save_receipt(encoder, receipt)
+        }
+        EditPersistenceV1::NotAttempted(refusal) => {
+            encoder.u8(4)?;
+            encoder.u8(refusal_tag(refusal))
+        }
+    }
+}
+
+fn decode_compact_edit_persistence(
+    decoder: &mut Decoder<'_>,
+) -> Result<EditPersistenceV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(EditPersistenceV1::Durable(decode_compact_save_receipt(
+            decoder,
+        )?)),
+        2 => Ok(EditPersistenceV1::NotDurable(decode_compact_save_receipt(
+            decoder,
+        )?)),
+        3 => Ok(EditPersistenceV1::Unknown(decode_compact_save_receipt(
+            decoder,
+        )?)),
+        4 => Ok(EditPersistenceV1::NotAttempted(decode_refusal(read_u8(
+            decoder,
+        )?)?)),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
 
 const VERSION_V1: u8 = 1;
 const CONNECT_REQUEST: u8 = 0x01;
 const EXECUTE_REQUEST: u8 = 0x02;
 const DISCONNECT_REQUEST: u8 = 0x03;
+const DURABLE_EXECUTE_REQUEST: u8 = 0x04;
+const DURABLE_RECEIPT_LOOKUP_REQUEST: u8 = 0x05;
+const DURABLE_RECEIPT_RETIRE_REQUEST: u8 = 0x06;
 const CONNECTED_REPLY: u8 = 0x81;
 const CONNECT_REFUSED_REPLY: u8 = 0x82;
 const EXECUTED_REPLY: u8 = 0x83;
 const DISCONNECTED_REPLY: u8 = 0x84;
 const DISCONNECT_REFUSED_REPLY: u8 = 0x85;
+const DURABLE_EXECUTED_REPLY: u8 = 0x86;
+const DURABLE_RECEIPT_LOOKED_UP_REPLY: u8 = 0x87;
+const DURABLE_RECEIPT_RETIRED_REPLY: u8 = 0x88;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WireLimits {
@@ -40,6 +604,7 @@ pub enum WireEncodeError {
     Limit,
     Capacity,
     LengthOverflow,
+    IdentityMismatch,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +624,9 @@ pub enum WireRequestV1 {
     Connect,
     Execute(RequestV1),
     Disconnect(ClientId),
+    DurableExecute(DurableExecuteRequestV1),
+    DurableReceiptLookup(DurableReceiptLookupV1),
+    DurableReceiptRetirement(DurableReceiptRetirementV1),
 }
 
 impl fmt::Debug for WireRequestV1 {
@@ -67,6 +635,16 @@ impl fmt::Debug for WireRequestV1 {
             Self::Connect => f.write_str("Connect"),
             Self::Execute(request) => f.debug_tuple("Execute").field(request).finish(),
             Self::Disconnect(client) => f.debug_tuple("Disconnect").field(client).finish(),
+            Self::DurableExecute(request) => {
+                f.debug_tuple("DurableExecute").field(request).finish()
+            }
+            Self::DurableReceiptLookup(lookup) => {
+                f.debug_tuple("DurableReceiptLookup").field(lookup).finish()
+            }
+            Self::DurableReceiptRetirement(retirement) => f
+                .debug_tuple("DurableReceiptRetirement")
+                .field(retirement)
+                .finish(),
         }
     }
 }
@@ -78,6 +656,9 @@ pub enum WireReplyV1 {
     Executed(ReplyV1),
     Disconnected,
     DisconnectRefused(RefusalV1),
+    DurableExecuted(DurableExecuteOutcomeV1),
+    DurableReceiptLookedUp(DurableReceiptLookupOutcomeV1),
+    DurableReceiptRetired(DurableReceiptRetirementOutcomeV1),
 }
 
 impl fmt::Debug for WireReplyV1 {
@@ -92,6 +673,17 @@ impl fmt::Debug for WireReplyV1 {
             Self::DisconnectRefused(refusal) => {
                 f.debug_tuple("DisconnectRefused").field(refusal).finish()
             }
+            Self::DurableExecuted(outcome) => {
+                f.debug_tuple("DurableExecuted").field(outcome).finish()
+            }
+            Self::DurableReceiptLookedUp(outcome) => f
+                .debug_tuple("DurableReceiptLookedUp")
+                .field(outcome)
+                .finish(),
+            Self::DurableReceiptRetired(outcome) => f
+                .debug_tuple("DurableReceiptRetired")
+                .field(outcome)
+                .finish(),
         }
     }
 }
@@ -116,6 +708,27 @@ pub fn encode_request_v1(
             encoder.u8(DISCONNECT_REQUEST)?;
             encoder.u64(client.get())?;
         }
+        WireRequestV1::DurableExecute(request) => {
+            encoder.u8(DURABLE_EXECUTE_REQUEST)?;
+            encode_operation_ref(&mut encoder, request.operation)?;
+            encoder.u64(request.client.get())?;
+            encoder.u64(request.request.get())?;
+            encode_durable_intent_fields(&mut encoder, &request.intent)?;
+        }
+        WireRequestV1::DurableReceiptLookup(lookup) => {
+            encoder.u8(DURABLE_RECEIPT_LOOKUP_REQUEST)?;
+            encode_operation_ref(&mut encoder, lookup.operation)?;
+            encoder.u64(lookup.client.get())?;
+            encoder.u64(lookup.request.get())?;
+            encode_durable_intent_fields(&mut encoder, &lookup.intent)?;
+        }
+        WireRequestV1::DurableReceiptRetirement(retirement) => {
+            encoder.u8(DURABLE_RECEIPT_RETIRE_REQUEST)?;
+            encode_operation_ref(&mut encoder, retirement.operation)?;
+            encoder.u64(retirement.client.get())?;
+            encoder.u64(retirement.request.get())?;
+            encode_durable_intent_fields(&mut encoder, &retirement.intent)?;
+        }
     }
     encoder.finish(length)
 }
@@ -139,6 +752,28 @@ pub fn decode_request_v1(
             })
         }
         DISCONNECT_REQUEST => WireRequestV1::Disconnect(client_id(read_u64(&mut decoder)?)?),
+        DURABLE_EXECUTE_REQUEST => WireRequestV1::DurableExecute(DurableExecuteRequestV1 {
+            operation: decode_operation_ref(&mut decoder)?,
+            client: client_id(read_u64(&mut decoder)?)?,
+            request: request_id(read_u64(&mut decoder)?)?,
+            intent: decode_durable_intent_fields(&mut decoder)?,
+        }),
+        DURABLE_RECEIPT_LOOKUP_REQUEST => {
+            WireRequestV1::DurableReceiptLookup(DurableReceiptLookupV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
+                intent: decode_durable_intent_fields(&mut decoder)?,
+            })
+        }
+        DURABLE_RECEIPT_RETIRE_REQUEST => {
+            WireRequestV1::DurableReceiptRetirement(DurableReceiptRetirementV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
+                intent: decode_durable_intent_fields(&mut decoder)?,
+            })
+        }
         _ => return Err(WireDecodeError::UnknownTag),
     };
     finish_decode(&decoder)?;
@@ -171,6 +806,24 @@ pub fn encode_reply_v1(
             encoder.u8(DISCONNECT_REFUSED_REPLY)?;
             encoder.u8(refusal_tag(*refusal))?;
         }
+        WireReplyV1::DurableExecuted(outcome) => {
+            encoder.u8(DURABLE_EXECUTED_REPLY)?;
+            encode_durable_execute_outcome_fields(&mut encoder, outcome)?;
+        }
+        WireReplyV1::DurableReceiptLookedUp(outcome) => {
+            encoder.u8(DURABLE_RECEIPT_LOOKED_UP_REPLY)?;
+            encode_durable_lookup_outcome_fields(&mut encoder, outcome)?;
+        }
+        WireReplyV1::DurableReceiptRetired(outcome) => {
+            encoder.u8(DURABLE_RECEIPT_RETIRED_REPLY)?;
+            encoder.u8(match outcome {
+                DurableReceiptRetirementOutcomeV1::Retired => 1,
+                DurableReceiptRetirementOutcomeV1::AbsentOrForeign => 2,
+                DurableReceiptRetirementOutcomeV1::RequestConflict => 3,
+                DurableReceiptRetirementOutcomeV1::OutcomeUnknown => 4,
+                DurableReceiptRetirementOutcomeV1::Unavailable => 5,
+            })?;
+        }
     }
     encoder.finish(length)
 }
@@ -183,10 +836,26 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
         CONNECT_REFUSED_REPLY => {
             WireReplyV1::ConnectRefused(decode_refusal(read_u8(&mut decoder)?)?)
         }
-        EXECUTED_REPLY => WireReplyV1::Executed(decode_protocol_reply(&mut decoder)?),
+        EXECUTED_REPLY => WireReplyV1::Executed(decode_protocol_reply(&mut decoder, limits)?),
         DISCONNECTED_REPLY => WireReplyV1::Disconnected,
         DISCONNECT_REFUSED_REPLY => {
             WireReplyV1::DisconnectRefused(decode_refusal(read_u8(&mut decoder)?)?)
+        }
+        DURABLE_EXECUTED_REPLY => {
+            WireReplyV1::DurableExecuted(decode_durable_execute_outcome_fields(&mut decoder)?)
+        }
+        DURABLE_RECEIPT_LOOKED_UP_REPLY => {
+            WireReplyV1::DurableReceiptLookedUp(decode_durable_lookup_outcome_fields(&mut decoder)?)
+        }
+        DURABLE_RECEIPT_RETIRED_REPLY => {
+            WireReplyV1::DurableReceiptRetired(match read_u8(&mut decoder)? {
+                1 => DurableReceiptRetirementOutcomeV1::Retired,
+                2 => DurableReceiptRetirementOutcomeV1::AbsentOrForeign,
+                3 => DurableReceiptRetirementOutcomeV1::RequestConflict,
+                4 => DurableReceiptRetirementOutcomeV1::OutcomeUnknown,
+                5 => DurableReceiptRetirementOutcomeV1::Unavailable,
+                _ => return Err(WireDecodeError::UnknownTag),
+            })
         }
         _ => return Err(WireDecodeError::UnknownTag),
     };
@@ -196,6 +865,71 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
 
 fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), WireEncodeError> {
     match command {
+        CommandV1::WorkspaceInventory => encoder.u8(3),
+        CommandV1::WorkspaceChanges { after, page_size } => {
+            encoder.u8(13)?;
+            match after {
+                None => encoder.u8(0)?,
+                Some(cursor) => {
+                    encoder.u8(1)?;
+                    encoder.u64(cursor.workspace().get())?;
+                    encoder.u64(cursor.epoch())?;
+                    encoder.u64(cursor.revision())?;
+                }
+            }
+            encoder.u64(u64::from(*page_size))
+        }
+        CommandV1::WorkspaceInventoryPage { cursor, page_size } => {
+            encoder.u8(10)?;
+            encoder.u8(u8::from(cursor.is_some()))?;
+            if let Some(cursor) = cursor {
+                encoder.u64(cursor.workspace().get())?;
+                encoder.u64(cursor.generation())?;
+                encoder.u64(cursor.offset())?;
+            }
+            encoder.u64(u64::from(*page_size))
+        }
+        CommandV1::OpenView => encoder.u8(8),
+        CommandV1::CloseView => encoder.u8(9),
+        CommandV1::AddFile { locator } => {
+            encoder.u8(4)?;
+            encoder.text(locator)
+        }
+        CommandV1::AddDirectory { locator } => {
+            encoder.u8(5)?;
+            encoder.text(locator)
+        }
+        CommandV1::RemoveDocument { document } => {
+            encoder.u8(11)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())
+        }
+        CommandV1::RemoveRoot { root } => {
+            encoder.u8(12)?;
+            encoder.u64(root.workspace().get())?;
+            encoder.u64(root.get())
+        }
+        CommandV1::SelectDocument { document } => {
+            encoder.u8(6)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())
+        }
+        CommandV1::Save { expected } => {
+            encoder.u8(7)?;
+            encoder.u64(expected.get())
+        }
+        CommandV1::ReplaceAndSave {
+            expected,
+            start,
+            end,
+            inserted,
+        } => {
+            encoder.u8(14)?;
+            encoder.u64(expected.get())?;
+            encoder.u64(*start)?;
+            encoder.u64(*end)?;
+            encoder.text(inserted)
+        }
         CommandV1::Snapshot => encoder.u8(1),
         CommandV1::Replace {
             expected,
@@ -214,6 +948,79 @@ fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), Wire
 
 fn decode_command(decoder: &mut Decoder<'_>) -> Result<CommandV1, WireDecodeError> {
     match read_u8(decoder)? {
+        3 => Ok(CommandV1::WorkspaceInventory),
+        13 => {
+            let after = match read_u8(decoder)? {
+                0 => None,
+                1 => Some(
+                    WorkspaceChangeCursorV1::new(
+                        workspace_id(read_u64(decoder)?)?,
+                        read_u64(decoder)?,
+                        read_u64(decoder)?,
+                    )
+                    .ok_or(WireDecodeError::InvalidIdentity)?,
+                ),
+                _ => return Err(WireDecodeError::Malformed),
+            };
+            let page_size =
+                u16::try_from(read_u64(decoder)?).map_err(|_| WireDecodeError::Malformed)?;
+            Ok(CommandV1::WorkspaceChanges { after, page_size })
+        }
+        10 => {
+            let cursor = match read_u8(decoder)? {
+                0 => None,
+                1 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    Some(
+                        WorkspaceInventoryCursorV1::new(
+                            workspace,
+                            read_u64(decoder)?,
+                            read_u64(decoder)?,
+                        )
+                        .ok_or(WireDecodeError::InvalidIdentity)?,
+                    )
+                }
+                _ => return Err(WireDecodeError::Malformed),
+            };
+            let page_size =
+                u16::try_from(read_u64(decoder)?).map_err(|_| WireDecodeError::Malformed)?;
+            Ok(CommandV1::WorkspaceInventoryPage { cursor, page_size })
+        }
+        8 => Ok(CommandV1::OpenView),
+        9 => Ok(CommandV1::CloseView),
+        4 => Ok(CommandV1::AddFile {
+            locator: read_text(decoder)?,
+        }),
+        5 => Ok(CommandV1::AddDirectory {
+            locator: read_text(decoder)?,
+        }),
+        11 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(CommandV1::RemoveDocument {
+                document: workspace_document_id(workspace, read_u64(decoder)?)?,
+            })
+        }
+        12 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(CommandV1::RemoveRoot {
+                root: workspace_root_id(workspace, read_u64(decoder)?)?,
+            })
+        }
+        6 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(CommandV1::SelectDocument {
+                document: workspace_document_id(workspace, read_u64(decoder)?)?,
+            })
+        }
+        7 => Ok(CommandV1::Save {
+            expected: witness(read_u64(decoder)?)?,
+        }),
+        14 => Ok(CommandV1::ReplaceAndSave {
+            expected: witness(read_u64(decoder)?)?,
+            start: read_u64(decoder)?,
+            end: read_u64(decoder)?,
+            inserted: read_text(decoder)?,
+        }),
         1 => Ok(CommandV1::Snapshot),
         2 => Ok(CommandV1::Replace {
             expected: witness(read_u64(decoder)?)?,
@@ -230,6 +1037,76 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
         ReplyV1::Accepted(outcome) => {
             encoder.u8(1)?;
             match outcome {
+                OutcomeV1::WorkspaceInventory(inventory) => {
+                    encoder.u8(3)?;
+                    encode_inventory(encoder, inventory)
+                }
+                OutcomeV1::WorkspaceChanges(changes) => {
+                    encoder.u8(13)?;
+                    encode_workspace_changes(encoder, changes)
+                }
+                OutcomeV1::WorkspaceInventoryPage(page) => {
+                    encoder.u8(10)?;
+                    encode_inventory_page(encoder, page)
+                }
+                OutcomeV1::ViewOpened(receipt) => {
+                    encoder.u8(8)?;
+                    encoder.u8(match receipt.status {
+                        ViewOpenStatusV1::Opened => 1,
+                        ViewOpenStatusV1::AlreadyOpen => 2,
+                    })?;
+                    encoder.u64(receipt.document.workspace().get())?;
+                    encoder.u64(receipt.document.get())
+                }
+                OutcomeV1::ViewClosed(status) => {
+                    encoder.u8(9)?;
+                    encoder.u8(match status {
+                        ViewCloseStatusV1::Closed => 1,
+                        ViewCloseStatusV1::AlreadyClosed => 2,
+                    })
+                }
+                OutcomeV1::FileAdded(inventory) => {
+                    encoder.u8(4)?;
+                    encode_inventory(encoder, inventory)
+                }
+                OutcomeV1::DirectoryAdded(inventory) => {
+                    encoder.u8(5)?;
+                    encode_inventory(encoder, inventory)
+                }
+                OutcomeV1::FileAdmitted(receipt) => {
+                    encoder.u8(15)?;
+                    encode_file_admission(encoder, receipt)
+                }
+                OutcomeV1::DirectoryAdmitted(receipt) => {
+                    encoder.u8(16)?;
+                    encode_directory_admission(encoder, receipt)
+                }
+                OutcomeV1::DocumentRemoved(receipt) => {
+                    encoder.u8(11)?;
+                    encoder.u64(receipt.document.workspace().get())?;
+                    encoder.u64(receipt.document.get())?;
+                    encode_membership_removal_status(encoder, receipt.status)
+                }
+                OutcomeV1::RootRemoved(receipt) => {
+                    encoder.u8(12)?;
+                    encoder.u64(receipt.root.workspace().get())?;
+                    encoder.u64(receipt.root.get())?;
+                    encode_membership_removal_status(encoder, receipt.status)
+                }
+                OutcomeV1::DocumentSelected(document) => {
+                    encoder.u8(6)?;
+                    encoder.u64(document.workspace().get())?;
+                    encoder.u64(document.get())
+                }
+                OutcomeV1::Saved(receipt) => {
+                    encoder.u8(7)?;
+                    encode_save_receipt(encoder, receipt)
+                }
+                OutcomeV1::ReplacedAndSaved(receipt) => {
+                    encoder.u8(14)?;
+                    encode_snapshot(encoder, &receipt.snapshot)?;
+                    encode_edit_persistence(encoder, receipt.persistence)
+                }
                 OutcomeV1::Snapshot(snapshot) => {
                     encoder.u8(1)?;
                     encode_snapshot(encoder, snapshot)
@@ -247,10 +1124,63 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
     }
 }
 
-fn decode_protocol_reply(decoder: &mut Decoder<'_>) -> Result<ReplyV1, WireDecodeError> {
+fn decode_protocol_reply(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<ReplyV1, WireDecodeError> {
     match read_u8(decoder)? {
         1 => {
             let outcome = match read_u8(decoder)? {
+                3 => OutcomeV1::WorkspaceInventory(decode_inventory(decoder, limits)?),
+                13 => OutcomeV1::WorkspaceChanges(decode_workspace_changes(decoder, limits)?),
+                10 => OutcomeV1::WorkspaceInventoryPage(decode_inventory_page(decoder, limits)?),
+                8 => {
+                    let status = match read_u8(decoder)? {
+                        1 => ViewOpenStatusV1::Opened,
+                        2 => ViewOpenStatusV1::AlreadyOpen,
+                        _ => return Err(WireDecodeError::Malformed),
+                    };
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    OutcomeV1::ViewOpened(ViewOpenReceiptV1 {
+                        document: workspace_document_id(workspace, read_u64(decoder)?)?,
+                        status,
+                    })
+                }
+                9 => OutcomeV1::ViewClosed(match read_u8(decoder)? {
+                    1 => ViewCloseStatusV1::Closed,
+                    2 => ViewCloseStatusV1::AlreadyClosed,
+                    _ => return Err(WireDecodeError::Malformed),
+                }),
+                4 => OutcomeV1::FileAdded(decode_inventory(decoder, limits)?),
+                5 => OutcomeV1::DirectoryAdded(decode_inventory(decoder, limits)?),
+                15 => OutcomeV1::FileAdmitted(decode_file_admission(decoder)?),
+                16 => OutcomeV1::DirectoryAdmitted(decode_directory_admission(decoder)?),
+                11 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    OutcomeV1::DocumentRemoved(DocumentRemovalReceiptV1 {
+                        document: workspace_document_id(workspace, read_u64(decoder)?)?,
+                        status: decode_membership_removal_status(decoder)?,
+                    })
+                }
+                12 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    OutcomeV1::RootRemoved(RootRemovalReceiptV1 {
+                        root: workspace_root_id(workspace, read_u64(decoder)?)?,
+                        status: decode_membership_removal_status(decoder)?,
+                    })
+                }
+                6 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    OutcomeV1::DocumentSelected(workspace_document_id(
+                        workspace,
+                        read_u64(decoder)?,
+                    )?)
+                }
+                7 => OutcomeV1::Saved(decode_save_receipt(decoder)?),
+                14 => OutcomeV1::ReplacedAndSaved(ReplaceAndSaveReceiptV1 {
+                    snapshot: decode_snapshot(decoder)?,
+                    persistence: decode_edit_persistence(decoder)?,
+                }),
                 1 => OutcomeV1::Snapshot(decode_snapshot(decoder)?),
                 2 => OutcomeV1::Replaced(decode_snapshot(decoder)?),
                 _ => return Err(WireDecodeError::UnknownTag),
@@ -260,6 +1190,301 @@ fn decode_protocol_reply(decoder: &mut Decoder<'_>) -> Result<ReplyV1, WireDecod
         2 => Ok(ReplyV1::Refused(decode_refusal(read_u8(decoder)?)?)),
         _ => Err(WireDecodeError::UnknownTag),
     }
+}
+
+fn encode_inventory(
+    encoder: &mut Encoder,
+    inventory: &WorkspaceInventoryV1,
+) -> Result<(), WireEncodeError> {
+    encode_inventory_parts(
+        encoder,
+        inventory.workspace,
+        &inventory.documents,
+        &inventory.roots,
+    )
+}
+
+fn encode_workspace_changes(
+    encoder: &mut Encoder,
+    changes: &WorkspaceChangesV1,
+) -> Result<(), WireEncodeError> {
+    match changes {
+        WorkspaceChangesV1::Page(page) => {
+            encoder.u8(1)?;
+            encoder.u64(page.workspace.get())?;
+            encoder.u64(page.observed_head)?;
+            encoder.u64(
+                u64::try_from(page.changes.len()).map_err(|_| WireEncodeError::LengthOverflow)?,
+            )?;
+            for change in &page.changes {
+                encoder.u64(change.revision())?;
+                encode_workspace_change_kind(encoder, change.kind)?;
+            }
+            encoder.u64(page.next.workspace().get())?;
+            encoder.u64(page.next.epoch())?;
+            encoder.u64(page.next.revision())
+        }
+        WorkspaceChangesV1::Gap(gap) => {
+            encoder.u8(2)?;
+            encoder.u64(gap.workspace.get())?;
+            encoder.u64(gap.epoch())?;
+            encoder.u64(gap.requested_after)?;
+            encoder.u64(gap.oldest_available)?;
+            encoder.u64(gap.observed_head)
+        }
+    }
+}
+
+fn encode_workspace_change_kind(
+    encoder: &mut Encoder,
+    kind: WorkspaceChangeKindV1,
+) -> Result<(), WireEncodeError> {
+    let (tag, workspace, local, source_revision) = match kind {
+        WorkspaceChangeKindV1::DocumentAdded(id) => (1, id.workspace(), id.get(), None),
+        WorkspaceChangeKindV1::DocumentRemoved(id) => (2, id.workspace(), id.get(), None),
+        WorkspaceChangeKindV1::RootAdded(id) => (3, id.workspace(), id.get(), None),
+        WorkspaceChangeKindV1::RootRemoved(id) => (4, id.workspace(), id.get(), None),
+        WorkspaceChangeKindV1::DocumentChanged {
+            document,
+            source_revision,
+        } => (
+            5,
+            document.workspace(),
+            document.get(),
+            Some(source_revision),
+        ),
+    };
+    encoder.u8(tag)?;
+    encoder.u64(workspace.get())?;
+    encoder.u64(local)?;
+    if let Some(revision) = source_revision {
+        encoder.u64(revision)?;
+    }
+    Ok(())
+}
+
+fn decode_workspace_changes(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<WorkspaceChangesV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            let observed_head = read_u64(decoder)?;
+            let count = bounded_count(
+                read_u64(decoder)?,
+                usize::from(MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1),
+            )?;
+            let mut changes = Vec::new();
+            changes
+                .try_reserve_exact(count)
+                .map_err(|_| WireDecodeError::Capacity)?;
+            for _ in 0..count {
+                let revision = read_u64(decoder)?;
+                let kind = decode_workspace_change_kind(decoder)?;
+                let change = WorkspaceChangeV1::new(revision, kind)
+                    .ok_or(WireDecodeError::InvalidIdentity)?;
+                if change.revision() > observed_head {
+                    return Err(WireDecodeError::Malformed);
+                }
+                changes.push(change);
+            }
+            let next_workspace = workspace_id(read_u64(decoder)?)?;
+            let next = WorkspaceChangeCursorV1::new(
+                next_workspace,
+                read_u64(decoder)?,
+                read_u64(decoder)?,
+            )
+            .ok_or(WireDecodeError::InvalidIdentity)?;
+            if next_workspace != workspace
+                || changes
+                    .last()
+                    .is_some_and(|change| change.revision() != next.revision())
+            {
+                return Err(WireDecodeError::Malformed);
+            }
+            if changes.is_empty() && next.revision() > observed_head {
+                return Err(WireDecodeError::Malformed);
+            }
+            let _ = limits;
+            Ok(WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+                workspace,
+                observed_head,
+                changes,
+                next,
+            }))
+        }
+        2 => {
+            let gap = WorkspaceChangeGapV1::new(
+                workspace_id(read_u64(decoder)?)?,
+                read_u64(decoder)?,
+                read_u64(decoder)?,
+                read_u64(decoder)?,
+                read_u64(decoder)?,
+            )
+            .ok_or(WireDecodeError::InvalidIdentity)?;
+            if gap.oldest_available == 0
+                || gap.requested_after.saturating_add(1) >= gap.oldest_available
+                || gap.oldest_available > gap.observed_head
+            {
+                return Err(WireDecodeError::Malformed);
+            }
+            Ok(WorkspaceChangesV1::Gap(gap))
+        }
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn decode_workspace_change_kind(
+    decoder: &mut Decoder<'_>,
+) -> Result<WorkspaceChangeKindV1, WireDecodeError> {
+    let tag = read_u8(decoder)?;
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    let local = read_u64(decoder)?;
+    match tag {
+        1 => Ok(WorkspaceChangeKindV1::DocumentAdded(workspace_document_id(
+            workspace, local,
+        )?)),
+        2 => Ok(WorkspaceChangeKindV1::DocumentRemoved(
+            workspace_document_id(workspace, local)?,
+        )),
+        3 => Ok(WorkspaceChangeKindV1::RootAdded(workspace_root_id(
+            workspace, local,
+        )?)),
+        4 => Ok(WorkspaceChangeKindV1::RootRemoved(workspace_root_id(
+            workspace, local,
+        )?)),
+        5 => Ok(WorkspaceChangeKindV1::DocumentChanged {
+            document: workspace_document_id(workspace, local)?,
+            source_revision: read_u64(decoder)?,
+        }),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn encode_inventory_parts(
+    encoder: &mut Encoder,
+    workspace: WorkspaceIdV1,
+    documents: &[WorkspaceDocumentIdV1],
+    roots: &[WorkspaceRootV1],
+) -> Result<(), WireEncodeError> {
+    encoder.u64(workspace.get())?;
+    encoder.u64(u64::try_from(documents.len()).map_err(|_| WireEncodeError::LengthOverflow)?)?;
+    for document in documents {
+        encoder.u64(document.get())?;
+    }
+    encoder.u64(u64::try_from(roots.len()).map_err(|_| WireEncodeError::LengthOverflow)?)?;
+    for root in roots {
+        encoder.u64(root.id.get())?;
+        encoder.u8(match root.kind {
+            WorkspaceRootKindV1::File => 1,
+            WorkspaceRootKindV1::Directory => 2,
+        })?;
+    }
+    Ok(())
+}
+
+fn decode_inventory(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<WorkspaceInventoryV1, WireDecodeError> {
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    let document_count = bounded_count(read_u64(decoder)?, limits.max_fields)?;
+    let mut documents = Vec::new();
+    documents
+        .try_reserve_exact(document_count)
+        .map_err(|_| WireDecodeError::Capacity)?;
+    for _ in 0..document_count {
+        documents.push(workspace_document_id(workspace, read_u64(decoder)?)?);
+    }
+    let root_count = bounded_count(read_u64(decoder)?, limits.max_fields)?;
+    if document_count
+        .checked_add(root_count.checked_mul(2).ok_or(WireDecodeError::Limit)?)
+        .filter(|fields| {
+            limits
+                .max_fields
+                .checked_sub(7)
+                .is_some_and(|available| *fields <= available)
+        })
+        .is_none()
+    {
+        return Err(WireDecodeError::Limit);
+    }
+    let mut roots = Vec::new();
+    roots
+        .try_reserve_exact(root_count)
+        .map_err(|_| WireDecodeError::Capacity)?;
+    for _ in 0..root_count {
+        let id = workspace_root_id(workspace, read_u64(decoder)?)?;
+        let kind = match read_u8(decoder)? {
+            1 => WorkspaceRootKindV1::File,
+            2 => WorkspaceRootKindV1::Directory,
+            _ => return Err(WireDecodeError::UnknownTag),
+        };
+        roots.push(WorkspaceRootV1 { id, kind });
+    }
+    Ok(WorkspaceInventoryV1 {
+        workspace,
+        documents,
+        roots,
+    })
+}
+
+fn encode_inventory_page(
+    encoder: &mut Encoder,
+    page: &WorkspaceInventoryPageV1,
+) -> Result<(), WireEncodeError> {
+    let entries = page
+        .documents
+        .len()
+        .checked_add(page.roots.len())
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    if entries > usize::from(MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1) {
+        return Err(WireEncodeError::Limit);
+    }
+    encode_inventory_parts(encoder, page.workspace, &page.documents, &page.roots)?;
+    encoder.u8(u8::from(page.next.is_some()))?;
+    if let Some(cursor) = page.next {
+        encoder.u64(cursor.workspace().get())?;
+        encoder.u64(cursor.generation())?;
+        encoder.u64(cursor.offset())?;
+    }
+    Ok(())
+}
+
+fn decode_inventory_page(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<WorkspaceInventoryPageV1, WireDecodeError> {
+    let inventory = decode_inventory(decoder, limits)?;
+    let entries = inventory
+        .documents
+        .len()
+        .checked_add(inventory.roots.len())
+        .ok_or(WireDecodeError::Limit)?;
+    if entries > usize::from(MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1) {
+        return Err(WireDecodeError::Limit);
+    }
+    let next = match read_u8(decoder)? {
+        0 => None,
+        1 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Some(
+                WorkspaceInventoryCursorV1::new(workspace, read_u64(decoder)?, read_u64(decoder)?)
+                    .ok_or(WireDecodeError::InvalidIdentity)?,
+            )
+        }
+        _ => return Err(WireDecodeError::Malformed),
+    };
+    if next.is_some_and(|cursor| cursor.workspace() != inventory.workspace) {
+        return Err(WireDecodeError::InvalidIdentity);
+    }
+    Ok(WorkspaceInventoryPageV1 {
+        workspace: inventory.workspace,
+        documents: inventory.documents,
+        roots: inventory.roots,
+        next,
+    })
 }
 
 fn encode_snapshot(encoder: &mut Encoder, snapshot: &SnapshotV1) -> Result<(), WireEncodeError> {
@@ -276,13 +1501,253 @@ fn decode_snapshot(decoder: &mut Decoder<'_>) -> Result<SnapshotV1, WireDecodeEr
     })
 }
 
+fn encode_membership_removal_status(
+    encoder: &mut Encoder,
+    status: MembershipRemovalStatusV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u8(match status {
+        MembershipRemovalStatusV1::Removed => 1,
+        MembershipRemovalStatusV1::AlreadyRemoved => 2,
+    })
+}
+
+fn decode_membership_removal_status(
+    decoder: &mut Decoder<'_>,
+) -> Result<MembershipRemovalStatusV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(MembershipRemovalStatusV1::Removed),
+        2 => Ok(MembershipRemovalStatusV1::AlreadyRemoved),
+        _ => Err(WireDecodeError::Malformed),
+    }
+}
+
+fn encode_file_admission(
+    encoder: &mut Encoder,
+    receipt: &FileAdmissionReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u8(match receipt.status {
+        FileAdmissionStatusV1::Added => 1,
+        FileAdmissionStatusV1::AlreadyPresent => 2,
+    })?;
+    encoder.u64(receipt.document.workspace().get())?;
+    encoder.u64(receipt.document.get())?;
+    encoder.u8(u8::from(receipt.root.is_some()))?;
+    if let Some(root) = receipt.root {
+        encoder.u64(root.get())?;
+    }
+    Ok(())
+}
+
+fn decode_file_admission(
+    decoder: &mut Decoder<'_>,
+) -> Result<FileAdmissionReceiptV1, WireDecodeError> {
+    let status = match read_u8(decoder)? {
+        1 => FileAdmissionStatusV1::Added,
+        2 => FileAdmissionStatusV1::AlreadyPresent,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    let document = workspace_document_id(workspace, read_u64(decoder)?)?;
+    let root = match read_u8(decoder)? {
+        0 => None,
+        1 => Some(workspace_root_id(workspace, read_u64(decoder)?)?),
+        _ => return Err(WireDecodeError::Malformed),
+    };
+    if matches!(status, FileAdmissionStatusV1::Added) != root.is_some() {
+        return Err(WireDecodeError::Malformed);
+    }
+    Ok(FileAdmissionReceiptV1 {
+        document,
+        root,
+        status,
+    })
+}
+
+fn encode_directory_admission(
+    encoder: &mut Encoder,
+    receipt: &DirectoryAdmissionReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u64(receipt.root.workspace().get())?;
+    encoder.u64(receipt.root.get())?;
+    encoder.u64(receipt.added)?;
+    encoder.u64(receipt.joined)?;
+    let byte_length = receipt
+        .added_documents
+        .len()
+        .checked_mul(8)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    let mut packed = Vec::new();
+    packed
+        .try_reserve_exact(byte_length)
+        .map_err(|_| WireEncodeError::Capacity)?;
+    for document in &receipt.added_documents {
+        packed.extend_from_slice(&document.get().to_be_bytes());
+    }
+    encoder.bytes(&packed)
+}
+
+fn decode_directory_admission(
+    decoder: &mut Decoder<'_>,
+) -> Result<DirectoryAdmissionReceiptV1, WireDecodeError> {
+    let workspace = workspace_id(read_u64(decoder)?)?;
+    let root = workspace_root_id(workspace, read_u64(decoder)?)?;
+    let added = read_u64(decoder)?;
+    let joined = read_u64(decoder)?;
+    let packed = decoder.read_bytes().map_err(map_decode)?;
+    let count = usize::try_from(added).map_err(|_| WireDecodeError::Limit)?;
+    if count.checked_mul(8) != Some(packed.len()) {
+        return Err(WireDecodeError::Malformed);
+    }
+    let mut added_documents = Vec::new();
+    added_documents
+        .try_reserve_exact(count)
+        .map_err(|_| WireDecodeError::Capacity)?;
+    for bytes in packed.chunks_exact(8) {
+        let local = u64::from_be_bytes(bytes.try_into().map_err(|_| WireDecodeError::Malformed)?);
+        added_documents.push(workspace_document_id(workspace, local)?);
+    }
+    if added_documents
+        .iter()
+        .enumerate()
+        .any(|(index, id)| added_documents[..index].contains(id))
+    {
+        return Err(WireDecodeError::Malformed);
+    }
+    Ok(DirectoryAdmissionReceiptV1 {
+        root,
+        added,
+        joined,
+        added_documents,
+    })
+}
+
+fn encode_save_receipt(
+    encoder: &mut Encoder,
+    receipt: &SaveReceiptV1,
+) -> Result<(), WireEncodeError> {
+    encoder.u8(match receipt.application {
+        SaveApplicationV1::Unknown => 1,
+        SaveApplicationV1::NotWritten => 2,
+        SaveApplicationV1::Written => 3,
+    })?;
+    encoder.u8(match receipt.synchronization {
+        SaveSynchronizationV1::Unknown => 1,
+        SaveSynchronizationV1::NotRequested => 2,
+        SaveSynchronizationV1::Succeeded => 3,
+        SaveSynchronizationV1::Failed => 4,
+    })?;
+    for value in [
+        receipt.no_future_effects,
+        receipt.quiescent,
+        receipt.adapter_failure,
+        receipt.cleanup_failed,
+        receipt.baseline_published,
+        receipt.outcome_unknown,
+    ] {
+        encoder.u8(u8::from(value))?;
+    }
+    Ok(())
+}
+
+fn decode_save_receipt(decoder: &mut Decoder<'_>) -> Result<SaveReceiptV1, WireDecodeError> {
+    let application = match read_u8(decoder)? {
+        1 => SaveApplicationV1::Unknown,
+        2 => SaveApplicationV1::NotWritten,
+        3 => SaveApplicationV1::Written,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let synchronization = match read_u8(decoder)? {
+        1 => SaveSynchronizationV1::Unknown,
+        2 => SaveSynchronizationV1::NotRequested,
+        3 => SaveSynchronizationV1::Succeeded,
+        4 => SaveSynchronizationV1::Failed,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let mut flag = || match read_u8(decoder)? {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(WireDecodeError::Malformed),
+    };
+    Ok(SaveReceiptV1 {
+        application,
+        synchronization,
+        no_future_effects: flag()?,
+        quiescent: flag()?,
+        adapter_failure: flag()?,
+        cleanup_failed: flag()?,
+        baseline_published: flag()?,
+        outcome_unknown: flag()?,
+    })
+}
+
+fn encode_edit_persistence(
+    encoder: &mut Encoder,
+    persistence: EditPersistenceV1,
+) -> Result<(), WireEncodeError> {
+    match persistence {
+        EditPersistenceV1::Durable(receipt) => {
+            encoder.u8(1)?;
+            encode_save_receipt(encoder, &receipt)
+        }
+        EditPersistenceV1::NotDurable(receipt) => {
+            encoder.u8(2)?;
+            encode_save_receipt(encoder, &receipt)
+        }
+        EditPersistenceV1::Unknown(receipt) => {
+            encoder.u8(3)?;
+            encode_save_receipt(encoder, &receipt)
+        }
+        EditPersistenceV1::NotAttempted(refusal) => {
+            encoder.u8(4)?;
+            encoder.u8(refusal_tag(refusal))
+        }
+    }
+}
+
+fn decode_edit_persistence(
+    decoder: &mut Decoder<'_>,
+) -> Result<EditPersistenceV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(EditPersistenceV1::Durable(decode_save_receipt(decoder)?)),
+        2 => Ok(EditPersistenceV1::NotDurable(decode_save_receipt(decoder)?)),
+        3 => Ok(EditPersistenceV1::Unknown(decode_save_receipt(decoder)?)),
+        4 => Ok(EditPersistenceV1::NotAttempted(decode_refusal(read_u8(
+            decoder,
+        )?)?)),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
 fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
     match request {
         WireRequestV1::Connect => Ok(2),
         WireRequestV1::Disconnect(_) => Ok(10),
+        WireRequestV1::DurableExecute(request) => durable_intent_length(&request.intent)?
+            .checked_add(33)
+            .ok_or(WireEncodeError::LengthOverflow),
+        WireRequestV1::DurableReceiptLookup(lookup) => durable_intent_length(&lookup.intent)?
+            .checked_add(33)
+            .ok_or(WireEncodeError::LengthOverflow),
+        WireRequestV1::DurableReceiptRetirement(retirement) => {
+            durable_intent_length(&retirement.intent)?
+                .checked_add(33)
+                .ok_or(WireEncodeError::LengthOverflow)
+        }
         WireRequestV1::Execute(request) => match &request.command {
+            CommandV1::WorkspaceInventory | CommandV1::OpenView | CommandV1::CloseView => Ok(19),
+            CommandV1::WorkspaceChanges { after, .. } => Ok(if after.is_some() { 52 } else { 28 }),
+            CommandV1::WorkspaceInventoryPage { cursor, .. } => {
+                Ok(if cursor.is_some() { 52 } else { 28 })
+            }
+            CommandV1::AddFile { locator } | CommandV1::AddDirectory { locator } => {
+                check_wire_text_length(locator.len())?;
+                checked_add(23, locator.len())
+            }
+            CommandV1::RemoveDocument { .. } | CommandV1::RemoveRoot { .. } => Ok(35),
+            CommandV1::SelectDocument { .. } => Ok(35),
+            CommandV1::Save { .. } => Ok(27),
             CommandV1::Snapshot => Ok(19),
-            CommandV1::Replace { inserted, .. } => {
+            CommandV1::Replace { inserted, .. } | CommandV1::ReplaceAndSave { inserted, .. } => {
                 check_wire_text_length(inserted.len())?;
                 checked_add(47, inserted.len())
             }
@@ -297,13 +1762,47 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
         WireReplyV1::Executed(ReplyV1::Refused(_)) => Ok(4),
         WireReplyV1::Disconnected => Ok(2),
         WireReplyV1::DisconnectRefused(_) => Ok(3),
-        WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => {
-            let text = match outcome {
-                OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => &snapshot.text,
-            };
-            check_wire_text_length(text.len())?;
-            checked_add(24, text.len())
-        }
+        WireReplyV1::DurableExecuted(outcome) => durable_outcome_length(outcome)?
+            .checked_add(2)
+            .ok_or(WireEncodeError::LengthOverflow),
+        WireReplyV1::DurableReceiptLookedUp(outcome) => durable_lookup_outcome_length(outcome)?
+            .checked_add(2)
+            .ok_or(WireEncodeError::LengthOverflow),
+        WireReplyV1::DurableReceiptRetired(_) => Ok(3),
+        WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
+            OutcomeV1::WorkspaceInventory(inventory)
+            | OutcomeV1::FileAdded(inventory)
+            | OutcomeV1::DirectoryAdded(inventory) => inventory_length(inventory),
+            OutcomeV1::FileAdmitted(receipt) => Ok(if receipt.root.is_some() { 30 } else { 22 }),
+            OutcomeV1::DirectoryAdmitted(receipt) => receipt
+                .added_documents
+                .len()
+                .checked_mul(8)
+                .and_then(|bytes| bytes.checked_add(40))
+                .ok_or(WireEncodeError::LengthOverflow),
+            OutcomeV1::WorkspaceChanges(changes) => workspace_changes_length(changes),
+            OutcomeV1::WorkspaceInventoryPage(page) => inventory_page_length(page),
+            OutcomeV1::ViewOpened(_) => Ok(21),
+            OutcomeV1::ViewClosed(_) => Ok(5),
+            OutcomeV1::DocumentRemoved(_) => Ok(21),
+            OutcomeV1::RootRemoved(_) => Ok(21),
+            OutcomeV1::DocumentSelected(_) => Ok(20),
+            OutcomeV1::Saved(_) => Ok(12),
+            OutcomeV1::ReplacedAndSaved(receipt) => {
+                check_wire_text_length(receipt.snapshot.text.len())?;
+                checked_add(
+                    match receipt.persistence {
+                        EditPersistenceV1::NotAttempted(_) => 26,
+                        _ => 33,
+                    },
+                    receipt.snapshot.text.len(),
+                )
+            }
+            OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => {
+                check_wire_text_length(snapshot.text.len())?;
+                checked_add(24, snapshot.text.len())
+            }
+        },
     }
 }
 
@@ -311,12 +1810,69 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
     let fields = match request {
         WireRequestV1::Connect => 2,
         WireRequestV1::Disconnect(_) => 3,
+        WireRequestV1::DurableExecute(request) => 6_usize
+            .checked_add(validate_durable_intent(&request.intent, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireRequestV1::DurableReceiptLookup(lookup) => 6_usize
+            .checked_add(validate_durable_intent(&lookup.intent, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireRequestV1::DurableReceiptRetirement(retirement) => 6_usize
+            .checked_add(validate_durable_intent(&retirement.intent, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
         WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::WorkspaceInventory,
+            ..
+        })
+        | WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::OpenView | CommandV1::CloseView,
+            ..
+        })
+        | WireRequestV1::Execute(RequestV1 {
             command: CommandV1::Snapshot,
             ..
         }) => 5,
         WireRequestV1::Execute(RequestV1 {
-            command: CommandV1::Replace { inserted, .. },
+            command: CommandV1::WorkspaceChanges { after, .. },
+            ..
+        }) => {
+            if after.is_some() {
+                10
+            } else {
+                7
+            }
+        }
+        WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::WorkspaceInventoryPage { cursor, .. },
+            ..
+        }) => {
+            if cursor.is_some() {
+                10
+            } else {
+                7
+            }
+        }
+        WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::AddFile { locator } | CommandV1::AddDirectory { locator },
+            ..
+        }) => {
+            check_text_limit(locator.len(), limits)?;
+            6
+        }
+        WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::SelectDocument { .. },
+            ..
+        })
+        | WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::RemoveDocument { .. } | CommandV1::RemoveRoot { .. },
+            ..
+        }) => 7,
+        WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::Save { .. },
+            ..
+        }) => 6,
+        WireRequestV1::Execute(RequestV1 {
+            command:
+                CommandV1::Replace { inserted, .. } | CommandV1::ReplaceAndSave { inserted, .. },
             ..
         }) => {
             check_text_limit(inserted.len(), limits)?;
@@ -332,16 +1888,341 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
         | WireReplyV1::ConnectRefused(_)
         | WireReplyV1::DisconnectRefused(_) => 3,
         WireReplyV1::Disconnected => 2,
+        WireReplyV1::DurableExecuted(outcome) => 2_usize
+            .checked_add(validate_durable_outcome(outcome, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireReplyV1::DurableReceiptLookedUp(outcome) => 2_usize
+            .checked_add(validate_durable_lookup_outcome(outcome, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireReplyV1::DurableReceiptRetired(_) => 3,
         WireReplyV1::Executed(ReplyV1::Refused(_)) => 4,
-        WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => {
-            let text = match outcome {
-                OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => &snapshot.text,
-            };
-            check_text_limit(text.len(), limits)?;
-            7
-        }
+        WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
+            OutcomeV1::WorkspaceInventory(inventory)
+            | OutcomeV1::FileAdded(inventory)
+            | OutcomeV1::DirectoryAdded(inventory) => {
+                if inventory
+                    .documents
+                    .iter()
+                    .any(|id| id.workspace() != inventory.workspace)
+                    || inventory
+                        .roots
+                        .iter()
+                        .any(|root| root.id.workspace() != inventory.workspace)
+                {
+                    return Err(WireEncodeError::IdentityMismatch);
+                }
+                let fields = inventory
+                    .documents
+                    .len()
+                    .checked_add(
+                        inventory
+                            .roots
+                            .len()
+                            .checked_mul(2)
+                            .ok_or(WireEncodeError::LengthOverflow)?,
+                    )
+                    .and_then(|entries| entries.checked_add(7))
+                    .ok_or(WireEncodeError::LengthOverflow)?;
+                check_field_limit(fields, limits)?;
+                fields
+            }
+            OutcomeV1::FileAdmitted(receipt) => {
+                if receipt
+                    .root
+                    .is_some_and(|root| root.workspace() != receipt.document.workspace())
+                    || (matches!(receipt.status, FileAdmissionStatusV1::Added)
+                        != receipt.root.is_some())
+                {
+                    return Err(WireEncodeError::IdentityMismatch);
+                }
+                if receipt.root.is_some() { 9 } else { 8 }
+            }
+            OutcomeV1::DirectoryAdmitted(receipt) => {
+                let count = u64::try_from(receipt.added_documents.len())
+                    .map_err(|_| WireEncodeError::LengthOverflow)?;
+                let byte_length = receipt
+                    .added_documents
+                    .len()
+                    .checked_mul(8)
+                    .ok_or(WireEncodeError::LengthOverflow)?;
+                if byte_length > limits.max_text_bytes {
+                    return Err(WireEncodeError::Limit);
+                }
+                if count != receipt.added
+                    || receipt
+                        .added_documents
+                        .iter()
+                        .any(|document| document.workspace() != receipt.root.workspace())
+                    || receipt
+                        .added_documents
+                        .iter()
+                        .enumerate()
+                        .any(|(index, id)| receipt.added_documents[..index].contains(id))
+                {
+                    return Err(WireEncodeError::IdentityMismatch);
+                }
+                9
+            }
+            OutcomeV1::WorkspaceChanges(changes) => match changes {
+                WorkspaceChangesV1::Page(page) => {
+                    if page.workspace != page.next.workspace()
+                        || page.next.epoch() == 0
+                        || page.changes.len() > usize::from(MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1)
+                        || page.changes.iter().any(|change| {
+                            change.revision() > page.observed_head
+                                || match change.kind {
+                                    WorkspaceChangeKindV1::DocumentAdded(id)
+                                    | WorkspaceChangeKindV1::DocumentRemoved(id)
+                                    | WorkspaceChangeKindV1::DocumentChanged {
+                                        document: id, ..
+                                    } => id.workspace() != page.workspace,
+                                    WorkspaceChangeKindV1::RootAdded(id)
+                                    | WorkspaceChangeKindV1::RootRemoved(id) => {
+                                        id.workspace() != page.workspace
+                                    }
+                                }
+                        })
+                        || page
+                            .changes
+                            .last()
+                            .is_some_and(|change| change.revision() != page.next.revision())
+                        || (page.changes.is_empty() && page.next.revision() > page.observed_head)
+                    {
+                        return Err(WireEncodeError::IdentityMismatch);
+                    }
+                    11 + page
+                        .changes
+                        .iter()
+                        .map(|change| match change.kind {
+                            WorkspaceChangeKindV1::DocumentChanged { .. } => 5,
+                            _ => 4,
+                        })
+                        .sum::<usize>()
+                }
+                WorkspaceChangesV1::Gap(gap) => {
+                    if gap.oldest_available == 0
+                        || gap.requested_after.saturating_add(1) >= gap.oldest_available
+                        || gap.oldest_available > gap.observed_head
+                    {
+                        return Err(WireEncodeError::IdentityMismatch);
+                    }
+                    10
+                }
+            },
+            OutcomeV1::WorkspaceInventoryPage(page) => {
+                if page
+                    .documents
+                    .iter()
+                    .any(|id| id.workspace() != page.workspace)
+                    || page
+                        .roots
+                        .iter()
+                        .any(|root| root.id.workspace() != page.workspace)
+                    || page
+                        .next
+                        .is_some_and(|cursor| cursor.workspace() != page.workspace)
+                {
+                    return Err(WireEncodeError::IdentityMismatch);
+                }
+                let fields = page
+                    .documents
+                    .len()
+                    .checked_add(
+                        page.roots
+                            .len()
+                            .checked_mul(2)
+                            .ok_or(WireEncodeError::LengthOverflow)?,
+                    )
+                    .and_then(|entries| {
+                        entries.checked_add(if page.next.is_some() { 11 } else { 8 })
+                    })
+                    .ok_or(WireEncodeError::LengthOverflow)?;
+                check_field_limit(fields, limits)?;
+                fields
+            }
+            OutcomeV1::ViewOpened(_) => 7,
+            OutcomeV1::ViewClosed(_) => 5,
+            OutcomeV1::DocumentRemoved(_) => 8,
+            OutcomeV1::RootRemoved(_) => 8,
+            OutcomeV1::DocumentSelected(_) => 6,
+            OutcomeV1::Saved(_) => 12,
+            OutcomeV1::ReplacedAndSaved(receipt) => {
+                check_text_limit(receipt.snapshot.text.len(), limits)?;
+                match receipt.persistence {
+                    EditPersistenceV1::NotAttempted(_) => 9,
+                    _ => 16,
+                }
+            }
+            OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => {
+                check_text_limit(snapshot.text.len(), limits)?;
+                7
+            }
+        },
     };
     check_field_limit(fields, limits)
+}
+
+fn validate_durable_intent(
+    intent: &DurableEffectIntentV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match intent {
+        DurableEffectIntentV1::AddFile { locator }
+        | DurableEffectIntentV1::AddDirectory { locator } => {
+            check_text_limit(locator.len(), limits)?;
+            Ok(2)
+        }
+        DurableEffectIntentV1::RemoveDocument { .. } | DurableEffectIntentV1::RemoveRoot { .. } => {
+            Ok(3)
+        }
+        DurableEffectIntentV1::SaveDocument { .. } => Ok(4),
+        DurableEffectIntentV1::ReplaceDocumentAndSave { inserted, .. } => {
+            check_text_limit(inserted.len(), limits)?;
+            Ok(7)
+        }
+        DurableEffectIntentV1::ExportDocumentCopyExclusive { destination, .. } => {
+            check_text_limit(destination.len(), limits)?;
+            Ok(5)
+        }
+    }
+}
+
+fn validate_durable_outcome(
+    outcome: &DurableExecuteOutcomeV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableExecuteOutcomeV1::Refused(_) => Ok(2),
+        DurableExecuteOutcomeV1::Retired => Ok(1),
+        DurableExecuteOutcomeV1::Completed(receipt) => 1_usize
+            .checked_add(validate_durable_receipt(receipt, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow),
+    }
+}
+
+fn validate_durable_lookup_outcome(
+    outcome: &DurableReceiptLookupOutcomeV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableReceiptLookupOutcomeV1::Complete(outcome) => 1_usize
+            .checked_add(validate_durable_outcome(outcome, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableReceiptLookupOutcomeV1::RequestConflict
+        | DurableReceiptLookupOutcomeV1::OutcomeUnknown
+        | DurableReceiptLookupOutcomeV1::AbsentOrForeign
+        | DurableReceiptLookupOutcomeV1::Unavailable => Ok(1),
+    }
+}
+
+fn validate_durable_receipt(
+    receipt: &DurableEffectReceiptV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match receipt {
+        DurableEffectReceiptV1::FileAdmitted(receipt) => {
+            if receipt
+                .root
+                .is_some_and(|root| root.workspace() != receipt.document.workspace())
+                || (matches!(receipt.status, FileAdmissionStatusV1::Added)
+                    != receipt.root.is_some())
+            {
+                return Err(WireEncodeError::IdentityMismatch);
+            }
+            Ok(if receipt.root.is_some() { 6 } else { 5 })
+        }
+        DurableEffectReceiptV1::DirectoryAdmitted(receipt) => {
+            let count = u64::try_from(receipt.added_documents.len())
+                .map_err(|_| WireEncodeError::LengthOverflow)?;
+            let byte_length = receipt
+                .added_documents
+                .len()
+                .checked_mul(8)
+                .ok_or(WireEncodeError::LengthOverflow)?;
+            if byte_length > limits.max_text_bytes {
+                return Err(WireEncodeError::Limit);
+            }
+            if count != receipt.added
+                || receipt
+                    .added_documents
+                    .iter()
+                    .any(|document| document.workspace() != receipt.root.workspace())
+                || receipt
+                    .added_documents
+                    .iter()
+                    .enumerate()
+                    .any(|(index, id)| receipt.added_documents[..index].contains(id))
+            {
+                return Err(WireEncodeError::IdentityMismatch);
+            }
+            Ok(6)
+        }
+        DurableEffectReceiptV1::DocumentRemoved(_) | DurableEffectReceiptV1::RootRemoved(_) => {
+            Ok(4)
+        }
+        DurableEffectReceiptV1::DocumentSaved(_) => Ok(7),
+        DurableEffectReceiptV1::DocumentReplacedAndSaved(receipt) => {
+            check_text_limit(receipt.text.len(), limits)?;
+            Ok(match receipt.persistence {
+                EditPersistenceV1::NotAttempted(_) => 7,
+                _ => 9,
+            })
+        }
+        DurableEffectReceiptV1::DocumentCopyExportedExclusive(_) => Ok(7),
+    }
+}
+
+fn durable_outcome_length(outcome: &DurableExecuteOutcomeV1) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableExecuteOutcomeV1::Refused(_) => Ok(2),
+        DurableExecuteOutcomeV1::Retired => Ok(1),
+        DurableExecuteOutcomeV1::Completed(receipt) => durable_receipt_length(receipt)?
+            .checked_add(1)
+            .ok_or(WireEncodeError::LengthOverflow),
+    }
+}
+
+fn durable_lookup_outcome_length(
+    outcome: &DurableReceiptLookupOutcomeV1,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableReceiptLookupOutcomeV1::Complete(outcome) => durable_outcome_length(outcome)?
+            .checked_add(1)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableReceiptLookupOutcomeV1::RequestConflict
+        | DurableReceiptLookupOutcomeV1::OutcomeUnknown
+        | DurableReceiptLookupOutcomeV1::AbsentOrForeign
+        | DurableReceiptLookupOutcomeV1::Unavailable => Ok(1),
+    }
+}
+
+fn durable_receipt_length(receipt: &DurableEffectReceiptV1) -> Result<usize, WireEncodeError> {
+    match receipt {
+        DurableEffectReceiptV1::FileAdmitted(receipt) => {
+            Ok(if receipt.root.is_some() { 27 } else { 19 })
+        }
+        DurableEffectReceiptV1::DirectoryAdmitted(receipt) => receipt
+            .added_documents
+            .len()
+            .checked_mul(8)
+            .and_then(|bytes| bytes.checked_add(37))
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableEffectReceiptV1::DocumentRemoved(_) | DurableEffectReceiptV1::RootRemoved(_) => {
+            Ok(18)
+        }
+        DurableEffectReceiptV1::DocumentSaved(_) => Ok(28),
+        DurableEffectReceiptV1::DocumentReplacedAndSaved(receipt) => {
+            check_wire_text_length(receipt.text.len())?;
+            checked_add(
+                match receipt.persistence {
+                    EditPersistenceV1::NotAttempted(_) => 31,
+                    _ => 33,
+                },
+                receipt.text.len(),
+            )
+        }
+        DurableEffectReceiptV1::DocumentCopyExportedExclusive(_) => Ok(28),
+    }
 }
 
 fn check_text_limit(length: usize, limits: WireLimits) -> Result<(), WireEncodeError> {
@@ -368,6 +2249,64 @@ fn check_field_limit(fields: usize, limits: WireLimits) -> Result<(), WireEncode
 fn checked_add(base: usize, length: usize) -> Result<usize, WireEncodeError> {
     base.checked_add(length)
         .ok_or(WireEncodeError::LengthOverflow)
+}
+
+fn inventory_length(inventory: &WorkspaceInventoryV1) -> Result<usize, WireEncodeError> {
+    let documents = inventory
+        .documents
+        .len()
+        .checked_mul(8)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    let roots = inventory
+        .roots
+        .len()
+        .checked_mul(9)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    checked_add(28, documents)?
+        .checked_add(roots)
+        .ok_or(WireEncodeError::LengthOverflow)
+}
+
+fn inventory_page_length(page: &WorkspaceInventoryPageV1) -> Result<usize, WireEncodeError> {
+    inventory_parts_length(page.documents.len(), page.roots.len())?
+        .checked_add(if page.next.is_some() { 25 } else { 1 })
+        .ok_or(WireEncodeError::LengthOverflow)
+}
+
+fn workspace_changes_length(changes: &WorkspaceChangesV1) -> Result<usize, WireEncodeError> {
+    match changes {
+        WorkspaceChangesV1::Gap(_) => Ok(45),
+        WorkspaceChangesV1::Page(page) => {
+            let events = page.changes.iter().try_fold(0usize, |total, change| {
+                total
+                    .checked_add(match change.kind {
+                        WorkspaceChangeKindV1::DocumentChanged { .. } => 33,
+                        _ => 25,
+                    })
+                    .ok_or(WireEncodeError::LengthOverflow)
+            })?;
+            checked_add(53, events)
+        }
+    }
+}
+
+fn inventory_parts_length(documents: usize, roots: usize) -> Result<usize, WireEncodeError> {
+    let documents = documents
+        .checked_mul(8)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    let roots = roots
+        .checked_mul(9)
+        .ok_or(WireEncodeError::LengthOverflow)?;
+    checked_add(28, documents)?
+        .checked_add(roots)
+        .ok_or(WireEncodeError::LengthOverflow)
+}
+
+fn bounded_count(value: u64, maximum: usize) -> Result<usize, WireDecodeError> {
+    let value = usize::try_from(value).map_err(|_| WireDecodeError::Limit)?;
+    (value <= maximum)
+        .then_some(value)
+        .ok_or(WireDecodeError::Limit)
 }
 
 struct Encoder {
@@ -411,6 +2350,14 @@ impl Encoder {
         }
         encode_bytes(&mut self.output, value.as_bytes())
             .map_err(|_| WireEncodeError::LengthOverflow)
+    }
+
+    fn bytes(&mut self, value: &[u8]) -> Result<(), WireEncodeError> {
+        self.field()?;
+        if value.len() > self.limits.max_text_bytes {
+            return Err(WireEncodeError::Limit);
+        }
+        encode_bytes(&mut self.output, value).map_err(|_| WireEncodeError::LengthOverflow)
     }
 
     fn field(&mut self) -> Result<(), WireEncodeError> {
@@ -494,8 +2441,28 @@ fn witness(value: u64) -> Result<VersionWitness, WireDecodeError> {
     VersionWitness::new(value).ok_or(WireDecodeError::InvalidIdentity)
 }
 
+fn workspace_id(value: u64) -> Result<WorkspaceIdV1, WireDecodeError> {
+    WorkspaceIdV1::new(value).ok_or(WireDecodeError::InvalidIdentity)
+}
+
+fn workspace_document_id(
+    workspace: WorkspaceIdV1,
+    value: u64,
+) -> Result<WorkspaceDocumentIdV1, WireDecodeError> {
+    WorkspaceDocumentIdV1::new(workspace, value).ok_or(WireDecodeError::InvalidIdentity)
+}
+
+fn workspace_root_id(
+    workspace: WorkspaceIdV1,
+    value: u64,
+) -> Result<WorkspaceRootIdV1, WireDecodeError> {
+    WorkspaceRootIdV1::new(workspace, value).ok_or(WireDecodeError::InvalidIdentity)
+}
+
 fn refusal_tag(refusal: RefusalV1) -> u8 {
     match refusal {
+        RefusalV1::AuthorityDenied => 20,
+        RefusalV1::AuthorityUnavailable => 21,
         RefusalV1::UnknownClient => 1,
         RefusalV1::ClientCapacity => 2,
         RefusalV1::ClientLifetimeCapacity => 17,
@@ -503,6 +2470,15 @@ fn refusal_tag(refusal: RefusalV1) -> u8 {
         RefusalV1::RequestConflict => 4,
         RefusalV1::WitnessCapacity => 5,
         RefusalV1::UnknownWitness => 6,
+        RefusalV1::UnknownDocument => 19,
+        RefusalV1::ForeignInventoryCursor => 22,
+        RefusalV1::StaleInventoryCursor => 23,
+        RefusalV1::InvalidInventoryCursor => 24,
+        RefusalV1::UnknownRoot => 25,
+        RefusalV1::DocumentInUse => 26,
+        RefusalV1::ForeignChangeCursor => 27,
+        RefusalV1::InvalidChangeCursor => 28,
+        RefusalV1::NoActiveDocument => 18,
         RefusalV1::Stale => 7,
         RefusalV1::InvalidRange => 8,
         RefusalV1::InputLimit => 9,
@@ -518,6 +2494,8 @@ fn refusal_tag(refusal: RefusalV1) -> u8 {
 
 fn decode_refusal(tag: u8) -> Result<RefusalV1, WireDecodeError> {
     match tag {
+        20 => Ok(RefusalV1::AuthorityDenied),
+        21 => Ok(RefusalV1::AuthorityUnavailable),
         1 => Ok(RefusalV1::UnknownClient),
         2 => Ok(RefusalV1::ClientCapacity),
         17 => Ok(RefusalV1::ClientLifetimeCapacity),
@@ -525,6 +2503,15 @@ fn decode_refusal(tag: u8) -> Result<RefusalV1, WireDecodeError> {
         4 => Ok(RefusalV1::RequestConflict),
         5 => Ok(RefusalV1::WitnessCapacity),
         6 => Ok(RefusalV1::UnknownWitness),
+        19 => Ok(RefusalV1::UnknownDocument),
+        22 => Ok(RefusalV1::ForeignInventoryCursor),
+        23 => Ok(RefusalV1::StaleInventoryCursor),
+        24 => Ok(RefusalV1::InvalidInventoryCursor),
+        25 => Ok(RefusalV1::UnknownRoot),
+        26 => Ok(RefusalV1::DocumentInUse),
+        27 => Ok(RefusalV1::ForeignChangeCursor),
+        28 => Ok(RefusalV1::InvalidChangeCursor),
+        18 => Ok(RefusalV1::NoActiveDocument),
         7 => Ok(RefusalV1::Stale),
         8 => Ok(RefusalV1::InvalidRange),
         9 => Ok(RefusalV1::InputLimit),

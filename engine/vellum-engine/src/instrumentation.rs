@@ -412,6 +412,7 @@ pub enum Boundary {
     SourceLoadResultRelease,
     SourceLoadRetirement,
     SourceArtifactPreparation,
+    SourceArtifactExportCapture,
     SourceArtifactRetention,
     SourceArtifactDiscard,
     AnnotationRetirement,

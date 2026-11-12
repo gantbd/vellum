@@ -1,0 +1,33 @@
+name: Release contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-policy:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify non-publishable source distribution
+        run: make check-release-contract
+      - name: Verify coordinated archive qualifier syntax
+        run: make check-cargo-install-qualification
+      - name: Verify release-candidate builder syntax
+        run: node --check scripts/build-release-candidate.mjs
+      - name: Exercise release-candidate builder
+        run: node scripts/build-release-candidate.test.mjs
+      - name: Qualify local activation transaction algebra
+        run: make check-activation-transaction
+      - name: Qualify inert launchd distribution profile
+        run: make check-launchd-distribution

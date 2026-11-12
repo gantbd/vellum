@@ -7,12 +7,26 @@ use vellum_engine::resource::{
     PreparedSourceArtifactIdV1, SourceExportDestinationV1, SourceExportOptionsV1,
     SourceExportPurposeV1,
 };
+use vellum_host::authority::{AuthorityRequestV1, SaveAsDestinationRequestV1};
+use vellum_host::export_copy::{
+    AuthorizedExportCopyPlanV1, AuthorizedExportCopyV1, ExportCopyAttachmentRefusalV1,
+    ExportCopyAuthorityPortV1, ExportCopyAuthorizationRefusalV1,
+};
+
+#[derive(Debug)]
+pub enum SourceExportCopyPreparationErrorV1 {
+    Authority(ExportCopyAuthorizationRefusalV1),
+    Preparation(SessionError),
+    Capture(vellum_engine::resource::ResourceError),
+    Attachment(ExportCopyAttachmentRefusalV1),
+}
 
 /// Original bounded codec preparation and exact native source capture. Admission
 /// consumes the native preparation; failure never implies it was discarded.
 pub struct SourceExportPreparation {
     native: PreparedSourceArtifactIdV1,
     source: DocumentVersion,
+    serialization: vellum_engine::coordinator::SourceSerializationStateV1,
 }
 /// Retain before service. The original task and destination are not refreshed
 /// from a newer document binding, caller path or source revision.
@@ -42,6 +56,45 @@ pub struct SaveAsActivation<H> {
     pub changed: bool,
 }
 impl<A: ResourceAdapter> LocalHost<A> {
+    /// Authorize the exact source/destination product before the codec
+    /// allocates or encodes a source artifact. Only the content-free
+    /// serialization state is inspected before authority; a denial therefore
+    /// leaves no preparation to discharge and performs no source capture.
+    pub fn authorize_source_export_copy<P: ExportCopyAuthorityPortV1 + ?Sized>(
+        &mut self,
+        expected: &DocumentVersion,
+        authority: &mut P,
+        authority_request: AuthorityRequestV1,
+        destination_request: SaveAsDestinationRequestV1,
+    ) -> Result<AuthorizedExportCopyV1, SourceExportCopyPreparationErrorV1> {
+        let serialization = self
+            .owner
+            .source_serialization(&expected.document, &mut self.diagnostics)
+            .map_err(|error| {
+                SourceExportCopyPreparationErrorV1::Preparation(SessionError::Serialization(error))
+            })?;
+        let plan = AuthorizedExportCopyPlanV1::authorize(
+            authority,
+            authority_request,
+            destination_request,
+            expected.clone(),
+            serialization,
+        )
+        .map_err(SourceExportCopyPreparationErrorV1::Authority)?;
+        let prepared = self
+            .owner
+            .prepare_source_artifact(expected, serialization, &mut self.diagnostics)
+            .map_err(|error| {
+                SourceExportCopyPreparationErrorV1::Preparation(SessionError::from(error))
+            })?;
+        let capture = self
+            .owner
+            .capture_prepared_source_serialization(&prepared, &mut self.diagnostics)
+            .map_err(SourceExportCopyPreparationErrorV1::Capture)?;
+        plan.attach_source_capture(capture)
+            .map_err(SourceExportCopyPreparationErrorV1::Attachment)
+    }
+
     /// Preserve the exact current native serialization profile. This is source
     /// capture, not a destination grant or an implicit file creation request.
     pub fn prepare_source_export(
@@ -58,6 +111,7 @@ impl<A: ResourceAdapter> LocalHost<A> {
         Ok(SourceExportPreparation {
             native,
             source: expected.clone(),
+            serialization,
         })
     }
     pub fn discard_source_export_preparation(
@@ -67,6 +121,32 @@ impl<A: ResourceAdapter> LocalHost<A> {
         Ok(self
             .owner
             .discard_source_artifact_preparation(&prepared.native, &mut self.diagnostics)?)
+    }
+
+    /// Acquire both independent effect decisions before disclosing source bytes,
+    /// then consume the exact codec preparation into that one-use plan. This
+    /// does not access the filesystem, publish a copy, or rebind the document.
+    pub fn authorize_prepared_source_export_copy<P: ExportCopyAuthorityPortV1 + ?Sized>(
+        &mut self,
+        prepared: &SourceExportPreparation,
+        authority: &mut P,
+        authority_request: AuthorityRequestV1,
+        destination_request: SaveAsDestinationRequestV1,
+    ) -> Result<AuthorizedExportCopyV1, SourceExportCopyPreparationErrorV1> {
+        let plan = AuthorizedExportCopyPlanV1::authorize(
+            authority,
+            authority_request,
+            destination_request,
+            prepared.source.clone(),
+            prepared.serialization,
+        )
+        .map_err(SourceExportCopyPreparationErrorV1::Authority)?;
+        let capture = self
+            .owner
+            .capture_prepared_source_serialization(&prepared.native, &mut self.diagnostics)
+            .map_err(SourceExportCopyPreparationErrorV1::Capture)?;
+        plan.attach_source_capture(capture)
+            .map_err(SourceExportCopyPreparationErrorV1::Attachment)
     }
     fn export_pair(
         &mut self,

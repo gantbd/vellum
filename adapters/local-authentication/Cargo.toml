@@ -1,0 +1,22 @@
+[package]
+name = "vellum-adapter-local-authentication"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Descriptor-anchored local authentication profile for Vellum"
+
+[dependencies]
+getrandom.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-transport = { version = "=0.1.0", path = "../../transport/vellum-transport" }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "=1.1.4", features = ["fs", "process"] }
+
+[lints]
+workspace = true

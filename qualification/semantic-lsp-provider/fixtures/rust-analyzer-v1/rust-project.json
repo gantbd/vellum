@@ -1,0 +1,12 @@
+{
+  "sysroot": null,
+  "sysroot_src": null,
+  "crates": [
+    {
+      "root_module": "src/lib.rs",
+      "edition": "2024",
+      "deps": [],
+      "cfg": []
+    }
+  ]
+}

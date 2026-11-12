@@ -18,13 +18,38 @@ fn observation_equality_is_exact_and_issuer_bound_not_a_freshness_or_authority_c
     let mut recorder = Recorder::disabled();
     let (_, local) = configured(&mut recorder);
     let (_, foreign) = configured(&mut recorder);
-    let original = local.port.read_result(b"key", b"v1", b"value").unwrap();
+    let original = local
+        .port
+        .as_ref()
+        .unwrap()
+        .read_result(b"key", b"v1", b"value")
+        .unwrap();
     assert!(original.same_observation(&original.clone()));
     for other in [
-        local.port.read_result(b"other", b"v1", b"value").unwrap(),
-        local.port.read_result(b"key", b"v2", b"value").unwrap(),
-        local.port.read_result(b"key", b"v1", b"changed").unwrap(),
-        foreign.port.read_result(b"key", b"v1", b"value").unwrap(),
+        local
+            .port
+            .as_ref()
+            .unwrap()
+            .read_result(b"other", b"v1", b"value")
+            .unwrap(),
+        local
+            .port
+            .as_ref()
+            .unwrap()
+            .read_result(b"key", b"v2", b"value")
+            .unwrap(),
+        local
+            .port
+            .as_ref()
+            .unwrap()
+            .read_result(b"key", b"v1", b"changed")
+            .unwrap(),
+        foreign
+            .port
+            .as_ref()
+            .unwrap()
+            .read_result(b"key", b"v1", b"value")
+            .unwrap(),
     ] {
         assert!(!original.same_observation(&other));
     }
@@ -267,7 +292,7 @@ impl Directory {
                 FIXTURE.fetch_add(1, Ordering::Relaxed)
             ));
             match stdfs::create_dir(&path) {
-                Ok(()) => return Self(path),
+                Ok(()) => return Self(path.canonicalize().expect("fixture canonicalization")),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(e) => panic!("fixture creation: {e}"),
             }
@@ -991,4 +1016,428 @@ fn given_a_failed_replacement_call_then_nonapplication_is_not_invented() {
     assert!(owner.publish_save_baseline(&task, &mut telemetry).is_err());
     assert!(owner.retire_save(&task, &mut telemetry).is_err());
     assert_eq!(directory.stage_count(), 0);
+}
+
+struct PhysicalExportTestAuthority {
+    source: vellum_host::export_copy::ExportCopySourceRequestV1,
+    destination: vellum_host::authority::SaveAsDestinationRequestV1,
+    object: Option<vellum_host::authority::SaveAsDestinationObjectV1>,
+}
+
+impl vellum_host::export_copy::ExportCopyAuthorityPortV1 for PhysicalExportTestAuthority {
+    fn authorize_export_copy(
+        &mut self,
+        source: vellum_host::export_copy::ExportCopySourceRequestV1,
+        destination: vellum_host::authority::SaveAsDestinationRequestV1,
+    ) -> vellum_host::export_copy::ExportCopyAuthorityDecisionV1 {
+        use vellum_host::authority::{
+            AuthorityDecisionRefV1, SaveAsDestinationDecisionRefV1, SaveAsDestinationEvidenceV1,
+        };
+        use vellum_host::export_copy::{
+            ExportCopyAuthorityDecisionV1, ExportCopySourceDecisionEvidenceV1,
+        };
+        if source != self.source || destination != self.destination {
+            return ExportCopyAuthorityDecisionV1::Denied;
+        }
+        let Some(object) = self.object.take() else {
+            return ExportCopyAuthorityDecisionV1::Unavailable;
+        };
+        ExportCopyAuthorityDecisionV1::Granted {
+            source: ExportCopySourceDecisionEvidenceV1::new(
+                AuthorityDecisionRefV1::new([5; 16]),
+                source,
+            ),
+            destination: SaveAsDestinationEvidenceV1::with_object(
+                SaveAsDestinationDecisionRefV1::new([6; 16]),
+                destination,
+                object,
+            ),
+        }
+    }
+}
+
+fn authorized_export_copy(
+    path: std::path::PathBuf,
+    disposition: vellum_host::export_copy::ExportCopyDispositionV1,
+    bytes: &[u8],
+) -> vellum_host::export_copy::AuthorizedExportCopyV1 {
+    use vellum_host::authority::{
+        AuthorityContextV1, AuthorityResourceRefV1, AuthoritySubjectRefV1,
+        SaveAsDestinationEffectV1, SaveAsDestinationRequestV1,
+    };
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([1; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([2; 16]);
+    let effect = match disposition {
+        vellum_host::export_copy::ExportCopyDispositionV1::OverwriteExisting => {
+            SaveAsDestinationEffectV1::OverwriteExisting
+        }
+        vellum_host::export_copy::ExportCopyDispositionV1::CreateExclusive => {
+            SaveAsDestinationEffectV1::CreateExclusive
+        }
+    };
+    let request = SaveAsDestinationRequestV1::new(context, resource, path.clone(), effect);
+    let object = crate::install_local_export_destination(&request).unwrap();
+    authorized_export_copy_with_object(path, disposition, bytes, object)
+}
+
+fn authorized_export_copy_with_object(
+    path: std::path::PathBuf,
+    disposition: vellum_host::export_copy::ExportCopyDispositionV1,
+    bytes: &[u8],
+    object: vellum_host::authority::SaveAsDestinationObjectV1,
+) -> vellum_host::export_copy::AuthorizedExportCopyV1 {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::AuthorizedExportCopyPlanV1;
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([1; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([2; 16]);
+    let effect = match disposition {
+        vellum_host::export_copy::ExportCopyDispositionV1::OverwriteExisting => {
+            SaveAsDestinationEffectV1::OverwriteExisting
+        }
+        vellum_host::export_copy::ExportCopyDispositionV1::CreateExclusive => {
+            SaveAsDestinationEffectV1::CreateExclusive
+        }
+    };
+    let source_request = AuthorityRequestV1 {
+        context,
+        resource,
+        action: AuthorityActionV1::ExportSourceCopy,
+    };
+    let destination_request = SaveAsDestinationRequestV1::new(context, resource, path, effect);
+    let mut recorder = Recorder::disabled();
+    let (mut owner, _) = configured(&mut recorder);
+    let source = owner.create(bytes, &mut recorder).unwrap();
+    let mut authority = PhysicalExportTestAuthority {
+        source: vellum_host::export_copy::ExportCopySourceRequestV1::new(
+            source_request,
+            source.clone(),
+        )
+        .unwrap(),
+        destination: destination_request.clone(),
+        object: Some(object),
+    };
+    let serialization = owner
+        .source_serialization(&source.document, &mut recorder)
+        .unwrap();
+    let plan = AuthorizedExportCopyPlanV1::authorize(
+        &mut authority,
+        source_request,
+        destination_request,
+        source.clone(),
+        serialization,
+    )
+    .unwrap();
+    let prepared = owner
+        .prepare_source_artifact(&source, serialization, &mut recorder)
+        .unwrap();
+    let capture = owner
+        .capture_prepared_source_serialization(&prepared, &mut recorder)
+        .unwrap();
+    plan.attach_source_capture(capture).unwrap()
+}
+
+#[test]
+fn export_effect_port_rejects_foreign_destination_objects_without_publication() {
+    use vellum_host::authority::{
+        AuthorityContextV1, AuthorityResourceRefV1, AuthoritySubjectRefV1,
+        SaveAsDestinationEffectV1, SaveAsDestinationObjectV1, SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{
+        ExportCopyDispositionV1, ExportCopyEffectPortV1, ExportCopyFailureV1,
+        ExportCopyPersistenceV1,
+    };
+    let directory = Directory::new();
+    let path = directory.path();
+    let secret_path = path.to_string_lossy().into_owned();
+    let secret_content = b"foreign-object-private-content";
+    let authorization = authorized_export_copy_with_object(
+        path.clone(),
+        ExportCopyDispositionV1::CreateExclusive,
+        secret_content,
+        SaveAsDestinationObjectV1::install(
+            SaveAsDestinationRequestV1::new(
+                AuthorityContextV1 {
+                    subject: AuthoritySubjectRefV1::new([1; 16]),
+                    session: None,
+                },
+                AuthorityResourceRefV1::new([2; 16]),
+                path.clone(),
+                SaveAsDestinationEffectV1::CreateExclusive,
+            ),
+            String::from("not-a-filesystem-capability"),
+        ),
+    );
+    let mut telemetry = Recorder::try_with_capacity(16).unwrap();
+    let (_, mut filesystem) = configured(&mut telemetry);
+
+    let receipt = filesystem.execute_export_copy(authorization, &mut telemetry);
+
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::NotAttempted);
+    assert_eq!(receipt.failure(), Some(ExportCopyFailureV1::Unsupported));
+    assert!(!path.exists());
+    assert_eq!(filesystem.export_copy_usage().attempts, 1);
+    assert_eq!(filesystem.export_copy_usage().not_attempted, 1);
+    let receipt_debug = format!("{receipt:?}");
+    assert!(!receipt_debug.contains(&secret_path));
+    assert!(!receipt_debug.contains("foreign-object-private-content"));
+    while let Some(observation) = telemetry.pop_front() {
+        let observation_debug = format!("{observation:?}");
+        assert!(!observation_debug.contains(&secret_path));
+        assert!(!observation_debug.contains("foreign-object-private-content"));
+    }
+}
+
+#[test]
+fn export_plan_refuses_a_codec_capture_from_another_source_incarnation() {
+    use vellum_host::authority::{
+        AuthorityActionV1, AuthorityContextV1, AuthorityRequestV1, AuthorityResourceRefV1,
+        AuthoritySubjectRefV1, SaveAsDestinationEffectV1, SaveAsDestinationObjectV1,
+        SaveAsDestinationRequestV1,
+    };
+    use vellum_host::export_copy::{AuthorizedExportCopyPlanV1, ExportCopyAttachmentRefusalV1};
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([1; 16]),
+        session: None,
+    };
+    let resource = AuthorityResourceRefV1::new([2; 16]);
+    let source_request = AuthorityRequestV1 {
+        context,
+        resource,
+        action: AuthorityActionV1::ExportSourceCopy,
+    };
+    let destination_request = SaveAsDestinationRequestV1::new(
+        context,
+        resource,
+        std::path::PathBuf::from("/private/tmp/vellum-never-published"),
+        SaveAsDestinationEffectV1::CreateExclusive,
+    );
+    let mut recorder = Recorder::disabled();
+    let (mut owner, _) = configured(&mut recorder);
+    let expected = owner.create(b"expected", &mut recorder).unwrap();
+    let other = owner.create(b"other", &mut recorder).unwrap();
+    let mut authority = PhysicalExportTestAuthority {
+        source: vellum_host::export_copy::ExportCopySourceRequestV1::new(
+            source_request,
+            expected.clone(),
+        )
+        .unwrap(),
+        destination: destination_request.clone(),
+        object: Some(SaveAsDestinationObjectV1::install(
+            destination_request.clone(),
+            (),
+        )),
+    };
+    let expected_serialization = owner
+        .source_serialization(&expected.document, &mut recorder)
+        .unwrap();
+    let other_serialization = owner
+        .source_serialization(&other.document, &mut recorder)
+        .unwrap();
+    let other_prepared = owner
+        .prepare_source_artifact(&other, other_serialization, &mut recorder)
+        .unwrap();
+    let other_capture = owner
+        .capture_prepared_source_serialization(&other_prepared, &mut recorder)
+        .unwrap();
+    let plan = AuthorizedExportCopyPlanV1::authorize(
+        &mut authority,
+        source_request,
+        destination_request,
+        expected,
+        expected_serialization,
+    )
+    .unwrap();
+    assert!(matches!(
+        plan.attach_source_capture(other_capture),
+        Err(ExportCopyAttachmentRefusalV1::SourceChanged)
+    ));
+}
+
+#[test]
+fn qualified_exclusive_export_is_durable_and_never_overwrites() {
+    use vellum_host::export_copy::{
+        ExportCopyDispositionV1, ExportCopyEffectPortV1, ExportCopyFailureV1,
+        ExportCopyPersistenceV1,
+    };
+    let directory = Directory::new();
+    let path = directory.path();
+    let mut telemetry = Recorder::disabled();
+    let (_, mut filesystem) = configured(&mut telemetry);
+    let authorization = authorized_export_copy(
+        path.clone(),
+        ExportCopyDispositionV1::CreateExclusive,
+        b"payload-with-private-length",
+    );
+    let debug = format!("{authorization:?}");
+    assert!(!debug.contains("payload-with-private-length"));
+    assert!(!debug.contains("27"));
+    let receipt = filesystem.execute_export_copy(authorization, &mut telemetry);
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::Durable);
+    assert_eq!(receipt.failure(), None);
+    assert_eq!(stdfs::read(&path).unwrap(), b"payload-with-private-length");
+    assert_eq!(filesystem.export_copy_usage().durable, 1);
+    let refusal = filesystem.execute_export_copy(
+        authorized_export_copy(
+            path.clone(),
+            ExportCopyDispositionV1::CreateExclusive,
+            b"lost",
+        ),
+        &mut telemetry,
+    );
+    assert_eq!(refusal.persistence(), ExportCopyPersistenceV1::NotAttempted);
+    assert_eq!(refusal.failure(), Some(ExportCopyFailureV1::Conflict));
+    assert_eq!(stdfs::read(path).unwrap(), b"payload-with-private-length");
+}
+
+#[test]
+fn ancestor_rename_after_authorization_cannot_redirect_the_destination_object() {
+    use vellum_host::export_copy::{ExportCopyDispositionV1, ExportCopyPersistenceV1};
+    let fixture = Directory::new();
+    let installed = fixture.0.join("installed");
+    let moved = fixture.0.join("moved");
+    stdfs::create_dir(&installed).unwrap();
+    let display_path = installed.join("copy");
+    let authorization = authorized_export_copy(
+        display_path.clone(),
+        ExportCopyDispositionV1::CreateExclusive,
+        b"anchored",
+    );
+    stdfs::rename(&installed, &moved).unwrap();
+    stdfs::create_dir(&installed).unwrap();
+
+    let mut telemetry = Recorder::disabled();
+    let (_, mut filesystem) = configured(&mut telemetry);
+    let prepared = filesystem
+        .prepare_export_copy(authorization, &mut telemetry)
+        .unwrap();
+    let receipt = filesystem.service_export_copy(prepared, &mut telemetry);
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::Durable);
+    assert_eq!(stdfs::read(moved.join("copy")).unwrap(), b"anchored");
+    assert!(!display_path.exists());
+
+    stdfs::remove_file(moved.join("copy")).unwrap();
+    stdfs::remove_dir(moved).unwrap();
+    stdfs::remove_dir(installed).unwrap();
+}
+
+#[test]
+fn ancestor_swap_after_preparation_cannot_redirect_publication() {
+    use vellum_host::export_copy::{ExportCopyDispositionV1, ExportCopyPersistenceV1};
+    let fixture = Directory::new();
+    let installed = fixture.0.join("installed");
+    let moved = fixture.0.join("moved");
+    stdfs::create_dir(&installed).unwrap();
+    let display_path = installed.join("copy");
+    let authorization = authorized_export_copy(
+        display_path.clone(),
+        ExportCopyDispositionV1::CreateExclusive,
+        b"anchored",
+    );
+    let mut telemetry = Recorder::disabled();
+    let (_, mut filesystem) = configured(&mut telemetry);
+    let prepared = filesystem
+        .prepare_export_copy(authorization, &mut telemetry)
+        .unwrap();
+    stdfs::rename(&installed, &moved).unwrap();
+    stdfs::create_dir(&installed).unwrap();
+
+    let receipt = filesystem.service_export_copy(prepared, &mut telemetry);
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::Durable);
+    assert_eq!(stdfs::read(moved.join("copy")).unwrap(), b"anchored");
+    assert!(!display_path.exists());
+
+    stdfs::remove_file(moved.join("copy")).unwrap();
+    stdfs::remove_dir(moved).unwrap();
+    stdfs::remove_dir(installed).unwrap();
+}
+
+#[test]
+fn exclusive_export_collision_after_preparation_uses_noreplace_nonapplication() {
+    use vellum_host::export_copy::{
+        ExportCopyDispositionV1, ExportCopyFailureV1, ExportCopyPersistenceV1,
+    };
+    let directory = Directory::new();
+    let path = directory.path();
+    let mut telemetry = Recorder::disabled();
+    let (_, mut filesystem) = configured(&mut telemetry);
+    let prepared = filesystem
+        .prepare_export_copy(
+            authorized_export_copy(
+                path.clone(),
+                ExportCopyDispositionV1::CreateExclusive,
+                b"ours",
+            ),
+            &mut telemetry,
+        )
+        .unwrap();
+    stdfs::write(&path, b"external").unwrap();
+    let receipt = filesystem.service_export_copy(prepared, &mut telemetry);
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::NotAttempted);
+    assert_eq!(receipt.failure(), Some(ExportCopyFailureV1::Conflict));
+    assert_eq!(stdfs::read(path).unwrap(), b"external");
+    assert_eq!(directory.stage_count(), 0);
+}
+
+#[test]
+fn postpublication_sync_failure_is_unknown_and_receipt_is_content_free() {
+    use vellum_host::export_copy::{ExportCopyDispositionV1, ExportCopyPersistenceV1};
+    let directory = Directory::new();
+    let path = directory.path();
+    let mut telemetry = Recorder::disabled();
+    let (_, mut filesystem) = configured(&mut telemetry);
+    let prepared = filesystem
+        .prepare_export_copy(
+            authorized_export_copy(
+                path.clone(),
+                ExportCopyDispositionV1::CreateExclusive,
+                b"private payload",
+            ),
+            &mut telemetry,
+        )
+        .unwrap();
+    filesystem.fault = Some(Fault::ExportSynchronization);
+    let receipt = filesystem.service_export_copy(prepared, &mut telemetry);
+    assert_eq!(receipt.persistence(), ExportCopyPersistenceV1::Unknown);
+    assert_eq!(stdfs::read(&path).unwrap(), b"private payload");
+    let debug = format!("{receipt:?}");
+    assert!(!debug.contains(path.to_string_lossy().as_ref()));
+    assert!(!debug.contains("private payload"));
+}
+
+#[test]
+fn intermediate_symlink_and_parent_traversal_are_closed_refusals() {
+    use std::os::unix::fs::symlink;
+    use vellum_host::authority::{
+        AuthorityContextV1, AuthorityResourceRefV1, AuthoritySubjectRefV1,
+        SaveAsDestinationEffectV1, SaveAsDestinationRequestV1,
+    };
+    let directory = Directory::new();
+    let real = directory.0.join("real");
+    let link = directory.0.join("link");
+    stdfs::create_dir(&real).unwrap();
+    symlink(&real, &link).unwrap();
+    let path = link.join("copy");
+    let context = AuthorityContextV1 {
+        subject: AuthoritySubjectRefV1::new([1; 16]),
+        session: None,
+    };
+    let request = SaveAsDestinationRequestV1::new(
+        context,
+        AuthorityResourceRefV1::new([2; 16]),
+        path,
+        SaveAsDestinationEffectV1::CreateExclusive,
+    );
+    assert!(crate::install_local_export_destination(&request).is_err());
+    assert!(!real.join("copy").exists());
+    stdfs::remove_file(link).unwrap();
+    stdfs::remove_dir(real).unwrap();
 }

@@ -5,6 +5,64 @@ fn ready() -> (SourceCoordinator, Recorder, DocumentVersion) {
     assert!(o.prepare_source_artifact(&d, serialization, &mut r).is_ok());
     (o, r, d)
 }
+
+#[test]
+fn export_capture_consumes_exact_codec_bytes_and_releases_the_temporary_charge_once() {
+    let (mut owner, mut recorder, source) = ready();
+    let prepared = owner
+        .resources
+        .source_preparation
+        .as_ref()
+        .unwrap()
+        .id
+        .clone();
+    let before = owner.resource_usage();
+    assert_eq!(before.prepared_sources, 1);
+    assert_eq!(before.prepared_source_bytes, 1);
+
+    let capture = owner
+        .capture_prepared_source_serialization(&prepared, &mut recorder)
+        .unwrap();
+    assert_eq!(capture.bytes(), b"A");
+    assert_eq!(capture.source(), &source);
+    assert_eq!(
+        capture.serialization(),
+        owner
+            .source_serialization(&source.document, &mut recorder)
+            .unwrap()
+    );
+    assert_eq!(
+        format!("{capture:?}"),
+        "CapturedSourceSerializationV1(<redacted>)"
+    );
+    assert_eq!(owner.resource_usage().prepared_sources, 0);
+    assert_eq!(owner.resource_usage().prepared_source_bytes, 0);
+    assert_eq!(owner.resource_usage().held_artifact_bytes, 0);
+    assert!(matches!(
+        owner.capture_prepared_source_serialization(&prepared, &mut recorder),
+        Err(ResourceError::Unavailable)
+    ));
+    assert!(!owner.is_faulted());
+}
+
+#[test]
+fn foreign_export_capture_cannot_consume_the_local_preparation() {
+    let (mut owner, mut recorder, _) = ready();
+    let (peer, _, _) = ready();
+    let foreign = peer
+        .resources
+        .source_preparation
+        .as_ref()
+        .unwrap()
+        .id
+        .clone();
+    let before = owner.resource_usage();
+    assert!(matches!(
+        owner.capture_prepared_source_serialization(&foreign, &mut recorder),
+        Err(ResourceError::Unavailable)
+    ));
+    assert_eq!(owner.resource_usage(), before);
+}
 #[test]
 fn read_writer_attachment_charge_is_preserved_by_source_artifact_preparation_and_discard() {
     let (mut o, mut r, d, _) = super::super::serialization_tests::fixture();

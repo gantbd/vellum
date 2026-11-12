@@ -1,13 +1,21 @@
 use serde_json::{Value, json};
 use std::{collections::VecDeque, io::BufReader};
-use vellum_client::Client;
 use vellum_mcp::{
-    BoundedLine, McpLimits, McpServer, PROTOCOL_VERSION, REPLACE_TOOL, SNAPSHOT_TOOL,
-    read_bounded_line,
+    BoundedLine, CHANGES_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, read_bounded_line,
 };
-use vellum_protocol::{
-    ClientId, CommandV1, OutcomeV1, RefusalV1, ReplyV1, RequestV1, ServiceAccessErrorV1,
-    ServiceControlErrorV1, ServicePort, SnapshotV1, VersionWitness,
+use vellum_sdk_client::{
+    client::Client,
+    protocol::{
+        ClientId, CommandV1, DirectoryAdmissionReceiptV1, EditPersistenceV1,
+        FileAdmissionReceiptV1, FileAdmissionStatusV1, OutcomeV1, RefusalV1,
+        ReplaceAndSaveReceiptV1, ReplyV1, RequestV1, SaveApplicationV1, SaveReceiptV1,
+        SaveSynchronizationV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
+        SnapshotV1, VersionWitness, WorkspaceChangeCursorV1, WorkspaceChangeGapV1,
+        WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1, WorkspaceChangesV1,
+        WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
+        WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
+    },
 };
 
 #[derive(Debug)]
@@ -50,6 +58,14 @@ fn server(replies: Vec<Result<ReplyV1, ServiceAccessErrorV1>>) -> McpServer<Scri
     McpServer::new(client, McpLimits::reference()).unwrap()
 }
 
+fn document() -> WorkspaceDocumentIdV1 {
+    WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(7).unwrap(), 11).unwrap()
+}
+
+fn document_arguments() -> Value {
+    json!({"workspace": 7, "document": 11})
+}
+
 fn send(server: &mut McpServer<ScriptedPort>, request: Value) -> Value {
     serde_json::from_slice(&server.handle(request.to_string().as_bytes()).unwrap()).unwrap()
 }
@@ -77,6 +93,7 @@ fn current_protocol_discovery_and_catalog_are_complete_deterministic_and_private
     );
     assert_eq!(list["result"]["tools"][0]["name"], SNAPSHOT_TOOL);
     assert_eq!(list["result"]["tools"][1]["name"], REPLACE_TOOL);
+    assert_eq!(list["result"]["tools"][2]["name"], REPLACE_AND_SAVE_TOOL);
     assert_eq!(
         list["result"]["tools"][1]["inputSchema"]["additionalProperties"],
         false
@@ -92,12 +109,15 @@ fn snapshot_projects_workspace_revision_and_text_without_leaking_client_witness(
         revision: 3,
         text: "alpha".into(),
     };
-    let mut server = server(vec![Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)))]);
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+    ]);
     let reply = send(
         &mut server,
         json!({
             "jsonrpc":"2.0", "id":2, "method":"tools/call",
-            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":{}}
+            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":document_arguments()}
         }),
     );
     assert_eq!(reply["result"]["isError"], false);
@@ -117,6 +137,7 @@ fn semantic_refusal_is_a_closed_tool_error_while_bad_input_is_protocol_error() {
         text: "alpha".into(),
     };
     let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
         Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
         Ok(ReplyV1::Refused(RefusalV1::Stale)),
     ]);
@@ -125,7 +146,7 @@ fn semantic_refusal_is_a_closed_tool_error_while_bad_input_is_protocol_error() {
         json!({
             "jsonrpc":"2.0", "id":3, "method":"tools/call",
             "params":{"_meta":meta(), "name":REPLACE_TOOL, "arguments":{
-                "expected_revision":4, "start":0, "end":0, "inserted":"x"
+                "workspace":7, "document":11, "expected_revision":4, "start":0, "end":0, "inserted":"x"
             }}
         }),
     );
@@ -140,7 +161,59 @@ fn semantic_refusal_is_a_closed_tool_error_while_bad_input_is_protocol_error() {
         }),
     );
     assert_eq!(invalid["error"]["code"], -32602);
+    let foreign_operation = send(
+        &mut server,
+        json!({
+            "jsonrpc":"2.0", "id":5, "method":"tools/call",
+            "params":{"_meta":meta(), "name":REPLACE_TOOL, "arguments":{
+                "workspace":7, "document":11, "expected_revision":4,
+                "start":0, "end":0, "inserted":"x", "operation":"vo1.0000000000000001"
+            }}
+        }),
+    );
+    assert_eq!(foreign_operation["error"]["code"], -32602);
     assert_eq!(server.usage().tool_errors, 1);
+}
+
+#[test]
+fn authority_refusals_remain_closed_tool_errors() {
+    for (refusal, expected) in [
+        (RefusalV1::AuthorityDenied, "authority_denied"),
+        (RefusalV1::AuthorityUnavailable, "authority_unavailable"),
+    ] {
+        let mut server = server(vec![Ok(ReplyV1::Refused(refusal))]);
+        let reply = send(
+            &mut server,
+            json!({
+                "jsonrpc":"2.0", "id":"authority", "method":"tools/call",
+                "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":document_arguments()}
+            }),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        assert_eq!(reply["result"]["structuredContent"]["code"], expected);
+    }
+}
+
+#[test]
+fn transport_phase_failures_are_closed_tool_errors() {
+    for (failure, expected) in [
+        (ServiceAccessErrorV1::NotSent, "service_not_sent"),
+        (
+            ServiceAccessErrorV1::OutcomeUnknown,
+            "service_outcome_unknown",
+        ),
+    ] {
+        let mut server = server(vec![Err(failure)]);
+        let reply = send(
+            &mut server,
+            json!({
+                "jsonrpc":"2.0", "id":"phase", "method":"tools/call",
+                "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":document_arguments()}
+            }),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        assert_eq!(reply["result"]["structuredContent"]["code"], expected);
+    }
 }
 
 #[test]
@@ -156,6 +229,7 @@ fn replacement_derives_a_fresh_native_witness_inside_the_same_mcp_request() {
         text: "xalpha".into(),
     };
     let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
         Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(before))),
         Ok(ReplyV1::Accepted(OutcomeV1::Replaced(after))),
     ]);
@@ -164,7 +238,7 @@ fn replacement_derives_a_fresh_native_witness_inside_the_same_mcp_request() {
         json!({
             "jsonrpc":"2.0", "id":"replace", "method":"tools/call",
             "params":{"_meta":meta(), "name":REPLACE_TOOL, "arguments":{
-                "expected_revision":4, "start":0, "end":0, "inserted":"x"
+                "workspace":7, "document":11, "expected_revision":4, "start":0, "end":0, "inserted":"x"
             }}
         }),
     );
@@ -172,11 +246,67 @@ fn replacement_derives_a_fresh_native_witness_inside_the_same_mcp_request() {
     assert_eq!(reply["result"]["structuredContent"]["revision"], 5);
 
     let transport = server.into_client().into_transport();
-    assert_eq!(transport.requests.len(), 2);
-    assert!(matches!(transport.requests[0].command, CommandV1::Snapshot));
+    assert_eq!(transport.requests.len(), 3);
+    assert!(matches!(transport.requests[1].command, CommandV1::Snapshot));
     assert!(matches!(
-        transport.requests[1].command,
+        transport.requests[2].command,
         CommandV1::Replace { expected, .. } if expected == VersionWitness::new(7).unwrap()
+    ));
+}
+
+#[test]
+fn durable_replacement_projects_closed_persistence_evidence_without_native_witness() {
+    let before = SnapshotV1 {
+        witness: VersionWitness::new(7).unwrap(),
+        revision: 4,
+        text: "alpha".into(),
+    };
+    let after = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "xalpha".into(),
+    };
+    let save = SaveReceiptV1 {
+        application: SaveApplicationV1::Written,
+        synchronization: SaveSynchronizationV1::Succeeded,
+        no_future_effects: true,
+        quiescent: true,
+        adapter_failure: false,
+        cleanup_failed: false,
+        baseline_published: true,
+        outcome_unknown: false,
+    };
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(before))),
+        Ok(ReplyV1::Accepted(OutcomeV1::ReplacedAndSaved(
+            ReplaceAndSaveReceiptV1 {
+                snapshot: after,
+                persistence: EditPersistenceV1::Durable(save),
+            },
+        ))),
+    ]);
+    let reply = send(
+        &mut server,
+        json!({
+            "jsonrpc":"2.0", "id":"durable", "method":"tools/call",
+            "params":{"_meta":meta(), "name":REPLACE_AND_SAVE_TOOL, "arguments":{
+                "workspace":7, "document":11, "expected_revision":4, "start":0, "end":0, "inserted":"x"
+            }}
+        }),
+    );
+    let structured = &reply["result"]["structuredContent"];
+    assert_eq!(structured["kind"], "replaced_and_saved");
+    assert_eq!(structured["revision"], 5);
+    assert_eq!(structured["persistence"]["status"], "durable");
+    assert_eq!(structured["persistence"]["application"], "written");
+    assert!(structured["witness"].is_null());
+
+    let transport = server.into_client().into_transport();
+    assert!(matches!(
+        transport.requests[2].command,
+        CommandV1::ReplaceAndSave { expected, .. }
+            if expected == VersionWitness::new(7).unwrap()
     ));
 }
 
@@ -222,18 +352,21 @@ fn legacy_initialization_fails_forward_with_the_supported_modern_version() {
 }
 
 #[test]
-fn snapshot_accepts_spec_optional_arguments_but_rejects_undeclared_params() {
+fn snapshot_requires_explicit_document_identity_and_rejects_undeclared_params() {
     let snapshot = SnapshotV1 {
         witness: VersionWitness::new(1).unwrap(),
         revision: 0,
         text: "".into(),
     };
-    let mut server = server(vec![Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)))]);
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+    ]);
     let accepted = send(
         &mut server,
         json!({
             "jsonrpc":"2.0", "id":8, "method":"tools/call",
-            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL}
+            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":document_arguments()}
         }),
     );
     assert_eq!(accepted["result"]["isError"], false);
@@ -295,7 +428,11 @@ fn response_limit_error_preserves_the_original_request_identity() {
         text: "x".repeat(1024).into(),
     };
     let client = Client::connect(ScriptedPort {
-        replies: vec![Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)))].into(),
+        replies: vec![
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+        ]
+        .into(),
         requests: Vec::new(),
     })
     .unwrap();
@@ -311,7 +448,7 @@ fn response_limit_error_preserves_the_original_request_identity() {
         &mut server,
         json!({
             "jsonrpc":"2.0", "id":"bounded", "method":"tools/call",
-            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL}
+            "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":document_arguments()}
         }),
     );
     assert_eq!(reply["id"], "bounded");
@@ -327,99 +464,431 @@ fn binary_help_is_content_free_and_names_the_trust_boundary() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("vellum-mcp --socket"));
-    assert!(stdout.contains("not authentication"));
+    assert!(stdout.contains("grants no Vellum action"));
+    assert!(stdout.contains("never accepted through argv or environment"));
 }
 
-#[cfg(target_os = "macos")]
 #[test]
-fn stdio_adapter_reaches_the_real_daemon_and_disconnects_on_eof() {
-    use std::{
-        fs,
-        io::{Read, Write},
-        os::unix::fs::PermissionsExt,
-        process::{Command, Stdio},
-        sync::mpsc,
-        time::Duration,
-    };
-    use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
-    use vellum_daemon::{DaemonLimits, LocalDaemon};
-    use vellum_editor::Workspace;
-    use vellum_service::ServiceLimits;
-    use vellum_transport::TransportLimits;
+fn modern_discovery_is_per_request_and_initialize_is_always_legacy() {
+    let mut server = server(Vec::new());
+    let reply = send(
+        &mut server,
+        json!({
+            "jsonrpc":"2.0", "id":"init", "method":"initialize", "params":{
+                "protocolVersion":PROTOCOL_VERSION,
+                "capabilities":{"resources":{}},
+                "clientInfo":{"name":"test", "version":"1"}
+            }
+        }),
+    );
+    assert_eq!(reply["error"]["code"], -32022);
+    assert_eq!(
+        reply["error"]["data"]["supported"],
+        json!([PROTOCOL_VERSION])
+    );
 
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let listed = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"tools", "method":"tools/list", "params":{"_meta":meta()}}),
+    );
+    let names = listed["result"]["tools"]
+        .as_array()
         .unwrap()
-        .as_nanos();
-    let directory = std::path::PathBuf::from("/tmp")
-        .join(format!("vellum-mcp-live-{}-{nonce}", std::process::id()));
-    fs::create_dir(&directory).unwrap();
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
-    let source = directory.join("source.txt");
-    let socket = directory.join("service.sock");
-    fs::write(&source, "alpha").unwrap();
-    let (ready_tx, ready_rx) = mpsc::sync_channel(0);
-    let daemon_socket = socket.clone();
-    let daemon_source = source.clone();
-    let daemon = std::thread::spawn(move || {
-        let workspace = Workspace::open(
-            std::slice::from_ref(&daemon_source),
-            vellum_editor::reference_workspace_profile(
-                LocalFilesystemFactory::new(FilesystemLimits {
-                    max_resources: 8,
-                    max_bytes: 4096,
-                    max_stage_attempts: 8,
-                    max_metadata_bytes: 4096,
-                })
-                .erase(),
-            ),
-        )
-        .unwrap();
-        let mut daemon = LocalDaemon::bind(
-            &daemon_socket,
-            workspace,
-            DaemonLimits {
-                service: ServiceLimits::reference(),
-                transport: TransportLimits::reference(),
-                io_timeout: Duration::from_secs(2),
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            SNAPSHOT_TOOL,
+            REPLACE_TOOL,
+            REPLACE_AND_SAVE_TOOL,
+            CHANGES_TOOL,
+            MEMBERSHIP_TOOL
+        ]
+    );
+}
+
+#[test]
+fn resources_are_content_free_paginated_and_cursor_bound() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let root = WorkspaceRootIdV1::new(workspace, 13).unwrap();
+    let cursor = WorkspaceInventoryCursorV1::new(workspace, 3, 2).unwrap();
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceInventoryPage(
+            WorkspaceInventoryPageV1 {
+                workspace,
+                documents: vec![document],
+                roots: vec![WorkspaceRootV1 {
+                    id: root,
+                    kind: WorkspaceRootKindV1::Directory,
+                }],
+                next: Some(cursor),
             },
-        )
-        .unwrap();
-        ready_tx.send(()).unwrap();
-        for _ in 0..3 {
-            daemon.serve_next().unwrap();
-        }
-        assert_eq!(daemon.service_usage().active_clients, 0);
-    });
-    ready_rx.recv().unwrap();
+        ))),
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceInventoryPage(
+            WorkspaceInventoryPageV1 {
+                workspace,
+                documents: Vec::new(),
+                roots: Vec::new(),
+                next: None,
+            },
+        ))),
+    ]);
+    let reply = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"resources", "method":"resources/list", "params":{"_meta":meta()}}),
+    );
+    assert_eq!(reply["result"]["workspace"], 7);
+    assert_eq!(reply["result"]["resources"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        reply["result"]["resources"][0]["uri"],
+        "vellum://workspace/7/document/11"
+    );
+    assert_eq!(
+        reply["result"]["resources"][1]["uri"],
+        "vellum://workspace/7/root/13"
+    );
+    let encoded = reply["result"]["nextCursor"].as_str().unwrap();
+    assert!(encoded.starts_with("vi1."));
+    let serialized = reply.to_string();
+    assert!(!serialized.contains('/') || serialized.contains("vellum://"));
+    assert!(!serialized.contains("private/tmp"));
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
-        .arg("--socket")
-        .arg(&socket)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let request = json!({
-        "jsonrpc":"2.0", "id":"live", "method":"tools/call",
-        "params":{"_meta":meta(), "name":SNAPSHOT_TOOL, "arguments":{}}
+    let continued = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"continued", "method":"resources/list", "params":{"_meta":meta(), "cursor":encoded}}),
+    );
+    assert!(
+        continued["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(continued["result"]["nextCursor"].is_null());
+
+    let invalid = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":"bad", "method":"resources/list", "params":{"_meta":meta(), "cursor":"vi1.0.1.1"}}),
+    );
+    assert_eq!(invalid["error"]["code"], -32602);
+    let transport = server.into_client().into_transport();
+    assert!(matches!(
+        transport.requests[1].command,
+        CommandV1::WorkspaceInventoryPage { cursor: Some(actual), page_size: 2 }
+            if actual == cursor
+    ));
+}
+
+#[test]
+fn resource_read_is_self_contained_and_never_accepts_path_uris() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let snapshot = SnapshotV1 {
+        witness: VersionWitness::new(4).unwrap(),
+        revision: 9,
+        text: "alpha".into(),
+    };
+    let mut mcp = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot))),
+    ]);
+    let read = send(
+        &mut mcp,
+        json!({"jsonrpc":"2.0", "id":1, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/document/11"}}),
+    );
+    assert_eq!(read["result"]["contents"][0]["text"], "alpha");
+    assert_eq!(read["result"]["contents"][0]["_meta"]["vellum/revision"], 9);
+
+    let path = send(
+        &mut mcp,
+        json!({"jsonrpc":"2.0", "id":2, "method":"resources/read", "params":{"_meta":meta(), "uri":"file:///private/tmp/secret"}}),
+    );
+    assert_eq!(path["error"]["code"], -32602);
+
+    let mut missing = server(vec![Ok(ReplyV1::Refused(RefusalV1::UnknownDocument))]);
+    let missing = send(
+        &mut missing,
+        json!({"jsonrpc":"2.0", "id":3, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/document/99"}}),
+    );
+    assert_eq!(missing["error"]["code"], -32602);
+    assert_eq!(missing["error"]["data"]["code"], "unknown_document");
+}
+
+#[test]
+fn root_resource_read_revalidates_kind_and_rejects_unknown_or_tampered_uris() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let root = WorkspaceRootIdV1::new(workspace, 13).unwrap();
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceInventoryPage(
+            WorkspaceInventoryPageV1 {
+                workspace,
+                documents: Vec::new(),
+                roots: vec![WorkspaceRootV1 {
+                    id: root,
+                    kind: WorkspaceRootKindV1::Directory,
+                }],
+                next: None,
+            },
+        ))),
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceInventoryPage(
+            WorkspaceInventoryPageV1 {
+                workspace,
+                documents: Vec::new(),
+                roots: Vec::new(),
+                next: None,
+            },
+        ))),
+    ]);
+    let read = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":1, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/root/13"}}),
+    );
+    assert_eq!(
+        read["result"]["contents"][0]["text"],
+        "{\"kind\":\"directory\"}"
+    );
+    let unknown = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":2, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/root/99"}}),
+    );
+    assert_eq!(unknown["error"]["code"], -32602);
+    assert_eq!(unknown["error"]["data"]["code"], "unknown_root");
+    let tampered = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":3, "method":"resources/read", "params":{"_meta":meta(), "uri":"vellum://workspace/7/root/file/13"}}),
+    );
+    assert_eq!(tampered["error"]["code"], -32602);
+}
+
+#[test]
+fn change_poll_projects_opaque_continuations_and_explicit_gaps() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let next = WorkspaceChangeCursorV1::new(workspace, 5, 4).unwrap();
+    let page = WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+        workspace,
+        observed_head: 4,
+        changes: vec![
+            WorkspaceChangeV1::new(
+                4,
+                WorkspaceChangeKindV1::DocumentChanged {
+                    document,
+                    source_revision: 9,
+                },
+            )
+            .unwrap(),
+        ],
+        next,
     });
-    writeln!(child.stdin.take().unwrap(), "{request}").unwrap();
-    let mut stdout = String::new();
-    child
-        .stdout
-        .take()
+    let gap = WorkspaceChangesV1::Gap(WorkspaceChangeGapV1::new(workspace, 5, 4, 6, 8).unwrap());
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(page))),
+        Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(gap))),
+    ]);
+    let reply = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":CHANGES_TOOL, "arguments":{"page_size":1}}}),
+    );
+    assert_eq!(reply["result"]["structuredContent"]["kind"], "change_page");
+    assert_eq!(
+        reply["result"]["structuredContent"]["changes"][0]["source_revision"],
+        9
+    );
+    assert!(
+        reply["result"]["structuredContent"]["next_cursor"]
+            .as_str()
+            .unwrap()
+            .starts_with("vc1.")
+    );
+    let cursor = reply["result"]["structuredContent"]["next_cursor"]
+        .as_str()
         .unwrap()
-        .read_to_string(&mut stdout)
-        .unwrap();
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success(), "{:?}", output.stderr);
-    let reply: Value = serde_json::from_str(stdout.trim()).unwrap();
-    assert_eq!(reply["result"]["structuredContent"]["text"], "alpha");
-    daemon.join().unwrap();
+        .to_owned();
+    let gap = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":CHANGES_TOOL, "arguments":{"page_size":1, "cursor":cursor}}}),
+    );
+    assert_eq!(gap["result"]["structuredContent"]["kind"], "change_gap");
+    assert_eq!(gap["result"]["structuredContent"]["oldest_available"], 6);
 
-    let _ = fs::remove_file(&source);
-    let _ = fs::remove_file(&socket);
-    let _ = fs::remove_dir(&directory);
+    let malformed = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{"_meta":meta(), "name":CHANGES_TOOL, "arguments":{"page_size":2, "cursor":"x"}}}),
+    );
+    assert_eq!(malformed["error"]["code"], -32602);
+    let transport = server.into_client().into_transport();
+    assert!(matches!(
+        transport.requests[1].command,
+        CommandV1::WorkspaceChanges { after: Some(actual), page_size: 1 }
+            if actual == next
+    ));
+}
+
+#[test]
+fn outcome_unknown_durable_edit_replays_the_exact_native_request() {
+    let before = SnapshotV1 {
+        witness: VersionWitness::new(7).unwrap(),
+        revision: 4,
+        text: "alpha".into(),
+    };
+    let after = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "xalpha".into(),
+    };
+    let receipt = ReplaceAndSaveReceiptV1 {
+        snapshot: after,
+        persistence: EditPersistenceV1::Durable(SaveReceiptV1 {
+            application: SaveApplicationV1::Written,
+            synchronization: SaveSynchronizationV1::Succeeded,
+            no_future_effects: true,
+            quiescent: true,
+            adapter_failure: false,
+            cleanup_failed: false,
+            baseline_published: true,
+            outcome_unknown: false,
+        }),
+    };
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(before))),
+        Err(ServiceAccessErrorV1::OutcomeUnknown),
+        Ok(ReplyV1::Accepted(OutcomeV1::ReplacedAndSaved(receipt))),
+    ]);
+    let request = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":REPLACE_AND_SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":4, "start":0, "end":0, "inserted":"x"}}});
+    let unknown = send(&mut server, request.clone());
+    assert_eq!(
+        unknown["result"]["structuredContent"]["code"],
+        "service_outcome_unknown"
+    );
+    let operation = unknown["result"]["structuredContent"]["operation"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut retry = request;
+    retry["id"] = json!(2);
+    retry["params"]["arguments"]["operation"] = json!(operation);
+    let completed = send(&mut server, retry);
+    assert_eq!(
+        completed["result"]["structuredContent"]["persistence"]["status"],
+        "durable"
+    );
+    let transport = server.into_client().into_transport();
+    assert_eq!(transport.requests.len(), 4);
+    assert_eq!(transport.requests[2], transport.requests[3]);
+}
+
+#[test]
+fn durable_workflow_handle_resumes_an_uncertain_snapshot_stage() {
+    let before = SnapshotV1 {
+        witness: VersionWitness::new(7).unwrap(),
+        revision: 4,
+        text: "alpha".into(),
+    };
+    let after = SnapshotV1 {
+        witness: VersionWitness::new(8).unwrap(),
+        revision: 5,
+        text: "xalpha".into(),
+    };
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+        Err(ServiceAccessErrorV1::OutcomeUnknown),
+        Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(before))),
+        Ok(ReplyV1::Accepted(OutcomeV1::ReplacedAndSaved(
+            ReplaceAndSaveReceiptV1 {
+                snapshot: after,
+                persistence: EditPersistenceV1::NotAttempted(RefusalV1::AuthorityDenied),
+            },
+        ))),
+    ]);
+    let mut request = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":REPLACE_AND_SAVE_TOOL, "arguments":{"workspace":7, "document":11, "expected_revision":4, "start":0, "end":0, "inserted":"x"}}});
+    let unknown = send(&mut server, request.clone());
+    request["id"] = json!(2);
+    request["params"]["arguments"]["operation"] =
+        unknown["result"]["structuredContent"]["operation"].clone();
+    let completed = send(&mut server, request);
+    assert_eq!(
+        completed["result"]["structuredContent"]["persistence"]["status"],
+        "not_attempted"
+    );
+    let transport = server.into_client().into_transport();
+    assert_eq!(transport.requests[1], transport.requests[2]);
+    assert!(matches!(
+        transport.requests[3].command,
+        CommandV1::ReplaceAndSave { .. }
+    ));
+}
+
+#[test]
+fn membership_is_strictly_shaped_and_native_authority_remains_decisive() {
+    let mut server = server(vec![Ok(ReplyV1::Refused(RefusalV1::AuthorityDenied))]);
+    let denied = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":MEMBERSHIP_TOOL, "arguments":{"operation":"add_file", "locator":"/private/tmp/source"}}}),
+    );
+    assert_eq!(
+        denied["result"]["structuredContent"]["code"],
+        "authority_denied"
+    );
+    assert!(!denied.to_string().contains("/private/tmp/source"));
+
+    let malformed = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":MEMBERSHIP_TOOL, "arguments":{"operation":"add_file", "locator":"x", "document":1}}}),
+    );
+    assert_eq!(malformed["error"]["code"], -32602);
+}
+
+#[test]
+fn membership_projects_exact_content_free_admission_receipts() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let file_root = WorkspaceRootIdV1::new(workspace, 13).unwrap();
+    let directory_root = WorkspaceRootIdV1::new(workspace, 14).unwrap();
+    let directory_documents = vec![
+        WorkspaceDocumentIdV1::new(workspace, 15).unwrap(),
+        WorkspaceDocumentIdV1::new(workspace, 16).unwrap(),
+    ];
+    let mut server = server(vec![
+        Ok(ReplyV1::Accepted(OutcomeV1::FileAdmitted(
+            FileAdmissionReceiptV1 {
+                document,
+                root: Some(file_root),
+                status: FileAdmissionStatusV1::Added,
+            },
+        ))),
+        Ok(ReplyV1::Accepted(OutcomeV1::DirectoryAdmitted(
+            DirectoryAdmissionReceiptV1 {
+                root: directory_root,
+                added: 2,
+                joined: 1,
+                added_documents: directory_documents,
+            },
+        ))),
+    ]);
+    let file = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"_meta":meta(), "name":MEMBERSHIP_TOOL, "arguments":{"operation":"add_file", "locator":"private-file"}}}),
+    );
+    let file_result = &file["result"]["structuredContent"];
+    assert_eq!(file_result["kind"], "file_admission");
+    assert_eq!(file_result["document"], 11);
+    assert_eq!(file_result["root"]["root"], 13);
+    assert_eq!(file_result["status"], "added");
+    assert!(!file.to_string().contains("private-file"));
+
+    let directory = send(
+        &mut server,
+        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"_meta":meta(), "name":MEMBERSHIP_TOOL, "arguments":{"operation":"add_directory", "locator":"private-directory"}}}),
+    );
+    let directory_result = &directory["result"]["structuredContent"];
+    assert_eq!(directory_result["kind"], "directory_admission");
+    assert_eq!(directory_result["root"], 14);
+    assert_eq!(directory_result["added"], 2);
+    assert_eq!(directory_result["joined"], 1);
+    assert_eq!(directory_result["added_documents"][0]["document"], 15);
+    assert_eq!(directory_result["added_documents"][1]["document"], 16);
+    assert!(!directory.to_string().contains("private-directory"));
 }

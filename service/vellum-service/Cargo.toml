@@ -9,8 +9,10 @@ publish = false
 description = "Bounded in-process service interpreter for Vellum"
 
 [dependencies]
+keystone-replay = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "3486252cdbaeb2d784756076f43ef6157ed0b7f8" }
 vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
 vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
 vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
 
 [dev-dependencies]
