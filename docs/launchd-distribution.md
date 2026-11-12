@@ -63,11 +63,19 @@ Cargo-install binary. The candidate checksum-closes it as a native deployment
 tool and qualification exercises only `--help`; its transaction tests inject
 all effects and never invoke launchctl.
 
-For an authorized first installation, create and verify the private directory,
-render and inspect the plist, place the exact qualified candidate and plist,
-then activate through the separately reviewed executor. Its status gate invokes
-the exact selected daemon's `--status` command and requires the version-2
-live/running/healthy/ready product; a startup line alone is not readiness.
+For an authorized first installation, use the verified bundle installer's
+canonical `0400` receipt and closed two-product `bin` directory, render and
+inspect a separate exact plist, then use the executor's explicit
+`--execute-authorized-first-install` path with its separate candidate-only
+approval and configuration. The receipt records verification and durable local
+installation but explicitly records `activationPerformed: false`; the approval
+binds its exact manifest digest. The executor refuses a positively
+observed existing job before effects, never invents a prior version, and
+durably brackets bootstrap plus any cleanup of a confirmed unhealthy candidate.
+Its status gate invokes the exact selected daemon's `--status` command and
+requires the version-2 live/running/healthy/ready product; a startup line alone
+is not readiness. Bootstrap or cleanup uncertainty remains outcome-unknown and
+is never retried automatically.
 
 For an authorized upgrade, retain a distinct qualified rollback candidate,
 request shutdown over the current control socket (or let launchd send

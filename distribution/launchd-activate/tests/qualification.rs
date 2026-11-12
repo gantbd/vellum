@@ -13,8 +13,11 @@ use sha2::{Digest as _, Sha256};
 use vellum_launchd_activate::{
     ActivationConfigurationV1, ActivationOutcomeV1, ActivationReconciliationActionV1,
     ActivationReconciliationStateV1, ActivationVersionInputV1, DaemonStatusV1,
+    FirstInstallConfigurationV1, FirstInstallOutcomeV1, FirstInstallReconciliationStateV1,
     LaunchdActivationPortV1, LaunchdEffectDispositionV1, LaunchdJobIdentityV1,
-    LaunchdObservationV1, activate_v1, decode_configuration_v1, reconcile_activation_journal_v1,
+    LaunchdObservationV1, activate_v1, decode_configuration_v1,
+    decode_first_install_configuration_v1, first_install_v1, reconcile_activation_journal_v1,
+    reconcile_first_install_journal_v1,
 };
 use vellum_launchd_render::{LaunchdConfigurationV1, render_launchd_profile_v1};
 
@@ -53,6 +56,7 @@ fn digest(path: &Path) -> String {
 struct Fixture {
     _scratch: Scratch,
     configuration: ActivationConfigurationV1,
+    first_install_configuration: FirstInstallConfigurationV1,
     candidate_daemon: PathBuf,
     prior_daemon: PathBuf,
     candidate_plist: PathBuf,
@@ -65,14 +69,24 @@ impl Fixture {
         let owner = fs::metadata(&scratch.0).unwrap().uid();
         let state = scratch.0.join("state");
         let transaction = scratch.0.join("transaction");
+        let first_install_transaction = scratch.0.join("first-install-transaction");
         fs::create_dir(&state).unwrap();
         fs::create_dir(&transaction).unwrap();
+        fs::create_dir(&first_install_transaction).unwrap();
         fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
         fs::set_permissions(&transaction, fs::Permissions::from_mode(0o700)).unwrap();
-        let candidate_dir = scratch.0.join("candidate");
+        fs::set_permissions(
+            &first_install_transaction,
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        let installation_root = scratch.0.join("installation");
+        let candidate_dir = installation_root.join("bin");
         let prior_dir = scratch.0.join("prior");
+        fs::create_dir(&installation_root).unwrap();
         fs::create_dir(&candidate_dir).unwrap();
         fs::create_dir(&prior_dir).unwrap();
+        fs::set_permissions(&installation_root, fs::Permissions::from_mode(0o700)).unwrap();
         fs::set_permissions(&candidate_dir, fs::Permissions::from_mode(0o700)).unwrap();
         fs::set_permissions(&prior_dir, fs::Permissions::from_mode(0o700)).unwrap();
         let candidate_daemon = candidate_dir.join("vellum-daemon");
@@ -103,7 +117,7 @@ impl Fixture {
             })
             .unwrap()
         };
-        let candidate_plist = candidate_dir.join("vellum.plist");
+        let candidate_plist = scratch.0.join("candidate.plist");
         let prior_plist = prior_dir.join("vellum.plist");
         write(&candidate_plist, render(&candidate_daemon), 0o600);
         write(&prior_plist, render(&prior_daemon), 0o600);
@@ -164,6 +178,54 @@ impl Fixture {
             ),
             0o600,
         );
+        let installation_receipt = installation_root.join("install-receipt.json");
+        write(
+            &installation_receipt,
+            format!(
+                concat!(
+                    "{{\n",
+                    "  \"schema\": 1,\n",
+                    "  \"channel\": \"local-release-candidate-installation\",\n",
+                    "  \"manifestSha256\": \"{}\",\n",
+                    "  \"claims\": [\n",
+                    "    \"verified-bundle\",\n",
+                    "    \"daemon-mcp-only\",\n",
+                    "    \"durable-local-prefix\"\n",
+                    "  ],\n",
+                    "  \"nonClaims\": [\n",
+                    "    \"path-configuration\",\n",
+                    "    \"launchd-installation\",\n",
+                    "    \"activation\",\n",
+                    "    \"upgrade\",\n",
+                    "    \"uninstall\",\n",
+                    "    \"signature\",\n",
+                    "    \"attestation\"\n",
+                    "  ],\n",
+                    "  \"products\": [\n",
+                    "    {{\n",
+                    "      \"file\": \"bin/vellum-daemon\",\n",
+                    "      \"bytes\": {},\n",
+                    "      \"sha256\": \"{}\"\n",
+                    "    }},\n",
+                    "    {{\n",
+                    "      \"file\": \"bin/vellum-mcp\",\n",
+                    "      \"bytes\": {},\n",
+                    "      \"sha256\": \"{}\"\n",
+                    "    }}\n",
+                    "  ],\n",
+                    "  \"activationPerformed\": false\n",
+                    "}}\n"
+                ),
+                candidate_manifest,
+                fs::metadata(&candidate_daemon).unwrap().len(),
+                digest(&candidate_daemon),
+                fs::metadata(candidate_dir.join("vellum-mcp"))
+                    .unwrap()
+                    .len(),
+                digest(&candidate_dir.join("vellum-mcp")),
+            ),
+            0o400,
+        );
         let approval = scratch.0.join("approval.json");
         write(
             &approval,
@@ -185,6 +247,46 @@ impl Fixture {
             ),
             0o600,
         );
+        let first_install_approval = scratch.0.join("first-install-approval.json");
+        write(
+            &first_install_approval,
+            format!(
+                concat!(
+                    "{{\n",
+                    "  \"schema\": 1,\n",
+                    "  \"channel\": \"local-first-install-approval\",\n",
+                    "  \"transactionId\": \"{}\",\n",
+                    "  \"requestedAction\": \"install-candidate-as-new-launchagent\",\n",
+                    "  \"candidateManifestSha256\": \"{}\",\n",
+                    "  \"installationAuthorized\": true\n",
+                    "}}\n"
+                ),
+                "3".repeat(32),
+                "a".repeat(64),
+            ),
+            0o600,
+        );
+        let first_install_configuration = FirstInstallConfigurationV1 {
+            schema: 1,
+            channel: "vellum-launchd-first-install".into(),
+            installation_receipt,
+            approval: first_install_approval,
+            transaction_directory: first_install_transaction,
+            label: label.clone(),
+            owner_uid: owner,
+            state_directory: state.clone(),
+            data_socket: data_socket.clone(),
+            control_socket: control_socket.clone(),
+            stdout_log: stdout_log.clone(),
+            stderr_log: stderr_log.clone(),
+            candidate: ActivationVersionInputV1 {
+                directory: candidate_dir.clone(),
+                plist: candidate_plist.clone(),
+            },
+            max_health_attempts: 2,
+            health_interval_ms: 0,
+            effect_timeout_ms: 1_000,
+        };
         let configuration = ActivationConfigurationV1 {
             schema: 1,
             channel: "vellum-launchd-activation".into(),
@@ -213,6 +315,7 @@ impl Fixture {
         Self {
             _scratch: scratch,
             configuration,
+            first_install_configuration,
             candidate_daemon,
             prior_daemon,
             candidate_plist,
@@ -246,6 +349,12 @@ impl FakePort {
             effects: Vec::new(),
             dispositions: VecDeque::new(),
         }
+    }
+
+    fn new_first_install(fixture: &Fixture) -> Self {
+        let mut port = Self::new(fixture);
+        port.current = None;
+        port
     }
 
     fn disposition(&mut self) -> LaunchdEffectDispositionV1 {
@@ -321,6 +430,270 @@ impl LaunchdActivationPortV1 for FakePort {
     }
 
     fn wait_before_status_retry(&mut self, _interval: Duration) {}
+}
+
+#[test]
+fn fresh_candidate_identity_and_readiness_complete_first_install_without_prior_effects() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::CandidateActive);
+    assert_eq!(receipt.selected_manifest_sha256, "a".repeat(64));
+    assert_eq!(port.effects, ["load-candidate"]);
+    let journal = fixture
+        .first_install_configuration
+        .transaction_directory
+        .join("first-install-journal");
+    assert_eq!(fs::read_dir(journal).unwrap().count(), 4);
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::CandidateActiveDurable
+    );
+    let configuration_file = fixture._scratch.0.join("first-install-config.json");
+    write(
+        &configuration_file,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&fixture.first_install_configuration).unwrap()
+        ),
+        0o600,
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_vellum-launchd-activate"))
+        .arg("--reconcile-first-install-journal")
+        .arg(format!("--config={}", configuration_file.display()))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["state"], "candidate_active_durable");
+    assert_eq!(report["launchdEffect"], "not_attempted");
+}
+
+#[test]
+fn first_install_refuses_known_existing_job_without_effect() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new(&fixture);
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::InstallationRefused);
+    assert!(port.effects.is_empty());
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::InstallationRefusedDurable
+    );
+    assert_eq!(reconciled.last_disposition, "existing_job");
+    assert!(!reconciled.automatic_retry_authorized);
+}
+
+#[test]
+fn unhealthy_first_install_is_removed_without_inventing_rollback() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    port.candidate_ready = false;
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::InstallationRefused);
+    assert_eq!(port.effects, ["load-candidate", "unload"]);
+    assert!(port.current.is_none());
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::InstallationRefusedDurable
+    );
+    assert_eq!(reconciled.last_effect, "candidate_cleanup");
+}
+
+#[test]
+fn uncertain_first_install_load_stops_without_cleanup_or_retry() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::OutcomeUnknown);
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::OutcomeUnknown);
+    assert_eq!(port.effects, ["load-candidate"]);
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::OutcomeUnknown
+    );
+    assert_eq!(
+        reconciled.required_action,
+        ActivationReconciliationActionV1::InspectExactJobAndDaemonStatus
+    );
+    assert!(!reconciled.automatic_retry_authorized);
+}
+
+#[test]
+fn refused_first_install_load_is_durable_without_cleanup() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::Refused);
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::InstallationRefused);
+    assert_eq!(port.effects, ["load-candidate"]);
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::InstallationRefusedDurable
+    );
+    assert_eq!(reconciled.last_disposition, "load_refused");
+}
+
+#[test]
+fn uncertain_first_install_cleanup_never_claims_absence() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    port.candidate_ready = false;
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::Confirmed);
+    port.dispositions
+        .push_back(LaunchdEffectDispositionV1::OutcomeUnknown);
+    let receipt = first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    assert_eq!(receipt.outcome, FirstInstallOutcomeV1::OutcomeUnknown);
+    assert_eq!(port.effects, ["load-candidate", "unload"]);
+    let reconciled =
+        reconcile_first_install_journal_v1(&fixture.first_install_configuration).unwrap();
+    assert_eq!(
+        reconciled.state,
+        FirstInstallReconciliationStateV1::OutcomeUnknown
+    );
+    assert_eq!(reconciled.last_phase, "candidate_unload");
+}
+
+#[test]
+fn first_install_reconciliation_rejects_transplanted_identity() {
+    let fixture = Fixture::new();
+    let mut port = FakePort::new_first_install(&fixture);
+    first_install_v1(&fixture.first_install_configuration, &mut port).unwrap();
+    let entry = fixture
+        .first_install_configuration
+        .transaction_directory
+        .join("first-install-journal/0003.json");
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&entry).unwrap()).unwrap();
+    value["candidateManifestSha256"] = json!("9".repeat(64));
+    fs::set_permissions(&entry, fs::Permissions::from_mode(0o600)).unwrap();
+    write(
+        &entry,
+        format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
+        0o400,
+    );
+    assert!(reconcile_first_install_journal_v1(&fixture.first_install_configuration).is_err());
+}
+
+#[test]
+fn first_install_decoder_and_approval_are_closed_before_effects() {
+    let fixture = Fixture::new();
+    let encoded = serde_json::to_vec(&fixture.first_install_configuration).unwrap();
+    let encoded_value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+    assert!(encoded_value.get("installationReceipt").is_some());
+    assert!(encoded_value.get("qualificationEvidence").is_none());
+    assert_eq!(
+        decode_first_install_configuration_v1(&encoded).unwrap(),
+        fixture.first_install_configuration
+    );
+    let mut value = encoded_value;
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("prior".into(), json!({}));
+    assert!(decode_first_install_configuration_v1(&serde_json::to_vec(&value).unwrap()).is_err());
+
+    let approval = fixture.first_install_configuration.approval.clone();
+    let mut approval_value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&approval).unwrap()).unwrap();
+    approval_value["requestedAction"] = json!("select-candidate-for-external-activation");
+    write(
+        &approval,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&approval_value).unwrap()
+        ),
+        0o600,
+    );
+    let mut port = FakePort::new_first_install(&fixture);
+    assert!(first_install_v1(&fixture.first_install_configuration, &mut port).is_err());
+    assert!(port.effects.is_empty());
+    assert!(
+        fs::read_dir(&fixture.first_install_configuration.transaction_directory)
+            .unwrap()
+            .next()
+            .is_none()
+    );
+}
+
+#[test]
+fn first_install_refuses_installer_receipt_or_product_substitution_before_effects() {
+    let fixture = Fixture::new();
+    let receipt = fixture
+        .first_install_configuration
+        .installation_receipt
+        .clone();
+    let changed = fs::read_to_string(&receipt).unwrap().replace(
+        "\"activationPerformed\": false",
+        "\"activationPerformed\": true",
+    );
+    fs::set_permissions(&receipt, fs::Permissions::from_mode(0o600)).unwrap();
+    write(&receipt, changed, 0o400);
+    let mut port = FakePort::new_first_install(&fixture);
+    assert!(first_install_v1(&fixture.first_install_configuration, &mut port).is_err());
+    assert!(port.effects.is_empty());
+    assert!(
+        fs::read_dir(&fixture.first_install_configuration.transaction_directory)
+            .unwrap()
+            .next()
+            .is_none()
+    );
+
+    let product_fixture = Fixture::new();
+    fs::set_permissions(
+        &product_fixture.candidate_daemon,
+        fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    write(
+        &product_fixture.candidate_daemon,
+        b"substituted daemon\n",
+        0o500,
+    );
+    let mut product_port = FakePort::new_first_install(&product_fixture);
+    assert!(
+        first_install_v1(
+            &product_fixture.first_install_configuration,
+            &mut product_port
+        )
+        .is_err()
+    );
+    assert!(product_port.effects.is_empty());
+
+    let closure_fixture = Fixture::new();
+    fs::remove_file(
+        closure_fixture
+            .candidate_daemon
+            .parent()
+            .unwrap()
+            .join("vellum-mcp"),
+    )
+    .unwrap();
+    let mut closure_port = FakePort::new_first_install(&closure_fixture);
+    assert!(
+        first_install_v1(
+            &closure_fixture.first_install_configuration,
+            &mut closure_port
+        )
+        .is_err()
+    );
+    assert!(closure_port.effects.is_empty());
 }
 
 #[test]
@@ -523,11 +896,10 @@ fn decoder_is_closed_and_cli_requires_the_explicit_execution_switch() {
         .output()
         .unwrap();
     assert!(help.status.success());
-    assert!(
-        String::from_utf8(help.stdout)
-            .unwrap()
-            .contains("vellum-launchd-activate")
-    );
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.contains("vellum-launchd-activate"));
+    assert!(help.contains("--execute-authorized-first-install"));
+    assert!(help.contains("--reconcile-first-install-journal"));
     let refused = Command::new(env!("CARGO_BIN_EXE_vellum-launchd-activate"))
         .output()
         .unwrap();

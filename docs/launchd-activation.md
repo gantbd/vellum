@@ -9,11 +9,33 @@ the two binaries installed by the `vellum` Cargo-install package. The GitHub
 release-candidate payload now checksum-closes the exact native executable and
 qualification runs only its `--help` path, recording `launchdEffect:
 not-attempted`. An operator must still create an exact private configuration,
-retain the qualified candidate and prior candidates, render both exact inert
-plists, and create a separate affirmative approval before the executable can
-enter its effect path.
+render the required exact inert plist or plists, and create a separate
+affirmative approval before the executable can enter its effect path. Fresh
+installation uses the verified install receipt; only upgrade retains distinct
+qualified candidate and prior inputs.
 
-The only activating invocation is:
+The two activating invocations are explicit and use different closed products.
+For a fresh label with no positively observed job:
+
+```sh
+vellum-launchd-activate --execute-authorized-first-install \
+  --config=/absolute/private/first-install.json
+```
+
+First installation consumes a `vellum-launchd-first-install` configuration,
+the exact canonical `0400` `local-release-candidate-installation` receipt
+written by the verified bundle installer, and a separate
+`local-first-install-approval` whose requested action is exactly
+`install-candidate-as-new-launchagent`. It binds only the installed candidate;
+there is no qualification-time rollback prerequisite, fictitious prior
+identity, or rollback claim. A positively observed
+existing job refuses before effects. Otherwise candidate bootstrap is durably
+bracketed, followed by exact program/PID and bounded daemon readiness checks.
+A confirmed but unhealthy candidate is booted out through a separately
+bracketed effect. Confirmed cleanup yields `installation_refused`; any
+unconfirmed bootstrap or cleanup yields `outcome_unknown` and is never retried.
+
+For an upgrade from one exact healthy prior version:
 
 ```sh
 cargo run --locked --offline -p vellum-launchd-activate -- \
@@ -21,13 +43,14 @@ cargo run --locked --offline -p vellum-launchd-activate -- \
   --config=/absolute/private/activation.json
 ```
 
-Omitting the execution switch, using a relative or aliased configuration,
+Omitting the execution switch, mixing first-install and upgrade configuration
+channels, using a relative or aliased configuration,
 adding an argument, running on a non-macOS host, or changing the file owner or
 `0600` mode refuses before `launchctl`.
 
 ## Inputs and authority
 
-The closed configuration names:
+The closed upgrade configuration names:
 
 - the exact `local-release-candidate-qualification` evidence created by
   `qualify-release-candidate.mjs`;
@@ -46,6 +69,19 @@ bind the evidence's distinct candidate/prior manifest digests, and set
 `activationAuthorized` to true. Qualification evidence deliberately retains
 `activationAuthorized: false`: qualification selects exact eligible inputs but
 cannot authorize their use.
+
+The closed first-install configuration instead names the installer receipt,
+the installed `bin` directory as its candidate directory, and a separately
+rendered exact `0600` plist. The receipt must be canonical, same-owner `0400`,
+have schema 1 and channel `local-release-candidate-installation`, retain the
+exact closed installer claims and nonclaims, state `activationPerformed:
+false`, and close exactly `bin/vellum-daemon` and `bin/vellum-mcp`. The
+executor requires the receipt's parent to contain only that receipt and the
+private `0700` `bin` directory, requires `bin` to contain only those two
+same-owner `0500` products, and rechecks their receipt byte counts and SHA-256
+digests. The affirmative first-install approval binds the receipt's manifest
+digest. Thus bundle verification and local installation still grant no
+launchd authority; the separate approval does.
 
 Both version directories must be canonical same-owner `0700` directories.
 The executor hashes each `vellum-daemon` and compares it with the corresponding
@@ -80,6 +116,11 @@ retry or rollback from that state. Known candidate refusal or failed health may
 enter the separately bracketed rollback path; rollback uncertainty remains
 unknown rather than false restoration.
 
+First-install approval, receipt and journal schemas are distinct from these
+upgrade products. Its journal admits only prepared, candidate-load,
+candidate-unload and terminal candidate-health/cleanup transitions. It can
+neither unload nor restore a prior job.
+
 The terminal receipt is one of `candidate_active`, `prior_restored`,
 `activation_refused`, `rollback_refused`, or `outcome_unknown`. Candidate-active
 and prior-restored receipts additionally state exact program/PID and
@@ -112,7 +153,7 @@ vellum-launchd-activate --reconcile-journal \
   --config=/absolute/private/activation.json
 ```
 
-Reconciliation revalidates the same exact approval, qualification evidence,
+Upgrade reconciliation revalidates the same exact approval, qualification evidence,
 candidate/prior daemon hashes, plists and manifest identities. It then requires
 the transaction directory to contain only the private `0700` journal, and every
 entry to be a canonical same-owner `0400` file in one contiguous sequence. The
@@ -128,3 +169,17 @@ always sets `automaticRetryAuthorized` to false and `launchdEffect` to
 operator inspection of the exact job/program/PID and daemon status. The report
 does not infer current process state from the journal and cannot resume,
 rollback, load or unload a job.
+
+The corresponding read-only first-install reconciliation is:
+
+```sh
+vellum-launchd-activate --reconcile-first-install-journal \
+  --config=/absolute/private/first-install.json
+```
+
+It revalidates the canonical installation receipt, installed two-product
+closure, candidate-only approval, and exact plist, then validates the separate
+first-install journal grammar and reports durable
+candidate-active or installation-refused terminals separately from prepared,
+pending, unknown and confirmed-without-terminal cuts. It likewise sets
+`automaticRetryAuthorized` to false and performs no launchd or daemon effect.
