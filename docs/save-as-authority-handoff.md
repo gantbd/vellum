@@ -59,13 +59,17 @@ The following gaps are release-blocking for that public surface:
    the engine capture only after the complete product is validated, and its adapter
    handoff retains a congruent one-use destination object. This closes the portable
    authority mechanism, not the retained service lifecycle or an exposed command.
+   `vellum-session` now bridges this product before native preparation/capture and
+   retains the authorization with the exact preparation for later one-use service.
 3. `vellum-session` now owns a portable retained Save As coordinator over opaque
    preparation, attempt, and activation tokens. Admission, write, activation,
    release, and retirement errors preserve the exact reconciliation token; no
    recovery path can repeat admission, write, or activation. A non-effecting native
    recovery API reconstructs the activated document handle when the original task
    proves binding publication completed. The workspace wrapper must still own this
-   coordinator per stable document and commit the private locator/handle swap.
+   coordinator per stable document and commit the private locator/handle swap. The
+   coordinator ports are stage-specific, allowing each workspace call to borrow only
+   its authority, execution, activation, or cleanup dependencies.
 4. Save As activation is a fault-fenced engine publication. `vellum-host` now owns
    the closed native receipt sum with separate `Durable | NotDurable | Unknown |
    NotAttempted` physical and `Activated | NotActivated | Unknown` binding

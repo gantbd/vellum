@@ -339,6 +339,10 @@ impl fmt::Debug for AuthorizedSaveAsV1 {
 }
 
 impl AuthorizedSaveAsV1 {
+    pub const fn source_version(&self) -> &DocumentVersion {
+        &self.source
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -400,6 +404,10 @@ impl fmt::Debug for SaveAsEvidenceV1 {
 }
 
 impl SaveAsEvidenceV1 {
+    pub const fn source_version(&self) -> &DocumentVersion {
+        &self.source
+    }
+
     pub const fn source_revision(&self) -> u64 {
         self.source.revision
     }

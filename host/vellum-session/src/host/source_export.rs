@@ -12,12 +12,17 @@ use vellum_host::export_copy::{
     AuthorizedExportCopyPlanV1, AuthorizedExportCopyV1, ExportCopyAttachmentRefusalV1,
     ExportCopyAuthorityPortV1, ExportCopyAuthorizationRefusalV1,
 };
+use vellum_host::save_as::{
+    AuthorizedSaveAsPlanV1, AuthorizedSaveAsV1, SaveAsAttachmentRefusalV1, SaveAsAuthorityPortV1,
+    SaveAsAuthorizationRefusalV1,
+};
 
 mod retained;
 pub use retained::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
-    RetainedSourceSaveAsV1, SourceSaveAsObservationV1, SourceSaveAsSessionPortV1,
-    SourceSaveAsTokenSetV1,
+    RetainedSourceSaveAsV1, SourceSaveAsActivationPortV1, SourceSaveAsAdmissionPortV1,
+    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1, SourceSaveAsPreparePortV1,
+    SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
 };
 
 #[derive(Debug)]
@@ -28,12 +33,50 @@ pub enum SourceExportCopyPreparationErrorV1 {
     Attachment(ExportCopyAttachmentRefusalV1),
 }
 
+#[derive(Debug)]
+pub enum SourceSaveAsPreparationErrorV1 {
+    Authority(SaveAsAuthorizationRefusalV1),
+    Preparation(SessionError),
+    Capture(vellum_engine::resource::ResourceError),
+    Attachment(SaveAsAttachmentRefusalV1),
+}
+
 /// Original bounded codec preparation and exact native source capture. Admission
 /// consumes the native preparation; failure never implies it was discarded.
 pub struct SourceExportPreparation {
     native: PreparedSourceArtifactIdV1,
     source: DocumentVersion,
     serialization: vellum_engine::coordinator::SourceSerializationStateV1,
+}
+
+/// Exact native preparation plus the complete affine Save As authority
+/// carrier. Admission may inspect the destination while write service must
+/// consume the authorization exactly once.
+pub struct AuthorizedSourceSaveAsPreparationV1 {
+    native: SourceExportPreparation,
+    authorization: Option<AuthorizedSaveAsV1>,
+}
+
+impl std::fmt::Debug for AuthorizedSourceSaveAsPreparationV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AuthorizedSourceSaveAsPreparationV1(<opaque>)")
+    }
+}
+
+impl AuthorizedSourceSaveAsPreparationV1 {
+    pub fn native(&self) -> &SourceExportPreparation {
+        &self.native
+    }
+
+    pub fn destination(&self) -> Option<&std::path::Path> {
+        self.authorization
+            .as_ref()
+            .map(AuthorizedSaveAsV1::destination)
+    }
+
+    pub fn take_authorization(&mut self) -> Option<AuthorizedSaveAsV1> {
+        self.authorization.take()
+    }
 }
 /// Retain before service. The original task and destination are not refreshed
 /// from a newer document binding, caller path or source revision.
@@ -62,7 +105,72 @@ pub struct SaveAsActivation<H> {
     pub document: LocalDocument<H>,
     pub changed: bool,
 }
+impl<H> SaveAsActivation<H> {
+    pub const fn source_version(&self) -> &DocumentVersion {
+        &self.document.loaded
+    }
+}
 impl<A: ResourceAdapter> LocalHost<A> {
+    /// Acquire the atomic Persist × Rebind × destination product before
+    /// preparing or capturing source bytes. Any post-preparation capture error
+    /// is discharged before return; failure to discharge closes the host call.
+    pub fn authorize_source_save_as_preparation<P: SaveAsAuthorityPortV1 + ?Sized>(
+        &mut self,
+        expected: &DocumentVersion,
+        authority: &mut P,
+        persist_request: AuthorityRequestV1,
+        rebind_request: AuthorityRequestV1,
+        destination_request: SaveAsDestinationRequestV1,
+    ) -> Result<AuthorizedSourceSaveAsPreparationV1, SourceSaveAsPreparationErrorV1> {
+        let serialization = self
+            .owner
+            .source_serialization(&expected.document, &mut self.diagnostics)
+            .map_err(|error| {
+                SourceSaveAsPreparationErrorV1::Preparation(SessionError::Serialization(error))
+            })?;
+        let plan = AuthorizedSaveAsPlanV1::authorize(
+            authority,
+            persist_request,
+            rebind_request,
+            destination_request,
+            expected.clone(),
+            serialization,
+        )
+        .map_err(SourceSaveAsPreparationErrorV1::Authority)?;
+        let native = self
+            .owner
+            .prepare_source_artifact(expected, serialization, &mut self.diagnostics)
+            .map_err(|error| {
+                SourceSaveAsPreparationErrorV1::Preparation(SessionError::from(error))
+            })?;
+        let prepared = SourceExportPreparation {
+            native,
+            source: expected.clone(),
+            serialization,
+        };
+        let capture = match self
+            .owner
+            .capture_prepared_source_serialization(&prepared.native, &mut self.diagnostics)
+        {
+            Ok(capture) => capture,
+            Err(error) => {
+                self.owner
+                    .discard_source_artifact_preparation(&prepared.native, &mut self.diagnostics)
+                    .map_err(|discard| {
+                        SourceSaveAsPreparationErrorV1::Preparation(SessionError::from(discard))
+                    })?;
+                return Err(SourceSaveAsPreparationErrorV1::Capture(error));
+            }
+        };
+        let authorization = plan
+            .attach_source_capture(capture)
+            .map_err(SourceSaveAsPreparationErrorV1::Attachment)?;
+        Ok(AuthorizedSourceSaveAsPreparationV1 {
+            native: prepared,
+            authorization: Some(authorization),
+        })
+    }
+
     /// Authorize the exact source/destination product before the codec
     /// allocates or encodes a source artifact. Only the content-free
     /// serialization state is inspected before authority; a denial therefore

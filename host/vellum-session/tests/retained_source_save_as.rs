@@ -2,8 +2,9 @@ use std::collections::VecDeque;
 use vellum_host::save_as::{SaveAsBindingV1, SaveAsPersistenceV1};
 use vellum_session::host::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
-    RetainedSourceSaveAsV1, SourceSaveAsObservationV1, SourceSaveAsSessionPortV1,
-    SourceSaveAsTokenSetV1,
+    RetainedSourceSaveAsV1, SourceSaveAsActivationPortV1, SourceSaveAsAdmissionPortV1,
+    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1, SourceSaveAsPreparePortV1,
+    SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,7 +63,7 @@ impl Default for FakePort {
     }
 }
 
-impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
+impl SourceSaveAsPreparePortV1<FakeTokens> for FakePort {
     type Error = Fault;
 
     fn prepare(&mut self) -> Result<u8, Self::Error> {
@@ -73,8 +74,12 @@ impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
             Ok(1)
         }
     }
+}
 
-    fn admit(&mut self, preparation: &u8) -> Result<u8, Self::Error> {
+impl SourceSaveAsAdmissionPortV1<FakeTokens> for FakePort {
+    type Error = Fault;
+
+    fn admit(&mut self, preparation: &mut u8) -> Result<u8, Self::Error> {
         self.calls.admit += 1;
         assert_eq!(*preparation, 1);
         if self.admit_fails {
@@ -92,8 +97,12 @@ impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
         assert_eq!(*preparation, 1);
         self.discard
     }
+}
 
-    fn service(&mut self, attempt: &u8) -> Result<SourceSaveAsObservationV1, Self::Error> {
+impl SourceSaveAsServicePortV1<FakeTokens> for FakePort {
+    type Error = Fault;
+
+    fn service(&mut self, attempt: &mut u8) -> Result<SourceSaveAsObservationV1, Self::Error> {
         self.calls.service += 1;
         assert_eq!(*attempt, 2);
         self.service
@@ -106,6 +115,10 @@ impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
             .pop_front()
             .unwrap_or(Ok(observation(SaveAsPersistenceV1::Unknown, None)))
     }
+}
+
+impl SourceSaveAsActivationPortV1<FakeTokens> for FakePort {
+    type Error = Fault;
 
     fn activate(&mut self, attempt: &u8) -> Result<u8, Self::Error> {
         self.calls.activate += 1;
@@ -126,6 +139,10 @@ impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
             Ok(3)
         }
     }
+}
+
+impl SourceSaveAsCompletionPortV1<FakeTokens> for FakePort {
+    type Error = Fault;
 
     fn release(&mut self, attempt: &u8) -> Result<bool, Self::Error> {
         self.calls.release += 1;

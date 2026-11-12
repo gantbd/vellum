@@ -26,10 +26,12 @@ mod annotation_storage;
 pub use annotation_storage::{AnnotationReadAttempt, AnnotationReadReport, AnnotationResource};
 mod source_export;
 pub use source_export::{
-    PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
-    RetainedSourceSaveAsV1, SaveAsActivation, SourceExportAttempt,
-    SourceExportCopyPreparationErrorV1, SourceExportPreparation, SourceSaveAsObservationV1,
-    SourceSaveAsSessionPortV1, SourceSaveAsTokenSetV1,
+    AuthorizedSourceSaveAsPreparationV1, PreparationDischargeV1, RetainedSourceSaveAsErrorV1,
+    RetainedSourceSaveAsStageV1, RetainedSourceSaveAsV1, SaveAsActivation, SourceExportAttempt,
+    SourceExportCopyPreparationErrorV1, SourceExportPreparation, SourceSaveAsActivationPortV1,
+    SourceSaveAsAdmissionPortV1, SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1,
+    SourceSaveAsPreparationErrorV1, SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1,
+    SourceSaveAsTokenSetV1,
 };
 mod invocation_claims;
 mod invocations;
