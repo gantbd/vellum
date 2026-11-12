@@ -50,7 +50,7 @@ use processkit::RlimitResource;
 use processkit::prelude::StreamExt as _;
 use processkit::{
     Command, LimitReason, Mechanism, OutputBufferPolicy, ParentDeathCleanup, ProcessEvents,
-    ProcessGroup, ProcessGroupOptions, RunningProcess, StdioMode,
+    ProcessGroup, ProcessGroupOptions, ProcessGroupStats, RunningProcess, StdioMode,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWrite;
@@ -75,6 +75,7 @@ pub const MAX_PROVIDER_ARTIFACT_BYTES_V1: u64 = 512 * 1024 * 1024;
 pub const MAX_PROVIDER_MEMORY_BYTES_V1: u64 = 1024 * 1024 * 1024 * 1024;
 pub const MAX_PROVIDER_PROCESSES_V1: u32 = 65_536;
 pub const MAX_PROVIDER_CPU_MILLICORES_V1: u32 = 1_024_000;
+pub const PROVIDER_RESOURCE_SAMPLE_MILLIS_V1: u64 = 250;
 
 static SEMANTIC_LAUNCH_SERIALIZATION: Mutex<()> = Mutex::new(());
 static SEMANTIC_LAUNCH_FENCED: AtomicBool = AtomicBool::new(false);
@@ -985,7 +986,48 @@ pub struct SemanticProcessUsageV1 {
     pub nonzero_exits: u64,
     /// Supervised leaders whose `RunningProcess::finish` confirmed reap.
     pub leader_reaped: u64,
+    /// Successful, content-free process-group resource observations.
+    pub resource_samples: u64,
+    /// Process-group resource observations that the backend could not produce.
+    pub resource_sample_failures: u64,
+    /// Latest live process-counting unit reported by the selected backend.
+    /// POSIX process groups report groups rather than exact descendant counts.
+    pub active_process_units_latest: u64,
+    pub active_process_units_high_water: u64,
+    pub cpu_time_observations: u64,
+    pub cpu_time_nanos_high_water: u64,
+    pub peak_memory_observations: u64,
+    pub peak_memory_bytes_high_water: u64,
+    pub io_read_observations: u64,
+    pub io_read_bytes_high_water: u64,
+    pub io_write_observations: u64,
+    pub io_write_bytes_high_water: u64,
+    pub peak_process_observations: u64,
+    pub peak_process_units_high_water: u64,
     pub saturated: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SemanticProcessResourceSampleV1 {
+    active_process_units: usize,
+    cpu_time_nanos: Option<u128>,
+    peak_memory_bytes: Option<u64>,
+    io_read_bytes: Option<u64>,
+    io_write_bytes: Option<u64>,
+    peak_process_units: Option<usize>,
+}
+
+impl From<ProcessGroupStats> for SemanticProcessResourceSampleV1 {
+    fn from(stats: ProcessGroupStats) -> Self {
+        Self {
+            active_process_units: stats.active_process_count,
+            cpu_time_nanos: stats.total_cpu_time.map(|value| value.as_nanos()),
+            peak_memory_bytes: stats.peak_memory_bytes,
+            io_read_bytes: stats.io_read_bytes,
+            io_write_bytes: stats.io_write_bytes,
+            peak_process_units: stats.peak_process_count,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2091,6 +2133,7 @@ fn run_worker(
                 }
             }
         });
+        sample_process_resources(&group, &shared);
         shared.live.store(true, Ordering::Release);
         if launch.send(Ok(())).is_err() {
             shared.abort.store(true, Ordering::Release);
@@ -2107,6 +2150,10 @@ fn run_worker(
         let mut stdin_close_pending = false;
         let mut stdin_status_open = true;
         let mut finish = None;
+        let mut resource_tick = tokio::time::interval(Duration::from_millis(
+            PROVIDER_RESOURCE_SAMPLE_MILLIS_V1,
+        ));
+        resource_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             let control = match controls.try_recv() {
                 Ok(control) => Some(control),
@@ -2200,6 +2247,7 @@ fn run_worker(
                     }
                     Some(StdinStatus::Closed) | None => stdin_status_open = false,
                 },
+                _ = resource_tick.tick() => sample_process_resources(&group, &shared),
                 _ = tokio::time::sleep(Duration::from_millis(5)) => {
                     let leader_state = match group.members() {
                         Ok(members) if !members.contains(&leader_pid) => {
@@ -2509,6 +2557,79 @@ fn add(value: &mut u64, amount: usize, saturated: &mut bool) {
     let next = value.saturating_add(amount);
     *saturated |= next == u64::MAX;
     *value = next;
+}
+
+fn bounded_observation(value: u128, saturated: &mut bool) -> u64 {
+    match u64::try_from(value) {
+        Ok(value) => value,
+        Err(_) => {
+            *saturated = true;
+            u64::MAX
+        }
+    }
+}
+
+fn record_resource_sample(
+    usage: &mut SemanticProcessUsageV1,
+    sample: Option<SemanticProcessResourceSampleV1>,
+) {
+    let SemanticProcessUsageV1 {
+        resource_samples,
+        resource_sample_failures,
+        active_process_units_latest,
+        active_process_units_high_water,
+        cpu_time_observations,
+        cpu_time_nanos_high_water,
+        peak_memory_observations,
+        peak_memory_bytes_high_water,
+        io_read_observations,
+        io_read_bytes_high_water,
+        io_write_observations,
+        io_write_bytes_high_water,
+        peak_process_observations,
+        peak_process_units_high_water,
+        saturated,
+        ..
+    } = usage;
+    let Some(sample) = sample else {
+        inc(resource_sample_failures, saturated);
+        return;
+    };
+    inc(resource_samples, saturated);
+    let active = bounded_observation(sample.active_process_units as u128, saturated);
+    *active_process_units_latest = active;
+    *active_process_units_high_water = (*active_process_units_high_water).max(active);
+    if let Some(value) = sample.cpu_time_nanos {
+        inc(cpu_time_observations, saturated);
+        let value = bounded_observation(value, saturated);
+        *cpu_time_nanos_high_water = (*cpu_time_nanos_high_water).max(value);
+    }
+    if let Some(value) = sample.peak_memory_bytes {
+        inc(peak_memory_observations, saturated);
+        *peak_memory_bytes_high_water = (*peak_memory_bytes_high_water).max(value);
+    }
+    if let Some(value) = sample.io_read_bytes {
+        inc(io_read_observations, saturated);
+        *io_read_bytes_high_water = (*io_read_bytes_high_water).max(value);
+    }
+    if let Some(value) = sample.io_write_bytes {
+        inc(io_write_observations, saturated);
+        *io_write_bytes_high_water = (*io_write_bytes_high_water).max(value);
+    }
+    if let Some(value) = sample.peak_process_units {
+        inc(peak_process_observations, saturated);
+        let value = bounded_observation(value as u128, saturated);
+        *peak_process_units_high_water = (*peak_process_units_high_water).max(value);
+    }
+}
+
+fn sample_process_resources(group: &ProcessGroup, shared: &SharedState) {
+    let sample = group
+        .stats()
+        .ok()
+        .map(SemanticProcessResourceSampleV1::from);
+    let mut usage = shared.usage.lock().expect("semantic usage mutex");
+    record_resource_sample(&mut usage, sample);
 }
 
 #[cfg(test)]

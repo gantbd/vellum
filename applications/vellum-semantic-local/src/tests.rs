@@ -1227,6 +1227,8 @@ fn fixed_argv_cwd_environment_and_bytes_round_trip_then_reap() {
         (1, 1, 1, 1)
     );
     assert_eq!(usage.group_hard_kills_accepted, 0);
+    assert!(usage.resource_samples >= 1);
+    assert!(usage.active_process_units_high_water >= 1);
 }
 
 #[test]
@@ -1417,6 +1419,69 @@ fn leader_exit_with_descendant_inherited_pipes_is_bounded_and_failed() {
         ),
         (1, 1, 1)
     );
+}
+
+#[test]
+fn resource_samples_preserve_support_and_high_water_semantics() {
+    let mut usage = SemanticProcessUsageV1::default();
+    record_resource_sample(
+        &mut usage,
+        Some(SemanticProcessResourceSampleV1 {
+            active_process_units: 3,
+            cpu_time_nanos: Some(11),
+            peak_memory_bytes: Some(13),
+            io_read_bytes: Some(17),
+            io_write_bytes: Some(19),
+            peak_process_units: Some(5),
+        }),
+    );
+    record_resource_sample(
+        &mut usage,
+        Some(SemanticProcessResourceSampleV1 {
+            active_process_units: 1,
+            cpu_time_nanos: Some(7),
+            peak_memory_bytes: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            peak_process_units: None,
+        }),
+    );
+    record_resource_sample(&mut usage, None);
+
+    assert_eq!(usage.resource_samples, 2);
+    assert_eq!(usage.resource_sample_failures, 1);
+    assert_eq!(usage.active_process_units_latest, 1);
+    assert_eq!(usage.active_process_units_high_water, 3);
+    assert_eq!(usage.cpu_time_observations, 2);
+    assert_eq!(usage.cpu_time_nanos_high_water, 11);
+    assert_eq!(usage.peak_memory_observations, 1);
+    assert_eq!(usage.peak_memory_bytes_high_water, 13);
+    assert_eq!(usage.io_read_observations, 1);
+    assert_eq!(usage.io_read_bytes_high_water, 17);
+    assert_eq!(usage.io_write_observations, 1);
+    assert_eq!(usage.io_write_bytes_high_water, 19);
+    assert_eq!(usage.peak_process_observations, 1);
+    assert_eq!(usage.peak_process_units_high_water, 5);
+    assert!(!usage.saturated);
+}
+
+#[test]
+fn oversized_resource_observations_saturate_without_wrapping() {
+    let mut usage = SemanticProcessUsageV1::default();
+    record_resource_sample(
+        &mut usage,
+        Some(SemanticProcessResourceSampleV1 {
+            active_process_units: 1,
+            cpu_time_nanos: Some(u128::MAX),
+            peak_memory_bytes: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            peak_process_units: None,
+        }),
+    );
+
+    assert_eq!(usage.cpu_time_nanos_high_water, u64::MAX);
+    assert!(usage.saturated);
 }
 
 #[test]

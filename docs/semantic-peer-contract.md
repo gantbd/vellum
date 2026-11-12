@@ -216,10 +216,17 @@ successful strict launch classifies the three axes independently as enforced;
 qualification alone is not process-application or utilization evidence, and it
 does not upgrade filesystem, network, subprocess or abrupt-parent confinement.
 The pinned macOS rust-analyzer profile remains unbounded and reports all three
-physical-resource axes as unsupported. Observations distinguish accepted
-whole-group hard kill from confirmed finish/reap of the supervised leader; they
-do not claim that Vellum reaps descendants or that macOS abrupt parent death
-cleans up the provider.
+physical-resource enforcement axes as unsupported. While a provider is live,
+the supervisor samples the selected ProcessKit backend every 250 milliseconds
+and retains only fixed-cardinality success/failure, availability and high-water
+observations for active units, CPU time, memory, I/O and peak units. Unsupported
+backend fields remain absent rather than becoming zero; on the POSIX
+process-group backend, an active unit is a live process group rather than an
+exact descendant count. These observations are measurement, not enforcement or
+confinement. Lifecycle observations separately distinguish accepted whole-group
+hard kill from confirmed finish/reap of the supervised leader; they do not claim
+that Vellum reaps descendants or that macOS abrupt parent death cleans up the
+provider.
 
 Production entry is a separate affine promotion, not a caller-selected launch
 flag. Its closed requirement product contains executable and working-directory
@@ -497,12 +504,15 @@ provider replacement/replay and orphaned completion totals. Debug output redacts
 names, diagnostic text, type text and replacement text.
 
 These counters cover bounded RED request/outcome volume and logical USE
-capacity, including current/high-water snapshot bytes. A strict launch policy
-is enforcement configuration, not a CPU/RSS measurement. These counters do not
-measure latency, CPU, RSS, queueing or provider health.
-Applications that claim golden-signal or physical-resource coverage must add a
-caller-supplied clock and supervised provider measurements without placing
-source, paths, symbols, identities or language labels in metric dimensions.
+capacity, including current/high-water snapshot bytes. Supervised local-process
+usage additionally reports content-free ProcessKit resource samples with
+per-axis observation counts, so an unavailable axis cannot masquerade as a zero
+measurement. The samples do not provide request latency, queueing, provider
+health or cross-platform-comparable CPU/RSS semantics, and a strict launch
+policy remains enforcement configuration rather than measurement. Applications
+that claim complete golden-signal coverage must add a caller-supplied clock and
+health model without placing source, paths, symbols, identities or language
+labels in metric dimensions.
 
 ## Closed failure vocabulary
 

@@ -77,6 +77,11 @@ will follow Semantic Versioning once a public release contract is selected.
   refuses unsupported or unenforceable policies instead of degrading. Support
   receipts keep the three axes distinct and retain filesystem, network,
   subprocess and abrupt-parent confinement as independent nonclaims.
+- Added periodic, fixed-cardinality ProcessKit resource observations for
+  supervised semantic providers. Per-axis availability prevents unsupported
+  CPU, memory, I/O or peak-process statistics from being reported as zero;
+  high-water samples remain explicitly distinct from enforcement and
+  confinement.
 - Added exact pending-owner deadline scheduling with deterministic bounded fair
   retries, plus staged provider replacement and truthful graceful, forced-
   pending, forced-confirmed and cleanup-failed retirement phases.
