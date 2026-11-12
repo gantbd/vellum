@@ -440,6 +440,13 @@ MCP peer into its sibling repository. Membership-local operation exhaustion now
 rolls over without consuming the broker/client retirement tail; historical
 global replay evidence is still never silently deleted.
 
+The same exact authority-loss projection now occurs on every authenticated
+connection exit, not only signal-driven shutdown. The listener's idle loop
+drives retirement between clients, preventing a disconnected or malformed peer
+from indefinitely retaining membership capacity or synchronization ownership.
+The content-safe admission/completion observation makes refusal explicit; it is
+not evidence that provider cache or historical replay state was erased.
+
 Construction requires the semantic client's sealed sovereign-validation port,
 not merely the public generic service-port shape. This preserves the service's
 proof that every nested location belongs to the caller partition and exact open

@@ -462,6 +462,13 @@ mod unix {
                         if let Ok(ticket) = actor.try_drive_expiry() {
                             let _ = ticket.receive();
                         }
+                        // Transport loss marks the authenticated authority as
+                        // retiring. Progress that retirement while idle so a
+                        // disconnected client cannot strand synchronization
+                        // ownership or consume membership capacity forever.
+                        if let Ok(ticket) = actor.try_drive_retirement() {
+                            let _ = ticket.receive();
+                        }
                         std::thread::sleep(Duration::from_millis(10));
                     }
                 }
@@ -518,12 +525,20 @@ mod unix {
                         dispatcher.usage()
                     );
                     shutdown.clear();
-                    if shutdown.requested() {
-                        if let SemanticSessionActorEventAdmissionV1::Submitted(ticket) =
-                            actor.try_event(dispatcher.authority_lost_event())
-                        {
-                            let _ = ticket.receive();
+                    match actor.try_event(dispatcher.authority_lost_event()) {
+                        SemanticSessionActorEventAdmissionV1::Submitted(ticket) => {
+                            eprintln!(
+                                "vellum-semantic-local: authority_lost completion={:?}",
+                                ticket.receive()
+                            );
                         }
+                        SemanticSessionActorEventAdmissionV1::NotSent { reason, .. } => {
+                            eprintln!(
+                                "vellum-semantic-local: authority_lost_refused reason={reason:?}"
+                            );
+                        }
+                    }
+                    if shutdown.requested() {
                         break 'serve;
                     }
                     break;

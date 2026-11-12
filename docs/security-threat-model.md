@@ -228,6 +228,15 @@ and one fixed credential challenge/response before semantic framing. This
 establishes local attribution only; it still claims no encryption, remote peer
 identity, durable semantic replay or automatic retry.
 
+Every authenticated transport exit, including ordinary peer loss rather than
+only process shutdown, projects the connection's exact subject/session/policy
+epoch onto the actor's authority-loss control path. While waiting for the next
+connection, the service drives bounded retirement so abandoned memberships,
+requests, synchronized documents and synchronization ownership cannot remain
+live indefinitely. Admission and completion are reported only as content-safe
+control outcomes. Failure to admit authority loss remains explicit and does not
+become a false cleanup claim.
+
 `SemanticQuery` and `SemanticSynchronize` are separate closed host authority
 actions. Authentication does not grant either action, and Query does not imply
 Synchronize. The local probe composition derives the role ceiling through an
@@ -265,7 +274,7 @@ erasure of provider, allocator, swap, crash-dump or transport copies.
 | STRIDE: spoofing / elevation | Correlation or self-requested roles treated as authority | Opaque identities are evidence only; the local channel authenticates once, installed policy independently attenuates role requests, and exact incarnation/membership bind replies | Local HMAC attribution is neither remote identity nor same-user isolation; the operator probe policy is intentionally coarse |
 | STRIDE: tampering / repudiation | Frame mutation, operation ABA or ambiguous lost reply | Canonical strict decoding, exact mutation-intent replay, operation budget, non-reusable request tombstones, transport disposition separated from application outcome | No MAC, signature, durable audit ledger or transport persistence claim |
 | STRIDE: information disclosure | Cross-member request oracle or sensitive values in telemetry | Sovereign request remapping, absent/foreign coalescing, redacted Debug and closed metric-label rule | No transport confidentiality; frame sizes and timing remain observable |
-| STRIDE: denial of service | Oversized frames, counts, text, retained requests or replay state | Exact deployment-narrowed limits, count-before-allocation, operation/request budgets, reserved cleanup, and request-bound membership rollover before ordinary headroom is exhausted | Deliberate global replay-ledger or incarnation-lifetime exhaustion still refuses service; no silent compaction or unbounded lifetime claim |
+| STRIDE: denial of service | Oversized frames, counts, text, retained requests or replay state | Exact deployment-narrowed limits, count-before-allocation, operation/request budgets, reserved cleanup, request-bound membership rollover before ordinary headroom is exhausted, and authority-loss retirement on every authenticated transport exit | Deliberate global replay-ledger or incarnation-lifetime exhaustion within one persistent connection still refuses service; no silent compaction or unbounded lifetime claim |
 | LINDDUN: linkability / identifiability | Digest, document counts, opaque IDs or provider fingerprint correlate workspaces and users | These values are excluded from logs, errors, discovery metadata and metric labels | A transport observer may correlate length, cadence and connection lifetime |
 | LINDDUN: non-repudiation / detectability / disclosure | Retained terminal results or compact witness shape reveal activity, language, cardinality or source-length structure | Exact membership-scoped retention, content-free fixed-cardinality observations and explicit Release; source is absent from errors and observations | Release is not secure erasure; transport confidentiality, storage encryption and provider-cache deletion remain composition obligations |
 | LINDDUN: unawareness / non-compliance | Agent queries without human-visible purpose or retention policy | Protocol exposes capability/readiness only and grants no UI consent authority | Human notice, consent, purpose limitation, deletion policy and jurisdictional compliance remain composition obligations |
