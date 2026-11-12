@@ -38,6 +38,7 @@ jobs:
           make check-artifact-lifecycle
           make check-activation-transaction
           make check-launchd-distribution
+          make check-launchd-activation
       - name: Build and stage locked candidate
         working-directory: vellum
         run: >-

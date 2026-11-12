@@ -44,6 +44,7 @@ const locations = new Map([
   ['vellum-daemon', '/applications/'],
   ['vellum-semantic-local', '/applications/'],
   ['vellum', '/distribution/'],
+  ['vellum-launchd-activate', '/distribution/'],
   ['vellum-launchd-render', '/distribution/'],
   ['vellum-sdk-embedded', '/sdk/'],
   ['vellum-sdk-client', '/sdk/'],
@@ -301,6 +302,11 @@ requireEdges('vellum', ['vellum-daemon', 'vellum-mcp'], false);
 for (const dependency of dependencies('vellum-launchd-render', false)) {
   if (!['rustix', 'serde', 'serde_json'].includes(dependency)) {
     failures.push(`launchd renderer has forbidden runtime dependency on ${dependency}`);
+  }
+}
+for (const dependency of dependencies('vellum-launchd-activate', false)) {
+  if (!['rustix', 'serde', 'serde_json', 'sha2'].includes(dependency)) {
+    failures.push(`launchd activator has forbidden runtime dependency on ${dependency}`);
   }
 }
 forbidEdges(

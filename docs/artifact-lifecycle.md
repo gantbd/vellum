@@ -92,22 +92,31 @@ This is deliberately **one desired-state pointer only**. The pointer is not a
 symlink, launcher, loaded launchd job, or claim that the plist and a running
 process changed atomically. The simulator never invokes `launchctl` or executes
 the staged binaries. Its receipts always state `launchdEffect: not-attempted`.
-An eventual authorized platform executor must durably bracket the real
-launchd effect, bind its confirmation to the exact pointer generation, and
-preserve `outcome-unknown` whenever invocation may have occurred without a
-matching confirmation.
+The separate authorized platform executor consumes the same exact
+qualification and approval identities. Its own append-only synchronized
+journal brackets real launchd effects; it preserves `outcome-unknown` whenever
+invocation may have occurred without matching confirmation. The scratch
+pointer remains non-activating evidence and is not silently promoted into a
+loaded-job fact.
 
 ## Activation and rollback boundary
 
-A future activator must consume an explicitly approved candidate manifest
-identity, quiesce the service, atomically replace the installation, and require
-post-activation readiness/health evidence. If that gate fails, it must restore
-the exact prior artifact identities named in the qualification record and
-re-run readiness checks. Those effects need their own authority, crash-safety,
-ownership, and platform contracts; this repository currently supplies only the
-plan and preconditions.
+The separate [`vellum-launchd-activate`](launchd-activation.md) package now
+consumes the existing exact qualification and affirmative approval contracts.
+It requires the selected prior job to be exact and healthy, durably brackets
+each launchctl effect, validates candidate process identity and bounded daemon
+status, and restores and requalifies the exact prior version when candidate
+health fails. An effect without post-invocation confirmation remains
+`outcome_unknown` and is never retried automatically.
 
-The qualification record does not prove source retrieval, reproducible bytes
-across builders, malware absence, signature identity, notarization, daemon
-runtime fitness beyond `--help`, launchd supervision, successful activation,
-or successful rollback.
+This does not authorize activation by qualification, builds, Cargo install or
+release workflows. The executor requires a separate execution switch and
+private operator-created approval/configuration. It selects launchd daemon
+state only; MCP replacement, source retrieval, signing and remote policy remain
+separate contracts.
+
+The qualification record alone does not prove source retrieval, reproducible
+bytes across builders, malware absence, signature identity, notarization,
+launchd supervision, successful activation, or successful rollback. Those last
+two claims require a terminal executor receipt from the exact approved local
+transaction.

@@ -121,6 +121,8 @@ pub const SYMBOLS_TOOL: &str = "vellum.semantic.symbols";
 pub const DEFINITION_TOOL: &str = "vellum.semantic.definition";
 pub const REFERENCES_TOOL: &str = "vellum.semantic.references";
 pub const IMPLEMENTATIONS_TOOL: &str = "vellum.semantic.implementations";
+pub const INCOMING_CALLS_TOOL: &str = "vellum.semantic.incoming_calls";
+pub const OUTGOING_CALLS_TOOL: &str = "vellum.semantic.outgoing_calls";
 pub const DIAGNOSTICS_TOOL: &str = "vellum.semantic.diagnostics";
 pub const TYPE_AT_POINT_TOOL: &str = "vellum.semantic.type_at_point";
 pub const PLAN_RENAME_TOOL: &str = "vellum.semantic.plan_rename";
@@ -138,11 +140,13 @@ const MAX_METADATA_KEY_BYTES: usize = 256;
 const MAX_METADATA_DEPTH: usize = 16;
 const MAX_CURSOR_BYTES: usize = 256;
 
-const TOOLS: [&str; 8] = [
+const TOOLS: [&str; 10] = [
     SYMBOLS_TOOL,
     DEFINITION_TOOL,
     REFERENCES_TOOL,
     IMPLEMENTATIONS_TOOL,
+    INCOMING_CALLS_TOOL,
+    OUTGOING_CALLS_TOOL,
     DIAGNOSTICS_TOOL,
     TYPE_AT_POINT_TOOL,
     PLAN_RENAME_TOOL,
@@ -1053,9 +1057,8 @@ fn parse_request(
     ];
     let extra: &[&str] = match tool {
         SYMBOLS_TOOL => &["needle"],
-        DEFINITION_TOOL | REFERENCES_TOOL | IMPLEMENTATIONS_TOOL | TYPE_AT_POINT_TOOL => {
-            &["offset"]
-        }
+        DEFINITION_TOOL | REFERENCES_TOOL | IMPLEMENTATIONS_TOOL | INCOMING_CALLS_TOOL
+        | OUTGOING_CALLS_TOOL | TYPE_AT_POINT_TOOL => &["offset"],
         DIAGNOSTICS_TOOL => &[],
         PLAN_RENAME_TOOL => &["offset", "new_name"],
         _ => return None,
@@ -1091,6 +1094,8 @@ fn parse_request(
         DEFINITION_TOOL => SemanticQueryV1::Definition { offset: offset()? },
         REFERENCES_TOOL => SemanticQueryV1::References { offset: offset()? },
         IMPLEMENTATIONS_TOOL => SemanticQueryV1::Implementations { offset: offset()? },
+        INCOMING_CALLS_TOOL => SemanticQueryV1::IncomingCalls { offset: offset()? },
+        OUTGOING_CALLS_TOOL => SemanticQueryV1::OutgoingCalls { offset: offset()? },
         DIAGNOSTICS_TOOL => SemanticQueryV1::Diagnostics,
         TYPE_AT_POINT_TOOL => SemanticQueryV1::TypeAtPoint { offset: offset()? },
         PLAN_RENAME_TOOL => SemanticQueryV1::PlanRename {
@@ -1268,6 +1273,8 @@ const fn query_kind(kind: SemanticQueryKindV1) -> &'static str {
         SemanticQueryKindV1::Definition => "definition",
         SemanticQueryKindV1::References => "references",
         SemanticQueryKindV1::Implementations => "implementations",
+        SemanticQueryKindV1::IncomingCalls => "incoming_calls",
+        SemanticQueryKindV1::OutgoingCalls => "outgoing_calls",
         SemanticQueryKindV1::Diagnostics => "diagnostics",
         SemanticQueryKindV1::TypeAtPoint => "type_at_point",
         SemanticQueryKindV1::PlanRename => "plan_rename",
@@ -1354,6 +1361,16 @@ fn tool_schema(name: &str) -> Value {
             "Find implementations at an exact byte offset.",
             offset_schema(),
         ),
+        INCOMING_CALLS_TOOL => (
+            "Find incoming calls",
+            "Find callers of the exact symbol prepared at a byte offset.",
+            offset_schema(),
+        ),
+        OUTGOING_CALLS_TOOL => (
+            "Find outgoing calls",
+            "Find callees of the exact symbol prepared at a byte offset.",
+            offset_schema(),
+        ),
         DIAGNOSTICS_TOOL => (
             "Read diagnostics",
             "Read diagnostics for one exact document snapshot.",
@@ -1397,6 +1414,8 @@ fn tool_schema(name: &str) -> Value {
         DEFINITION_TOOL
             | REFERENCES_TOOL
             | IMPLEMENTATIONS_TOOL
+            | INCOMING_CALLS_TOOL
+            | OUTGOING_CALLS_TOOL
             | TYPE_AT_POINT_TOOL
             | PLAN_RENAME_TOOL
     ) {

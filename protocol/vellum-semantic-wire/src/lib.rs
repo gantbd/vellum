@@ -750,6 +750,14 @@ fn encode_query(
             out.extend_from_slice(&offset.to_be_bytes());
             put_text(out, new_name.as_str())?
         }
+        SemanticQueryV1::IncomingCalls { offset } => {
+            out.push(8);
+            out.extend_from_slice(&offset.to_be_bytes())
+        }
+        SemanticQueryV1::OutgoingCalls { offset } => {
+            out.push(9);
+            out.extend_from_slice(&offset.to_be_bytes())
+        }
     }
     Ok(())
 }
@@ -778,6 +786,8 @@ fn decode_query(
             )
             .map_err(map_build)?,
         },
+        8 => SemanticQueryV1::IncomingCalls { offset: c.u64()? },
+        9 => SemanticQueryV1::OutgoingCalls { offset: c.u64()? },
         _ => return Err(SemanticWireDecodeErrorV1::UnknownTag),
     })
 }
@@ -1420,6 +1430,8 @@ const fn query_kind_tag(value: SemanticQueryKindV1) -> u8 {
         SemanticQueryKindV1::Diagnostics => 5,
         SemanticQueryKindV1::TypeAtPoint => 6,
         SemanticQueryKindV1::PlanRename => 7,
+        SemanticQueryKindV1::IncomingCalls => 8,
+        SemanticQueryKindV1::OutgoingCalls => 9,
     }
 }
 
@@ -1432,6 +1444,8 @@ fn decode_query_kind(value: u8) -> Result<SemanticQueryKindV1, SemanticWireDecod
         5 => Ok(SemanticQueryKindV1::Diagnostics),
         6 => Ok(SemanticQueryKindV1::TypeAtPoint),
         7 => Ok(SemanticQueryKindV1::PlanRename),
+        8 => Ok(SemanticQueryKindV1::IncomingCalls),
+        9 => Ok(SemanticQueryKindV1::OutgoingCalls),
         _ => Err(SemanticWireDecodeErrorV1::UnknownTag),
     }
 }

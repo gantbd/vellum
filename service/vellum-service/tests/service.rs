@@ -22,11 +22,147 @@ use vellum_protocol::{
     CommandV1, DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
     EditPersistenceV1, OutcomeV1, RefusalV1, ReplyV1, RequestId, RequestV1, SaveApplicationV1,
     SaveSynchronizationV1, ViewCloseStatusV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
-    WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceInventoryCursorV1,
+    WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceInventoryCursorV1,
+    WorkspaceReplacementV1,
 };
 use vellum_service::{Service, ServiceBuildError, ServiceLimits, ServiceUsage};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
+
+#[test]
+fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim() {
+    let first = Fixture::new("abcd");
+    let second = Fixture::new("wxyz");
+    let mut service = empty_service(ServiceLimits::reference());
+    let client = service.connect().unwrap();
+    for (id, fixture) in [(1, &first), (2, &second)] {
+        let reply = service.execute(request(
+            client,
+            id,
+            CommandV1::AddFile {
+                locator: fixture.0.to_string_lossy().into_owned(),
+            },
+        ));
+        assert!(matches!(
+            reply,
+            ReplyV1::Accepted(OutcomeV1::FileAdmitted(_))
+        ));
+    }
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceInventory(inventory)) =
+        service.execute(request(client, 3, CommandV1::WorkspaceInventory))
+    else {
+        panic!("inventory must be available")
+    };
+    let mut witnessed = Vec::new();
+    for (offset, document) in inventory.documents.iter().copied().enumerate() {
+        assert!(matches!(
+            service.execute(request(
+                client,
+                4 + u64::try_from(offset * 2).unwrap(),
+                CommandV1::SelectDocument { document },
+            )),
+            ReplyV1::Accepted(OutcomeV1::DocumentSelected(_))
+        ));
+        let ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot)) = service.execute(request(
+            client,
+            5 + u64::try_from(offset * 2).unwrap(),
+            CommandV1::Snapshot,
+        )) else {
+            panic!("snapshot must be available")
+        };
+        witnessed.push((document, snapshot.revision));
+    }
+    let reply = service.execute(request(
+        client,
+        8,
+        CommandV1::WorkspaceEdit {
+            documents: witnessed
+                .iter()
+                .map(|(document, expected_revision)| WorkspaceDocumentEditV1 {
+                    document: *document,
+                    expected_revision: *expected_revision,
+                    replacements: vec![WorkspaceReplacementV1 {
+                        start: 1,
+                        end: 3,
+                        inserted: "QQ".into(),
+                    }],
+                })
+                .collect(),
+        },
+    ));
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt)) = reply else {
+        panic!("workspace edit must commit")
+    };
+    assert_eq!(receipt.documents.len(), 2);
+    assert_eq!(&*receipt.documents[0].snapshot.text, "aQQd");
+    assert_eq!(&*receipt.documents[1].snapshot.text, "wQQz");
+    assert_eq!(fs::read_to_string(&first.0).unwrap(), "abcd");
+    assert_eq!(fs::read_to_string(&second.0).unwrap(), "wxyz");
+
+    let no_op = service.execute(request(
+        client,
+        9,
+        CommandV1::WorkspaceEdit {
+            documents: vec![WorkspaceDocumentEditV1 {
+                document: receipt.documents[0].document,
+                expected_revision: receipt.documents[0].snapshot.revision,
+                replacements: vec![WorkspaceReplacementV1 {
+                    start: 0,
+                    end: 1,
+                    inserted: "a".into(),
+                }],
+            }],
+        },
+    ));
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(no_op)) = no_op else {
+        panic!("exact no-op must remain an accepted atomic transaction")
+    };
+    assert!(no_op.documents.is_empty());
+
+    let stale = service.execute(request(
+        client,
+        10,
+        CommandV1::WorkspaceEdit {
+            documents: vec![
+                WorkspaceDocumentEditV1 {
+                    document: witnessed[0].0,
+                    expected_revision: receipt.documents[0].snapshot.revision - 1,
+                    replacements: vec![WorkspaceReplacementV1 {
+                        start: 0,
+                        end: 1,
+                        inserted: "S".into(),
+                    }],
+                },
+                WorkspaceDocumentEditV1 {
+                    document: receipt.documents[1].document,
+                    expected_revision: receipt.documents[1].snapshot.revision,
+                    replacements: vec![WorkspaceReplacementV1 {
+                        start: 0,
+                        end: 1,
+                        inserted: "T".into(),
+                    }],
+                },
+            ],
+        },
+    ));
+    assert_eq!(stale, ReplyV1::Refused(RefusalV1::Stale));
+    assert!(matches!(
+        service.execute(request(
+            client,
+            11,
+            CommandV1::SelectDocument {
+                document: receipt.documents[1].document,
+            },
+        )),
+        ReplyV1::Accepted(OutcomeV1::DocumentSelected(_))
+    ));
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(after_refusal)) =
+        service.execute(request(client, 12, CommandV1::Snapshot))
+    else {
+        panic!("snapshot must remain available")
+    };
+    assert_eq!(&*after_refusal.text, "wQQz");
+}
 
 struct Fixture(PathBuf);
 

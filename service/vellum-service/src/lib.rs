@@ -12,8 +12,8 @@ use std::{
 };
 use vellum_editor::{
     DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
-    Workspace, WorkspaceDocumentId, WorkspaceError, WorkspaceExportCopyErrorV1, WorkspaceRootId,
-    WorkspaceRootKind, WorkspaceSaveReceipt,
+    Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError,
+    WorkspaceExportCopyErrorV1, WorkspaceRootId, WorkspaceRootKind, WorkspaceSaveReceipt,
 };
 use vellum_engine::{
     coordinator::DocumentVersion,
@@ -42,12 +42,14 @@ use vellum_protocol::{
     DurableExportCopyFailureV1, DurableExportCopyPersistenceV1, DurableExportCopyReceiptV1,
     DurableOperationRefV1, DurableReplaceAndSaveReceiptV1, DurableSaveReceiptV1, EditPersistenceV1,
     FileAdmissionReceiptV1, FileAdmissionStatusV1, MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1,
-    MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
-    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
-    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
-    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
-    WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
-    WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
+    MAX_WORKSPACE_EDIT_DOCUMENTS_V1, MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1,
+    MAX_WORKSPACE_EDIT_REPLACEMENTS_V1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
+    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
+    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
+    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
+    WorkspaceChangeCursorV1, WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1,
+    WorkspaceChangeV1, WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1,
+    WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
     WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
     WorkspaceRootV1,
 };
@@ -1712,6 +1714,9 @@ impl Service {
             } => self
                 .replace(client, *expected, *start, *end, inserted)
                 .map(OutcomeV1::Replaced),
+            CommandV1::WorkspaceEdit { documents } => self
+                .workspace_edit(client, documents)
+                .map(OutcomeV1::WorkspaceEdited),
         };
         match result {
             Ok(outcome) => ReplyV1::Accepted(outcome),
@@ -2272,11 +2277,201 @@ impl Service {
         })
     }
 
+    fn workspace_edit(
+        &mut self,
+        client: ClientId,
+        documents: &[WorkspaceDocumentEditV1],
+    ) -> Result<WorkspaceEditReceiptV1, RefusalV1> {
+        if documents.is_empty() || documents.len() > MAX_WORKSPACE_EDIT_DOCUMENTS_V1 {
+            return Err(RefusalV1::InputLimit);
+        }
+        self.preflight_changes(documents.len())?;
+        self.preflight_witnesses(documents.len())?;
+
+        let mut writes = Vec::new();
+        let mut projections = Vec::new();
+        let mut request_payload_bytes = 4usize;
+        let mut receipt_payload_bytes = 20usize;
+        writes
+            .try_reserve_exact(documents.len())
+            .map_err(|_| RefusalV1::EditorCapacity)?;
+        projections
+            .try_reserve_exact(documents.len())
+            .map_err(|_| RefusalV1::EditorCapacity)?;
+
+        for (index, requested) in documents.iter().enumerate() {
+            if requested.document.workspace() != self.workspace_id
+                || documents[..index]
+                    .iter()
+                    .any(|prior| prior.document == requested.document)
+            {
+                return Err(RefusalV1::UnknownDocument);
+            }
+            if requested.replacements.is_empty() {
+                return Err(RefusalV1::InputLimit);
+            }
+            if requested.replacements.len() > MAX_WORKSPACE_EDIT_REPLACEMENTS_V1 {
+                return Err(RefusalV1::InputLimit);
+            }
+            request_payload_bytes = request_payload_bytes
+                .checked_add(28)
+                .ok_or(RefusalV1::InputLimit)?;
+            let native = self
+                .document_projections
+                .iter()
+                .find(|projection| projection.protocol == requested.document)
+                .map(|projection| projection.native.clone())
+                .ok_or(RefusalV1::UnknownDocument)?;
+            let captured = self
+                .workspace
+                .document_snapshot(&native)
+                .map_err(classify_workspace)?;
+            let version = captured.version;
+            if version.revision != requested.expected_revision {
+                return Err(RefusalV1::Stale);
+            }
+            if captured.text.len() > self.limits.max_snapshot_bytes {
+                return Err(RefusalV1::SnapshotLimit);
+            }
+            let original: Arc<str> = Arc::from(captured.text);
+            let mut replacements = Vec::new();
+            replacements
+                .try_reserve_exact(requested.replacements.len())
+                .map_err(|_| RefusalV1::EditorCapacity)?;
+            let mut inserted_bytes = 0usize;
+            let mut removed_bytes = 0usize;
+            let mut previous = None;
+            for replacement in &requested.replacements {
+                request_payload_bytes = request_payload_bytes
+                    .checked_add(20)
+                    .and_then(|value| value.checked_add(replacement.inserted.len()))
+                    .filter(|value| *value <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1)
+                    .ok_or(RefusalV1::InputLimit)?;
+                if replacement.inserted.len() > self.limits.max_insert_bytes {
+                    return Err(RefusalV1::InputLimit);
+                }
+                let start =
+                    usize::try_from(replacement.start).map_err(|_| RefusalV1::InvalidRange)?;
+                let end = usize::try_from(replacement.end).map_err(|_| RefusalV1::InvalidRange)?;
+                if start > end
+                    || end > original.len()
+                    || !original.is_char_boundary(start)
+                    || !original.is_char_boundary(end)
+                    || previous.is_some_and(|(prior_start, prior_end)| {
+                        start < prior_end
+                            || (start == prior_end && (prior_start == prior_end || start == end))
+                    })
+                {
+                    return Err(RefusalV1::InvalidRange);
+                }
+                previous = Some((start, end));
+                inserted_bytes = inserted_bytes
+                    .checked_add(replacement.inserted.len())
+                    .ok_or(RefusalV1::InputLimit)?;
+                removed_bytes = removed_bytes
+                    .checked_add(end - start)
+                    .ok_or(RefusalV1::InputLimit)?;
+                replacements.push(Replacement {
+                    start,
+                    end,
+                    expected: copy_string(&original[start..end])?,
+                    inserted: copy_string(&replacement.inserted)?,
+                });
+            }
+            if inserted_bytes > self.limits.max_insert_bytes {
+                return Err(RefusalV1::InputLimit);
+            }
+            let projected_len = original
+                .len()
+                .checked_sub(removed_bytes)
+                .and_then(|length| length.checked_add(inserted_bytes))
+                .ok_or(RefusalV1::InputLimit)?;
+            if projected_len > self.limits.max_snapshot_bytes {
+                return Err(RefusalV1::SnapshotLimit);
+            }
+            let mut projected = String::new();
+            projected
+                .try_reserve_exact(projected_len)
+                .map_err(|_| RefusalV1::EditorCapacity)?;
+            projected.push_str(&original);
+            for replacement in replacements.iter().rev() {
+                projected.replace_range(replacement.start..replacement.end, &replacement.inserted);
+            }
+            let changed = projected.as_str() != &*original;
+            if changed {
+                receipt_payload_bytes = receipt_payload_bytes
+                    .checked_add(28)
+                    .and_then(|value| value.checked_add(projected.len()))
+                    .filter(|value| *value <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1)
+                    .ok_or(RefusalV1::SnapshotLimit)?;
+            }
+            projections.push((
+                requested.document,
+                native.clone(),
+                Arc::<str>::from(projected),
+                changed,
+            ));
+            writes.push(WorkspaceDocumentEdits {
+                document: native,
+                expected: version,
+                edits: replacements,
+            });
+        }
+        debug_assert!(request_payload_bytes <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1);
+        debug_assert!(receipt_payload_bytes <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1);
+
+        let publication = self
+            .workspace
+            .edit_document_batch(&writes)
+            .map_err(classify_workspace)?;
+        let mut edited = Vec::new();
+        edited
+            .try_reserve_exact(projections.len())
+            .expect("preflight reserved receipt capacity");
+        for (document, native, projected, changed) in projections {
+            if !changed {
+                continue;
+            }
+            let version = self
+                .workspace
+                .document_version(&native)
+                .expect("committed document remains retained");
+            let source_revision = version.revision;
+            let snapshot = self.install_witness(client, version, projected);
+            self.publish_change(WorkspaceChangeKindV1::DocumentChanged {
+                document,
+                source_revision,
+            });
+            edited.push(WorkspaceEditedDocumentV1 { document, snapshot });
+        }
+        debug_assert_eq!(edited.len(), publication.changed_documents);
+        Ok(WorkspaceEditReceiptV1 {
+            workspace: self.workspace_id,
+            generation: publication.generation,
+            documents: edited,
+        })
+    }
+
     fn preflight_witness(&self) -> Result<(), RefusalV1> {
         if self.witnesses.len() == self.limits.max_witnesses {
             return Err(RefusalV1::WitnessCapacity);
         }
         if self.next_witness == 0 {
+            return Err(RefusalV1::CounterExhausted);
+        }
+        Ok(())
+    }
+
+    fn preflight_witnesses(&self, count: usize) -> Result<(), RefusalV1> {
+        if self
+            .witnesses
+            .len()
+            .checked_add(count)
+            .is_none_or(|total| total > self.limits.max_witnesses)
+        {
+            return Err(RefusalV1::WitnessCapacity);
+        }
+        if !can_issue(self.next_witness, count) {
             return Err(RefusalV1::CounterExhausted);
         }
         Ok(())
@@ -2843,7 +3038,9 @@ const fn action_plan(command: &CommandV1) -> AuthorityActionPlan {
             };
         }
         CommandV1::Snapshot => AuthorityActionV1::ReadSource,
-        CommandV1::Replace { .. } => AuthorityActionV1::EditSource,
+        CommandV1::Replace { .. } | CommandV1::WorkspaceEdit { .. } => {
+            AuthorityActionV1::EditSource
+        }
     };
     AuthorityActionPlan {
         actions: [Some(action), None],

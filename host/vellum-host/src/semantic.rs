@@ -372,6 +372,8 @@ pub enum SemanticQueryKindV1 {
     Definition,
     References,
     Implementations,
+    IncomingCalls,
+    OutgoingCalls,
     Diagnostics,
     TypeAtPoint,
     PlanRename,
@@ -391,6 +393,14 @@ pub enum SemanticQueryV1 {
     Implementations {
         offset: u64,
     },
+    /// Calls into the exact symbol prepared at this byte offset.
+    IncomingCalls {
+        offset: u64,
+    },
+    /// Calls made by the exact symbol prepared at this byte offset.
+    OutgoingCalls {
+        offset: u64,
+    },
     Diagnostics,
     TypeAtPoint {
         offset: u64,
@@ -408,6 +418,8 @@ impl SemanticQueryV1 {
             Self::Definition { .. } => SemanticQueryKindV1::Definition,
             Self::References { .. } => SemanticQueryKindV1::References,
             Self::Implementations { .. } => SemanticQueryKindV1::Implementations,
+            Self::IncomingCalls { .. } => SemanticQueryKindV1::IncomingCalls,
+            Self::OutgoingCalls { .. } => SemanticQueryKindV1::OutgoingCalls,
             Self::Diagnostics => SemanticQueryKindV1::Diagnostics,
             Self::TypeAtPoint { .. } => SemanticQueryKindV1::TypeAtPoint,
             Self::PlanRename { .. } => SemanticQueryKindV1::PlanRename,
@@ -675,6 +687,12 @@ impl SemanticResultV1 {
                 SemanticResultKindV1::Locations(_)
             ) | (
                 SemanticQueryKindV1::Implementations,
+                SemanticResultKindV1::Locations(_)
+            ) | (
+                SemanticQueryKindV1::IncomingCalls,
+                SemanticResultKindV1::Locations(_)
+            ) | (
+                SemanticQueryKindV1::OutgoingCalls,
                 SemanticResultKindV1::Locations(_)
             ) | (
                 SemanticQueryKindV1::Diagnostics,

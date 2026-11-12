@@ -1815,9 +1815,11 @@ impl<P: SemanticProviderPortV1> SemanticServiceV1<P> {
                 None
             }
         };
-        if candidate_state.provider == self.provider_state.provider
-            || current_generation == Some(candidate_generation)
-        {
+        // Provider provenance identifies the qualified implementation/profile,
+        // not one process incarnation. A supervised restart is therefore fresh
+        // when it publishes a distinct index generation even though its exact
+        // provenance is unchanged.
+        if current_generation == Some(candidate_generation) {
             return self.replacement_failure(
                 candidate,
                 SemanticProviderReplacementRefusalV1::CandidateNotFresh,
@@ -2821,6 +2823,8 @@ fn request_offsets_within_snapshot(request: &SemanticRequestV1, source: &str) ->
         vellum_host::semantic::SemanticQueryV1::Definition { offset }
         | vellum_host::semantic::SemanticQueryV1::References { offset }
         | vellum_host::semantic::SemanticQueryV1::Implementations { offset }
+        | vellum_host::semantic::SemanticQueryV1::IncomingCalls { offset }
+        | vellum_host::semantic::SemanticQueryV1::OutgoingCalls { offset }
         | vellum_host::semantic::SemanticQueryV1::TypeAtPoint { offset }
         | vellum_host::semantic::SemanticQueryV1::PlanRename { offset, .. } => Some(*offset),
         vellum_host::semantic::SemanticQueryV1::Symbols { .. }
@@ -4102,6 +4106,8 @@ mod tests {
             SemanticQueryV1::Definition { offset: 1 },
             SemanticQueryV1::References { offset: 1 },
             SemanticQueryV1::Implementations { offset: 1 },
+            SemanticQueryV1::IncomingCalls { offset: 1 },
+            SemanticQueryV1::OutgoingCalls { offset: 1 },
             SemanticQueryV1::TypeAtPoint { offset: 1 },
             SemanticQueryV1::PlanRename {
                 offset: 1,
@@ -4604,7 +4610,7 @@ mod tests {
         );
 
         let not_fresh = ModelProvider {
-            state: ready_state(2),
+            state: ready_state(1),
             available: true,
             ..ModelProvider::default()
         };

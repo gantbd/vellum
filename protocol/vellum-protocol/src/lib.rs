@@ -390,6 +390,63 @@ pub struct WorkspaceInventoryPageV1 {
     pub next: Option<WorkspaceInventoryCursorV1>,
 }
 
+/// One bounded byte-range replacement within a revision-witnessed document.
+/// The expected source fragment is recovered from the retained witness by the
+/// service; callers cannot weaken conflict detection by supplying it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct WorkspaceReplacementV1 {
+    pub start: u64,
+    pub end: u64,
+    pub inserted: String,
+}
+
+pub const MAX_WORKSPACE_EDIT_DOCUMENTS_V1: usize = 16;
+pub const MAX_WORKSPACE_EDIT_REPLACEMENTS_V1: usize = 64;
+pub const MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1: usize = 65_536;
+
+impl fmt::Debug for WorkspaceReplacementV1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkspaceReplacementV1")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("inserted", &"<redacted>")
+            .finish()
+    }
+}
+
+/// One exact participant in an atomic in-memory workspace edit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceDocumentEditV1 {
+    pub document: WorkspaceDocumentIdV1,
+    pub expected_revision: u64,
+    pub replacements: Vec<WorkspaceReplacementV1>,
+}
+
+/// The new exact snapshot for one participant in a committed workspace edit.
+#[derive(Clone, PartialEq, Eq)]
+pub struct WorkspaceEditedDocumentV1 {
+    pub document: WorkspaceDocumentIdV1,
+    pub snapshot: SnapshotV1,
+}
+
+impl fmt::Debug for WorkspaceEditedDocumentV1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkspaceEditedDocumentV1")
+            .field("document", &self.document)
+            .field("snapshot", &self.snapshot)
+            .finish()
+    }
+}
+
+/// Evidence from one atomic memory publication. This receipt makes no
+/// filesystem persistence or cross-document durability claim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceEditReceiptV1 {
+    pub workspace: WorkspaceIdV1,
+    pub generation: u64,
+    pub documents: Vec<WorkspaceEditedDocumentV1>,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum CommandV1 {
     WorkspaceInventory,
@@ -437,6 +494,12 @@ pub enum CommandV1 {
         start: u64,
         end: u64,
         inserted: String,
+    },
+    /// Atomically publishes all revision-witnessed replacements in memory.
+    /// An empty batch, duplicate document, empty document edit, stale witness,
+    /// or invalid range is refused before publication.
+    WorkspaceEdit {
+        documents: Vec<WorkspaceDocumentEditV1>,
     },
 }
 
@@ -498,6 +561,10 @@ impl fmt::Debug for CommandV1 {
                 .field("start", start)
                 .field("end", end)
                 .field("inserted", &"<redacted>")
+                .finish(),
+            Self::WorkspaceEdit { documents } => f
+                .debug_struct("WorkspaceEdit")
+                .field("documents", &documents)
                 .finish(),
         }
     }
@@ -891,6 +958,7 @@ pub enum OutcomeV1 {
     ReplacedAndSaved(ReplaceAndSaveReceiptV1),
     Snapshot(SnapshotV1),
     Replaced(SnapshotV1),
+    WorkspaceEdited(WorkspaceEditReceiptV1),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1057,6 +1125,18 @@ mod tests {
             },
             CommandV1::AddDirectory {
                 locator: "/private/directory".into(),
+            },
+            CommandV1::WorkspaceEdit {
+                documents: vec![WorkspaceDocumentEditV1 {
+                    document: WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(17).unwrap(), 19)
+                        .unwrap(),
+                    expected_revision: 3,
+                    replacements: vec![WorkspaceReplacementV1 {
+                        start: 0,
+                        end: 0,
+                        inserted: "private workspace insertion".into(),
+                    }],
+                }],
             },
         ] {
             let debug = format!("{command:?}");

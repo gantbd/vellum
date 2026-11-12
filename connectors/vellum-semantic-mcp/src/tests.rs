@@ -169,7 +169,12 @@ fn call(name: &str, mut arguments: Value) -> Vec<u8> {
             .insert("needle".into(), json!("item"));
     } else if matches!(
         name,
-        DEFINITION_TOOL | REFERENCES_TOOL | IMPLEMENTATIONS_TOOL | TYPE_AT_POINT_TOOL
+        DEFINITION_TOOL
+            | REFERENCES_TOOL
+            | IMPLEMENTATIONS_TOOL
+            | INCOMING_CALLS_TOOL
+            | OUTGOING_CALLS_TOOL
+            | TYPE_AT_POINT_TOOL
     ) {
         arguments
             .as_object_mut()
@@ -277,7 +282,7 @@ fn catalog_is_fixed_read_only_and_has_no_identity_or_apply_arguments() {
         .unwrap();
     assert_eq!(response["result"]["ttlMs"], 0);
     assert_eq!(response["result"]["cacheScope"], "private");
-    assert_eq!(tools.len(), 8);
+    assert_eq!(tools.len(), 10);
     assert_eq!(
         tools
             .iter()
@@ -592,12 +597,14 @@ fn notification_and_recursive_duplicate_keys_never_submit_work() {
 }
 
 #[test]
-fn all_seven_tools_build_exact_requests_and_changed_replay_conflicts() {
+fn all_nine_query_tools_build_exact_requests_and_changed_replay_conflicts() {
     for name in [
         SYMBOLS_TOOL,
         DEFINITION_TOOL,
         REFERENCES_TOOL,
         IMPLEMENTATIONS_TOOL,
+        INCOMING_CALLS_TOOL,
+        OUTGOING_CALLS_TOOL,
         DIAGNOSTICS_TOOL,
         TYPE_AT_POINT_TOOL,
         PLAN_RENAME_TOOL,
@@ -617,6 +624,8 @@ fn all_seven_tools_build_exact_requests_and_changed_replay_conflicts() {
                 DEFINITION_TOOL => SemanticQueryKindV1::Definition,
                 REFERENCES_TOOL => SemanticQueryKindV1::References,
                 IMPLEMENTATIONS_TOOL => SemanticQueryKindV1::Implementations,
+                INCOMING_CALLS_TOOL => SemanticQueryKindV1::IncomingCalls,
+                OUTGOING_CALLS_TOOL => SemanticQueryKindV1::OutgoingCalls,
                 DIAGNOSTICS_TOOL => SemanticQueryKindV1::Diagnostics,
                 TYPE_AT_POINT_TOOL => SemanticQueryKindV1::TypeAtPoint,
                 PLAN_RENAME_TOOL => SemanticQueryKindV1::PlanRename,

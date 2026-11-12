@@ -27,6 +27,10 @@ use vellum_semantic_service::{
     SemanticProviderStateV1, SemanticProviderSubmissionV1, SemanticSnapshotUpdateV1,
 };
 
+/// Maximum canonical JSON bytes retained while carrying one provider-owned
+/// call-hierarchy item from prepare into the direction query.
+pub const MAX_LSP_CALL_HIERARCHY_ITEM_BYTES_V1: usize = 64 * 1024;
+
 /// JSON value constructed only after recursively proving that every object key
 /// occurs exactly once. `serde_json::Value` alone uses last-key-wins semantics,
 /// which would erase ambiguity before the protocol's exact-member checks.
@@ -1189,9 +1193,18 @@ struct DocumentState {
     opened: bool,
 }
 
+#[derive(Clone)]
 struct PendingRequest {
     request: SemanticRequestV1,
     generation: SemanticIndexGenerationV1,
+    stage: PendingRequestStage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PendingRequestStage {
+    Direct,
+    PreparingCallHierarchy,
+    ResolvingCallHierarchy,
 }
 
 pub struct LspAdapterV1<
@@ -1225,6 +1238,7 @@ pub struct LspAdapterV1<
     definition: bool,
     references: bool,
     implementations: bool,
+    call_hierarchy: bool,
     type_at_point: bool,
     rename_plan: bool,
     usage: LspUsageV1,
@@ -1423,6 +1437,7 @@ impl<
             definition: false,
             references: false,
             implementations: false,
+            call_hierarchy: false,
             type_at_point: false,
             rename_plan: false,
             usage: LspUsageV1::default(),
@@ -1496,6 +1511,7 @@ impl<
             && !self.definition
             && !self.references
             && !self.implementations
+            && !self.call_hierarchy
             && !self.type_at_point
             && !self.rename_plan
             && self.usage == LspUsageV1::default()
@@ -1620,6 +1636,7 @@ impl<
                     "dynamicRegistration": false,
                     "linkSupport": false
                 },
+                "callHierarchy": {"dynamicRegistration": false},
                 "hover": {
                     "dynamicRegistration": false,
                     "contentFormat": ["plaintext", "markdown"]
@@ -1981,12 +1998,14 @@ impl<
             self.definition = capability_enabled(capabilities.get("definitionProvider"));
             self.references = capability_enabled(capabilities.get("referencesProvider"));
             self.implementations = capability_enabled(capabilities.get("implementationProvider"));
+            self.call_hierarchy = capability_enabled(capabilities.get("callHierarchyProvider"));
             self.type_at_point = capability_enabled(capabilities.get("hoverProvider"));
             let read_index = self.diagnostics
                 || self.symbols
                 || self.definition
                 || self.references
                 || self.implementations
+                || self.call_hierarchy
                 || self.type_at_point;
             self.read_index = read_index;
             self.rename_plan = capability_enabled(capabilities.get("renameProvider"));
@@ -2222,10 +2241,23 @@ impl<
         } else if has_error {
             convert_error(&pending.request, value.get("error"))
         } else if let Some(result) = value.get("result") {
+            if pending.stage == PendingRequestStage::PreparingCallHierarchy {
+                match self.continue_call_hierarchy(pending, result) {
+                    Ok(()) => return,
+                    Err(failure) => {
+                        let (pending, outcome) = *failure;
+                        return self.finish_pending(pending, outcome);
+                    }
+                }
+            }
             self.convert_response(&pending, result)
         } else {
             SemanticOutcomeV1::Refused(SemanticRefusalV1::MalformedProviderReply)
         };
+        self.finish_pending(pending, outcome);
+    }
+
+    fn finish_pending(&mut self, pending: PendingRequest, outcome: SemanticOutcomeV1) {
         if self.completions.len() == MAX_LSP_PENDING_REQUESTS_V1 {
             self.mark_failed(SemanticBridgePollFailureV1::DeliveryRefused);
             bump(&mut self.usage.output_refused, &mut self.usage.saturated);
@@ -2239,6 +2271,111 @@ impl<
             &mut self.usage.requests_completed,
             &mut self.usage.saturated,
         );
+    }
+
+    fn continue_call_hierarchy(
+        &mut self,
+        mut pending: PendingRequest,
+        result: &Value,
+    ) -> Result<(), Box<(PendingRequest, SemanticOutcomeV1)>> {
+        let LspSessionStateV1::Ready {
+            generation,
+            encoding,
+            read_index: true,
+        } = self.state
+        else {
+            return Err(Box::new((pending, SemanticOutcomeV1::Unavailable)));
+        };
+        if generation != pending.generation
+            || self
+                .documents
+                .get(&pending.request.target.document)
+                .is_none_or(|document| {
+                    !document.opened || document.target != pending.request.target
+                })
+        {
+            return Err(Box::new((pending, SemanticOutcomeV1::Stale)));
+        }
+        let items = if result.is_null() {
+            &[][..]
+        } else if let Some(items) = result.as_array() {
+            items.as_slice()
+        } else {
+            return Err(Box::new((
+                pending,
+                SemanticOutcomeV1::Refused(SemanticRefusalV1::MalformedProviderReply),
+            )));
+        };
+        if items.is_empty() {
+            let result = SemanticResultV1::try_locations(Vec::new(), self.semantic_limits)
+                .map_err(|_| {
+                    Box::new((
+                        pending.clone(),
+                        SemanticOutcomeV1::Refused(SemanticRefusalV1::OutputLimit),
+                    ))
+                })?;
+            return Err(Box::new((
+                pending.clone(),
+                SemanticOutcomeV1::Complete(SemanticReplyV1 {
+                    request: pending.request.request,
+                    target: pending.request.target,
+                    index_generation: pending.generation,
+                    provider: self.provenance.clone(),
+                    result,
+                }),
+            )));
+        }
+        // One point must identify one exact provider-owned item. Selecting from
+        // multiple items would silently turn provider identity into text search.
+        if items.len() != 1
+            || !valid_call_hierarchy_item(
+                &items[0],
+                &self.documents,
+                encoding,
+                self.semantic_limits,
+            )
+        {
+            return Err(Box::new((
+                pending,
+                SemanticOutcomeV1::Refused(if items.len() > 1 {
+                    SemanticRefusalV1::OutputLimit
+                } else {
+                    SemanticRefusalV1::MalformedProviderReply
+                }),
+            )));
+        }
+        let id = self.next_request_id;
+        let Some(next_id) = id.checked_add(1) else {
+            return Err(Box::new((pending, SemanticOutcomeV1::Unavailable)));
+        };
+        let method = match pending.request.query {
+            vellum_host::semantic::SemanticQueryV1::IncomingCalls { .. } => {
+                "callHierarchy/incomingCalls"
+            }
+            vellum_host::semantic::SemanticQueryV1::OutgoingCalls { .. } => {
+                "callHierarchy/outgoingCalls"
+            }
+            _ => unreachable!("only call hierarchy requests enter the prepare stage"),
+        };
+        let message = json!({
+            "jsonrpc":"2.0", "id":id, "method":method,
+            "params":{"item":items[0].clone()}
+        });
+        match self.send_json(&message) {
+            LspSendOutcomeV1::Accepted => {
+                self.next_request_id = next_id;
+                pending.stage = PendingRequestStage::ResolvingCallHierarchy;
+                self.pending.insert(id, pending);
+                Ok(())
+            }
+            LspSendOutcomeV1::Unavailable => {
+                Err(Box::new((pending, SemanticOutcomeV1::Unavailable)))
+            }
+            LspSendOutcomeV1::Refused => Err(Box::new((
+                pending,
+                SemanticOutcomeV1::Refused(SemanticRefusalV1::MalformedProviderReply),
+            ))),
+        }
     }
 
     fn convert_response(&mut self, pending: &PendingRequest, result: &Value) -> SemanticOutcomeV1 {
@@ -2285,6 +2422,22 @@ impl<
             vellum_host::semantic::SemanticQueryV1::References { .. } => convert_locations(
                 result,
                 &self.documents,
+                encoding,
+                self.semantic_limits,
+                false,
+            ),
+            vellum_host::semantic::SemanticQueryV1::IncomingCalls { .. } => convert_call_hierarchy(
+                result,
+                &self.documents,
+                document,
+                encoding,
+                self.semantic_limits,
+                true,
+            ),
+            vellum_host::semantic::SemanticQueryV1::OutgoingCalls { .. } => convert_call_hierarchy(
+                result,
+                &self.documents,
+                document,
                 encoding,
                 self.semantic_limits,
                 false,
@@ -2577,6 +2730,10 @@ impl<
                 vellum_host::semantic::SemanticQueryV1::Implementations { .. } => {
                     self.implementations
                 }
+                vellum_host::semantic::SemanticQueryV1::IncomingCalls { .. }
+                | vellum_host::semantic::SemanticQueryV1::OutgoingCalls { .. } => {
+                    self.call_hierarchy
+                }
                 vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. } => self.type_at_point,
                 vellum_host::semantic::SemanticQueryV1::PlanRename { .. } => self.rename_plan,
             };
@@ -2619,12 +2776,18 @@ impl<
             vellum_host::semantic::SemanticQueryV1::Implementations { .. } => {
                 "textDocument/implementation"
             }
+            vellum_host::semantic::SemanticQueryV1::IncomingCalls { .. }
+            | vellum_host::semantic::SemanticQueryV1::OutgoingCalls { .. } => {
+                "textDocument/prepareCallHierarchy"
+            }
             vellum_host::semantic::SemanticQueryV1::TypeAtPoint { .. } => "textDocument/hover",
             vellum_host::semantic::SemanticQueryV1::PlanRename { .. } => "textDocument/rename",
         };
         let params = match &request.query {
             vellum_host::semantic::SemanticQueryV1::Definition { offset }
             | vellum_host::semantic::SemanticQueryV1::Implementations { offset }
+            | vellum_host::semantic::SemanticQueryV1::IncomingCalls { offset }
+            | vellum_host::semantic::SemanticQueryV1::OutgoingCalls { offset }
             | vellum_host::semantic::SemanticQueryV1::TypeAtPoint { offset } => {
                 let Ok(offset) = usize::try_from(*offset) else {
                     return SemanticProviderSubmissionV1::Refused;
@@ -2700,6 +2863,15 @@ impl<
                     PendingRequest {
                         request: request.clone(),
                         generation,
+                        stage: if matches!(
+                            request.query,
+                            vellum_host::semantic::SemanticQueryV1::IncomingCalls { .. }
+                                | vellum_host::semantic::SemanticQueryV1::OutgoingCalls { .. }
+                        ) {
+                            PendingRequestStage::PreparingCallHierarchy
+                        } else {
+                            PendingRequestStage::Direct
+                        },
                     },
                 );
                 bump(
@@ -3030,6 +3202,107 @@ fn convert_locations(
         locations.push(SemanticLocationV1 {
             target: document.target,
             span: parse_range(location.get("range"), &document.source, encoding)?,
+        });
+    }
+    SemanticResultV1::try_locations(locations, limits).map_err(|_| SemanticRefusalV1::OutputLimit)
+}
+
+fn valid_call_hierarchy_item(
+    value: &Value,
+    documents: &BTreeMap<SemanticDocumentRefV1, DocumentState>,
+    encoding: LspPositionEncodingV1,
+    limits: SemanticLimitsV1,
+) -> bool {
+    let Some(item) = value.as_object() else {
+        return false;
+    };
+    let bounded = serde_json::to_vec(value)
+        .ok()
+        .is_some_and(|bytes| bytes.len() <= MAX_LSP_CALL_HIERARCHY_ITEM_BYTES_V1);
+    let name = item.get("name").and_then(Value::as_str);
+    let kind = item.get("kind").and_then(Value::as_u64);
+    let uri = item.get("uri").and_then(Value::as_str);
+    let detail_valid = item.get("detail").is_none_or(|detail| {
+        detail
+            .as_str()
+            .is_some_and(|value| value.len() <= limits.max_detail_bytes)
+    });
+    let Some(document) = uri.and_then(|uri| {
+        documents
+            .values()
+            .find(|document| document.opened && document.uri.0 == uri)
+    }) else {
+        return false;
+    };
+    bounded
+        && name.is_some_and(|value| !value.is_empty() && value.len() <= limits.max_label_bytes)
+        && kind.is_some_and(|value| (1..=26).contains(&value))
+        && detail_valid
+        && parse_range(item.get("range"), &document.source, encoding).is_ok()
+        && parse_range(item.get("selectionRange"), &document.source, encoding).is_ok()
+}
+
+fn convert_call_hierarchy(
+    result: &Value,
+    documents: &BTreeMap<SemanticDocumentRefV1, DocumentState>,
+    origin: &DocumentState,
+    encoding: LspPositionEncodingV1,
+    limits: SemanticLimitsV1,
+    incoming: bool,
+) -> Result<SemanticResultV1, SemanticRefusalV1> {
+    let values: &[Value] = if result.is_null() {
+        &[]
+    } else {
+        result
+            .as_array()
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?
+    };
+    if values.len() > limits.max_results {
+        return Err(SemanticRefusalV1::OutputLimit);
+    }
+    let mut locations = Vec::with_capacity(values.len());
+    let mut total_from_ranges = 0usize;
+    for value in values {
+        let call = value
+            .as_object()
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let item = call
+            .get(if incoming { "from" } else { "to" })
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        if !valid_call_hierarchy_item(item, documents, encoding, limits) {
+            return Err(SemanticRefusalV1::MalformedProviderReply);
+        }
+        let item = item
+            .as_object()
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let uri = item
+            .get("uri")
+            .and_then(Value::as_str)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let document = documents
+            .values()
+            .find(|document| document.opened && document.uri.0 == uri)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        let from_ranges = call
+            .get("fromRanges")
+            .and_then(Value::as_array)
+            .ok_or(SemanticRefusalV1::MalformedProviderReply)?;
+        total_from_ranges = total_from_ranges
+            .checked_add(from_ranges.len())
+            .ok_or(SemanticRefusalV1::OutputLimit)?;
+        if total_from_ranges > limits.max_results {
+            return Err(SemanticRefusalV1::OutputLimit);
+        }
+        let range_document = if incoming { document } else { origin };
+        if from_ranges
+            .iter()
+            .any(|range| parse_range(Some(range), &range_document.source, encoding).is_err())
+        {
+            return Err(SemanticRefusalV1::MalformedProviderReply);
+        }
+        locations.push(SemanticLocationV1 {
+            target: document.target,
+            span: parse_range(item.get("selectionRange"), &document.source, encoding)?,
         });
     }
     SemanticResultV1::try_locations(locations, limits).map_err(|_| SemanticRefusalV1::OutputLimit)
@@ -3599,6 +3872,7 @@ mod tests {
                 "definitionProvider": true,
                 "referencesProvider": true,
                 "implementationProvider": true,
+                "callHierarchyProvider": true,
                 "hoverProvider": true,
                 "renameProvider": true
             }}
@@ -5745,6 +6019,133 @@ mod tests {
         assert_eq!(
             reply.result.type_at_point().unwrap().as_str(),
             "```rust\nfn alpha()\n```"
+        );
+    }
+
+    #[test]
+    fn call_hierarchy_preserves_prepared_item_and_exact_snapshot_provenance() {
+        let mut adapter = ready_adapter();
+        open_document(&mut adapter);
+        let request = point_request(
+            30,
+            vellum_host::semantic::SemanticQueryV1::IncomingCalls { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&request),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        let prepare = framed_json(adapter.transport.sends.last().unwrap());
+        assert_eq!(prepare["method"], "textDocument/prepareCallHierarchy");
+        assert_eq!(
+            prepare["params"]["position"],
+            json!({"line":0,"character":3})
+        );
+
+        let prepared = json!({
+            "name":"alpha", "kind":12, "uri":"vellum-lsp://seven",
+            "range":{"start":{"line":0,"character":0},"end":{"line":0,"character":13}},
+            "selectionRange":{"start":{"line":0,"character":3},"end":{"line":0,"character":8}},
+            "data":{"providerToken":"opaque-7"}
+        });
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc":"2.0", "id":2, "result":[prepared.clone()]
+            }))));
+        assert!(adapter.poll().is_none());
+        let incoming = framed_json(adapter.transport.sends.last().unwrap());
+        assert_eq!(incoming["method"], "callHierarchy/incomingCalls");
+        assert_eq!(incoming["params"]["item"], prepared);
+
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc":"2.0", "id":3, "result":[{
+                "from": prepared.clone(),
+                    "fromRanges":[{"start":{"line":0,"character":3},"end":{"line":0,"character":8}}]
+                }]
+            }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("incoming calls must complete")
+        };
+        assert_eq!(reply.target, target(0));
+        assert_eq!(
+            reply.index_generation,
+            SemanticIndexGenerationV1::new(1).unwrap()
+        );
+        assert_eq!(reply.provider, provenance());
+        assert_eq!(reply.result.locations().unwrap()[0].target, target(0));
+        assert_eq!(
+            reply.result.locations().unwrap()[0].span,
+            SemanticSpanV1::try_new(3, 8).unwrap()
+        );
+
+        let outgoing_request = point_request(
+            32,
+            vellum_host::semantic::SemanticQueryV1::OutgoingCalls { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&outgoing_request),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc":"2.0", "id":4, "result":[prepared.clone()]
+            }))));
+        assert!(adapter.poll().is_none());
+        let outgoing = framed_json(adapter.transport.sends.last().unwrap());
+        assert_eq!(outgoing["method"], "callHierarchy/outgoingCalls");
+        assert_eq!(outgoing["params"]["item"], prepared);
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc":"2.0", "id":5, "result":[{
+                    "to": prepared,
+                    "fromRanges":[{"start":{"line":0,"character":3},"end":{"line":0,"character":8}}]
+                }]
+            }))));
+        let SemanticOutcomeV1::Complete(reply) = adapter.poll().unwrap().outcome else {
+            panic!("outgoing calls must complete")
+        };
+        assert_eq!(reply.result.locations().unwrap()[0].target, target(0));
+    }
+
+    #[test]
+    fn call_hierarchy_refuses_ambiguous_prepare_items_without_followup() {
+        let mut adapter = ready_adapter();
+        open_document(&mut adapter);
+        let request = point_request(
+            31,
+            vellum_host::semantic::SemanticQueryV1::OutgoingCalls { offset: 3 },
+        );
+        assert_eq!(
+            adapter.submit(&request),
+            SemanticProviderSubmissionV1::Accepted
+        );
+        let item = json!({
+            "name":"alpha", "kind":12, "uri":"vellum-lsp://seven",
+            "range":{"start":{"line":0,"character":0},"end":{"line":0,"character":13}},
+            "selectionRange":{"start":{"line":0,"character":3},"end":{"line":0,"character":8}}
+        });
+        adapter
+            .transport
+            .receives
+            .push_back(LspReceiveOutcomeV1::Chunk(framed(json!({
+                "jsonrpc":"2.0", "id":2, "result":[item.clone(), item]
+            }))));
+        let completion = adapter.poll().unwrap();
+        assert_eq!(
+            completion.outcome,
+            SemanticOutcomeV1::Refused(SemanticRefusalV1::OutputLimit)
+        );
+        assert_eq!(
+            framed_json(adapter.transport.sends.last().unwrap())["method"],
+            "textDocument/prepareCallHierarchy"
         );
     }
 

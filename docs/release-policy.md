@@ -219,6 +219,18 @@ content and effective build inputs, re-runs smoke probes, and requires a
 distinct verified prior candidate before emitting readiness and rollback
 evidence. That evidence explicitly does not authorize or perform activation.
 
+The source workspace also contains the separate
+[`vellum-launchd-activate`](launchd-activation.md) package. It is deliberately
+absent from both the `vellum` Cargo-install binary closure and the uploaded
+candidate payload. An operator may build it from reviewed source, but its only
+effectful CLI path requires an explicit execution switch, the exact
+qualification evidence, a separately affirmative private approval, exact
+candidate/prior daemon and plist identities, and an empty private transaction
+directory. Build and workflow qualification exercise only its injected fake
+effects; neither invokes `launchctl`. A real terminal receipt is local
+activation/rollback evidence, not a GitHub Release, signature, attestation or
+multi-principal authorization claim.
+
 ## Enabling publication later
 
 Publication requires a deliberate change that, at minimum:

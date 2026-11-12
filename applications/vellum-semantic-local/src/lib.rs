@@ -15,6 +15,8 @@ mod runtime;
 pub use runtime::*;
 mod restart;
 pub use restart::*;
+mod restart_runtime;
+pub use restart_runtime::*;
 mod ordered;
 pub use ordered::*;
 mod authenticated_dispatch;

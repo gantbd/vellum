@@ -18,8 +18,9 @@ use vellum_sdk_client::{
         EditPersistenceV1, FileAdmissionStatusV1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
         MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplyV1, SaveReceiptV1,
         ServiceAccessErrorV1, ServicePort, ViewCloseStatusV1, ViewOpenStatusV1,
-        WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1,
-        WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+        WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangesV1,
+        WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
+        WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
     },
 };
 
@@ -30,6 +31,7 @@ pub const PROTOCOL_VERSION: &str = "2026-07-28";
 pub const SNAPSHOT_TOOL: &str = "vellum.snapshot";
 pub const REPLACE_TOOL: &str = "vellum.replace";
 pub const REPLACE_AND_SAVE_TOOL: &str = "vellum.replace_and_save";
+pub const WORKSPACE_EDIT_TOOL: &str = "vellum.workspace_edit";
 pub const CHANGES_TOOL: &str = "vellum.poll_changes";
 pub const MEMBERSHIP_TOOL: &str = "vellum.membership";
 pub const DURABLE_EXECUTE_TOOL: &str = "vellum.durable_execute";
@@ -37,6 +39,8 @@ pub const DURABLE_RECEIPT_TOOL: &str = "vellum.durable_receipt";
 pub const DURABLE_RETIRE_TOOL: &str = "vellum.durable_retire";
 pub const DURABLE_STATUS_TOOL: &str = "vellum.durable_status";
 const MAX_ROOT_LOOKUP_PAGES: usize = 256;
+const MAX_WORKSPACE_EDIT_DOCUMENTS: usize = 16;
+const MAX_WORKSPACE_EDIT_REPLACEMENTS: usize = 64;
 const TOOL_ERROR_CODES: &[&str] = &[
     "authority_denied",
     "authority_unavailable",
@@ -395,6 +399,15 @@ impl<T: ServicePort> McpServer<T> {
                     operation,
                 )
             }
+            WORKSPACE_EDIT_TOOL => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some(documents) = workspace_edit_arguments(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                self.client.workspace_edit(documents)
+            }
             CHANGES_TOOL => {
                 let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
                     return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
@@ -748,7 +761,8 @@ impl<T: ServicePort> McpServer<T> {
                 | OutcomeV1::DocumentSelected(_)
                 | OutcomeV1::Saved(_)
                 | OutcomeV1::ReplacedAndSaved(_)
-                | OutcomeV1::Replaced(_),
+                | OutcomeV1::Replaced(_)
+                | OutcomeV1::WorkspaceEdited(_),
             ) => Err(ServiceAccessErrorV1::Malformed),
             ReplyV1::Refused(refusal) => Ok(ReplyV1::Refused(refusal)),
         }
@@ -1222,6 +1236,50 @@ fn tools_result(durable_projection: bool) -> Value {
             "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
         }),
         json!({
+            "name": WORKSPACE_EDIT_TOOL,
+            "title": "Atomically edit Vellum workspace documents",
+            "description": "Publish a bounded set of byte-range replacements through one revision-witnessed in-memory transaction. This does not persist files.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "documents": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_WORKSPACE_EDIT_DOCUMENTS,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "workspace": {"type": "integer", "minimum": 1},
+                                "document": {"type": "integer", "minimum": 1},
+                                "expected_revision": {"type": "integer", "minimum": 0},
+                                "replacements": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": MAX_WORKSPACE_EDIT_REPLACEMENTS,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "start": {"type": "integer", "minimum": 0},
+                                            "end": {"type": "integer", "minimum": 0},
+                                            "inserted": {"type": "string"}
+                                        },
+                                        "required": ["start", "end", "inserted"],
+                                        "additionalProperties": false
+                                    }
+                                }
+                            },
+                            "required": ["workspace", "document", "expected_revision", "replacements"],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": ["documents"],
+                "additionalProperties": false
+            },
+            "outputSchema": generic_tool_output_schema(),
+            "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+        }),
+        json!({
             "name": CHANGES_TOOL,
             "title": "Poll bounded Vellum workspace changes",
             "description": "Return at most one content-free workspace change, an opaque continuation cursor, or an explicit retention gap.",
@@ -1679,6 +1737,58 @@ fn replace_arguments(
     Some((document, expected, start, end, inserted, operation))
 }
 
+fn workspace_edit_arguments(
+    arguments: &Map<String, Value>,
+) -> Option<Vec<WorkspaceDocumentEditV1>> {
+    if !only_keys(arguments, &["documents"]) {
+        return None;
+    }
+    let values = arguments.get("documents")?.as_array()?;
+    if values.is_empty() || values.len() > MAX_WORKSPACE_EDIT_DOCUMENTS {
+        return None;
+    }
+    let mut documents = Vec::with_capacity(values.len());
+    for value in values {
+        let document = value.as_object()?;
+        if !only_keys(
+            document,
+            &["workspace", "document", "expected_revision", "replacements"],
+        ) {
+            return None;
+        }
+        let workspace = WorkspaceIdV1::new(document.get("workspace")?.as_u64()?)?;
+        let id = WorkspaceDocumentIdV1::new(workspace, document.get("document")?.as_u64()?)?;
+        if documents
+            .iter()
+            .any(|prior: &WorkspaceDocumentEditV1| prior.document == id)
+        {
+            return None;
+        }
+        let values = document.get("replacements")?.as_array()?;
+        if values.is_empty() || values.len() > MAX_WORKSPACE_EDIT_REPLACEMENTS {
+            return None;
+        }
+        let mut replacements = Vec::with_capacity(values.len());
+        for value in values {
+            let replacement = value.as_object()?;
+            if !only_keys(replacement, &["start", "end", "inserted"]) {
+                return None;
+            }
+            replacements.push(WorkspaceReplacementV1 {
+                start: replacement.get("start")?.as_u64()?,
+                end: replacement.get("end")?.as_u64()?,
+                inserted: replacement.get("inserted")?.as_str()?.to_owned(),
+            });
+        }
+        documents.push(WorkspaceDocumentEditV1 {
+            document: id,
+            expected_revision: document.get("expected_revision")?.as_u64()?,
+            replacements,
+        });
+    }
+    Some(documents)
+}
+
 fn change_arguments(
     arguments: &Map<String, Value>,
 ) -> Option<(Option<WorkspaceChangeCursorV1>, u16)> {
@@ -2118,6 +2228,23 @@ fn tool_success(outcome: OutcomeV1) -> Value {
                 "structuredContent": structured,
                 "isError": false
             }));
+        }
+        OutcomeV1::WorkspaceEdited(receipt) => {
+            return tool_complete(
+                "workspace_edited",
+                json!({
+                    "kind": "workspace_edited",
+                    "workspace": receipt.workspace.get(),
+                    "generation": receipt.generation,
+                    "persistence": "not_attempted",
+                    "documents": receipt.documents.into_iter().map(|document| json!({
+                        "workspace": document.document.workspace().get(),
+                        "document": document.document.get(),
+                        "revision": document.snapshot.revision,
+                        "text": &*document.snapshot.text,
+                    })).collect::<Vec<_>>()
+                }),
+            );
         }
         OutcomeV1::Snapshot(snapshot) => ("snapshot", snapshot),
         OutcomeV1::Replaced(snapshot) => ("replaced", snapshot),
@@ -2808,7 +2935,7 @@ mod durable_projection_tests {
         }))
         .unwrap();
         let reply: Value = serde_json::from_slice(&server.handle(&list).unwrap()).unwrap();
-        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 5);
+        assert_eq!(reply["result"]["tools"].as_array().unwrap().len(), 6);
         for tool in [
             DURABLE_EXECUTE_TOOL,
             DURABLE_RECEIPT_TOOL,
@@ -2890,7 +3017,7 @@ mod durable_projection_tests {
     fn durable_discovery_describes_the_exact_closed_algebra() {
         let catalog = tools_result(true);
         let tools = catalog["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
         let execute = tools
             .iter()
             .find(|tool| tool["name"] == DURABLE_EXECUTE_TOOL)

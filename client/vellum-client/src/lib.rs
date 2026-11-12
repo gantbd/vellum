@@ -10,7 +10,7 @@ use vellum_protocol::{
     DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1, DurableReceiptStatusRequestV1,
     DurableReceiptStatusV1, RefusalV1, ReplyV1, RequestId, RequestV1, ServiceAccessErrorV1,
     ServiceControlErrorV1, ServicePort, VersionWitness, WorkspaceChangeCursorV1,
-    WorkspaceDocumentIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1,
+    WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1,
 };
 
 #[derive(Debug)]
@@ -144,6 +144,15 @@ impl<T: ServicePort> Client<T> {
             end,
             inserted,
         })
+    }
+
+    /// Publishes one bounded, revision-witnessed multi-document transaction in
+    /// memory. Persistence remains a separate effect with separate receipts.
+    pub fn workspace_edit(
+        &mut self,
+        documents: Vec<WorkspaceDocumentEditV1>,
+    ) -> Result<ReplyV1, ServiceAccessErrorV1> {
+        self.send(CommandV1::WorkspaceEdit { documents })
     }
 
     /// Executes one explicit restart-stable effect under a caller-persisted
@@ -630,9 +639,20 @@ mod tests {
         client.add_directory("private-directory".into()).unwrap();
         client.select_document(document).unwrap();
         client.save(VersionWitness::new(17).unwrap()).unwrap();
+        client
+            .workspace_edit(vec![WorkspaceDocumentEditV1 {
+                document,
+                expected_revision: 19,
+                replacements: vec![vellum_protocol::WorkspaceReplacementV1 {
+                    start: 0,
+                    end: 0,
+                    inserted: "private insertion".into(),
+                }],
+            }])
+            .unwrap();
 
         let transport = client.into_transport();
-        assert_eq!(transport.requests.len(), 4);
+        assert_eq!(transport.requests.len(), 5);
         assert_eq!(
             transport.requests[0].command,
             CommandV1::AddFile {
@@ -657,6 +677,11 @@ mod tests {
         );
         assert_eq!(transport.requests[0].request.get(), 1);
         assert_eq!(transport.requests[3].request.get(), 4);
+        assert!(matches!(
+            transport.requests[4].command,
+            CommandV1::WorkspaceEdit { .. }
+        ));
+        assert_eq!(transport.requests[4].request.get(), 5);
     }
 
     #[test]

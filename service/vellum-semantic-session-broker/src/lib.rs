@@ -3180,7 +3180,11 @@ fn result_matches_query(
     use vellum_host::semantic::SemanticQueryKindV1 as K;
     match kind {
         K::Symbols => result.symbols().is_some(),
-        K::Definition | K::References | K::Implementations => result.locations().is_some(),
+        K::Definition
+        | K::References
+        | K::Implementations
+        | K::IncomingCalls
+        | K::OutgoingCalls => result.locations().is_some(),
         K::Diagnostics => result.diagnostics().is_some(),
         K::TypeAtPoint => result.type_at_point().is_some(),
         K::PlanRename => result.rename_plan().is_some(),
@@ -3241,6 +3245,8 @@ fn query_offset_valid(
         Q::Definition { offset }
         | Q::References { offset }
         | Q::Implementations { offset }
+        | Q::IncomingCalls { offset }
+        | Q::OutgoingCalls { offset }
         | Q::TypeAtPoint { offset }
         | Q::PlanRename { offset, .. } => witness.contains_span(*offset, *offset),
         Q::Symbols { .. } | Q::Diagnostics => true,

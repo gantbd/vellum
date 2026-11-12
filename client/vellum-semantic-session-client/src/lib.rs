@@ -1277,6 +1277,8 @@ fn query_offset_valid(query: &SemanticQueryV1, witness: &DocumentWitnessV1) -> b
         SemanticQueryV1::Definition { offset }
         | SemanticQueryV1::References { offset }
         | SemanticQueryV1::Implementations { offset }
+        | SemanticQueryV1::IncomingCalls { offset }
+        | SemanticQueryV1::OutgoingCalls { offset }
         | SemanticQueryV1::TypeAtPoint { offset }
         | SemanticQueryV1::PlanRename { offset, .. } => witness.contains_span(*offset, *offset),
         SemanticQueryV1::Symbols { .. } | SemanticQueryV1::Diagnostics => true,

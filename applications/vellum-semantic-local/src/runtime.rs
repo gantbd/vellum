@@ -12,13 +12,18 @@
 //! with its exact close plan; composition drives protocol shutdown or explicitly
 //! escalates it, and terminal outcomes require transport cleanup evidence.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    os::unix::ffi::OsStrExt as _,
+    path::Path,
+};
 
 use vellum_adapter_semantic_lsp::{
-    LspAbortOutcomeV1, LspAdapterV1, LspFrameDecoderV1, LspFreshStartedAdapterV1,
-    LspIndexReadinessPortV1, LspLimitsV1, LspProviderQualificationEvidenceV1, LspSessionStateV1,
-    LspShutdownOutcomeV1, LspStartOutcomeV1, LspTransportPortV1, LspTransportTerminalV1,
-    LspUsageV1, LspVirtualDocumentIssuerV1, SemanticGenerationIssuerV1,
+    LspAbortOutcomeV1, LspAdapterProfileV1, LspAdapterV1, LspFrameDecoderV1,
+    LspFreshStartedAdapterV1, LspIndexReadinessPortV1, LspInitializationProfileV1, LspLimitsV1,
+    LspProviderQualificationEvidenceV1, LspSessionStateV1, LspShutdownOutcomeV1, LspStartOutcomeV1,
+    LspTransportPortV1, LspTransportTerminalV1, LspUsageV1, LspVirtualDocumentIssuerV1,
+    SemanticGenerationIssuerV1,
 };
 use vellum_host::semantic::{SemanticCapabilitySetV1, SemanticLimitsV1, SemanticRequestRefV1};
 use vellum_semantic_client::{SemanticClientV1, SemanticServicePortV1, bind_semantic_client_v1};
@@ -35,6 +40,29 @@ use crate::{
     LocalLspTransportV1, SemanticProcessLaunchRefusalV1, SemanticProviderProfileV1,
     launch_local_lsp_v1,
 };
+
+fn workspace_initialization_v1(
+    workspace_root: &Path,
+    limits: LspLimitsV1,
+) -> Option<LspInitializationProfileV1> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let path = workspace_root.as_os_str().as_bytes();
+    let mut uri = String::with_capacity(path.len().saturating_mul(3).saturating_add(7));
+    uri.push_str("file://");
+    for byte in path.iter().copied() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'.' | b'_' | b'~') {
+            uri.push(char::from(byte));
+        } else {
+            uri.push('%');
+            uri.push(char::from(HEX[usize::from(byte >> 4)]));
+            uri.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+        if uri.len() > limits.max_uri_bytes {
+            return None;
+        }
+    }
+    LspInitializationProfileV1::try_workspace(uri, "vellum-workspace".to_owned(), None, limits)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LocalSemanticRuntimeRefusalV1 {
@@ -415,6 +443,12 @@ where
 
     pub fn cleanup_state(&self) -> LspTransportTerminalV1 {
         self.adapter.transport_terminal_state()
+    }
+
+    /// Converts an uninstalled candidate into the same exact forced-cleanup
+    /// driver used for rejected replacements.
+    pub fn into_retirement(self) -> LocalSemanticRetirementV1<G, R, U> {
+        SemanticRetirementDriverV1::from_uninstalled_adapter(self.adapter)
     }
 }
 
@@ -1049,16 +1083,17 @@ where
         let scheduler = LocalSemanticDeadlineSchedulerV1::try_new(scheduler_limits)
             .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidScheduler))?;
         let provenance = profile.provenance.clone();
+        let initialization = workspace_initialization_v1(&profile.workspace_root, lsp_limits)
+            .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?;
         let transport = launch_local_lsp_v1(profile)
             .map_err(|refusal| runtime_failure(LocalSemanticRuntimeRefusalV1::Launch(refusal)))?;
-        let adapter = LspAdapterV1::try_new_with_readiness_and_documents(
+        let adapter = LspAdapterV1::try_new_with_profile(
             transport,
             generations,
             readiness,
             documents,
-            provenance,
-            lsp_limits,
-            semantic_limits,
+            LspAdapterProfileV1::try_new(provenance, lsp_limits, semantic_limits, initialization)
+                .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?,
         )
         .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?;
         let core = try_start_adapter_v1(adapter, service_limits)
@@ -1086,16 +1121,17 @@ where
             ));
         }
         let provenance = profile.provenance.clone();
+        let initialization = workspace_initialization_v1(&profile.workspace_root, lsp_limits)
+            .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?;
         let transport = launch_local_lsp_v1(profile)
             .map_err(|refusal| runtime_failure(LocalSemanticRuntimeRefusalV1::Launch(refusal)))?;
-        let mut adapter = LspAdapterV1::try_new_with_readiness_and_documents(
+        let mut adapter = LspAdapterV1::try_new_with_profile(
             transport,
             generations,
             readiness,
             documents,
-            provenance,
-            lsp_limits,
-            semantic_limits,
+            LspAdapterProfileV1::try_new(provenance, lsp_limits, semantic_limits, initialization)
+                .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?,
         )
         .ok_or_else(|| runtime_failure(LocalSemanticRuntimeRefusalV1::InvalidAdapter))?;
         match adapter.start() {

@@ -46,7 +46,7 @@ contains no deployment path, plist, log path or configuration contents. A
 renderer whose checksum is internally consistent but whose behavior emits a
 different or malformed profile is refused before evidence publication.
 
-The local activation-transaction model now stages each candidate and prior
+The local non-activating activation-transaction model stages each candidate and prior
 daemon/MCP/plist triple as one immutable digest-named version and atomically
 replaces a content-safe desired-deployment pointer. A synchronized journal
 distinguishes prepared, candidate, rollback, terminal, refused, and unknown
@@ -54,13 +54,19 @@ cuts, including crashes between pointer and journal publication. This closes a
 local desired-state and recovery algebra only. Launchd does not consume that
 pointer, so pointer replacement is not relabeled as job activation, process
 replacement, or rollback. The scratch qualifier executes neither staged binary
-and never invokes `launchctl`.
+and never invokes `launchctl`. The separate
+[authorized activation executor](launchd-activation.md) uses the same exact
+qualification and approval identities but adds durable pre/post launchctl
+brackets, exact running-program/PID checks, bounded daemon status, and
+exact-prior rollback after known candidate health failure. It is opt-in source
+tooling, not a Cargo-install or candidate-payload binary; its tests inject all
+effects and never invoke launchctl.
 
 For an authorized first installation, create and verify the private directory,
 render and inspect the plist, place the exact qualified candidate and plist,
-then activate through a separately reviewed mechanism. A readiness smoke must
-observe `vellum-daemon ready` and perform a bounded read-only native request;
-the line alone is not transactional readiness or authenticated health.
+then activate through the separately reviewed executor. Its status gate invokes
+the exact selected daemon's `--status` command and requires the version-2
+live/running/healthy/ready product; a startup line alone is not readiness.
 
 For an authorized upgrade, retain a distinct qualified rollback candidate,
 request shutdown over the current control socket (or let launchd send
@@ -76,5 +82,6 @@ reason for an `rm` preflight.
 launchd may escalate termination beyond `SIGTERM`; Vellum cannot promise that
 an external supervisor will wait forever for a continuously progressing peer.
 Deployment-specific throttling, log retention, resource limits, plist
-destination, session/domain selection, codesigning, notarization, activation,
-and rollback execution remain outside this profile.
+destination, codesigning and notarization remain outside this profile. The
+executor fixes the effective user's `gui/<uid>` domain and one exact label;
+other domains require a new reviewed policy.

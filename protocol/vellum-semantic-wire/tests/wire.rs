@@ -178,6 +178,8 @@ fn every_query_tag_roundtrips() {
         SemanticQueryV1::Definition { offset: 1 },
         SemanticQueryV1::References { offset: 2 },
         SemanticQueryV1::Implementations { offset: 3 },
+        SemanticQueryV1::IncomingCalls { offset: 6 },
+        SemanticQueryV1::OutgoingCalls { offset: 7 },
         SemanticQueryV1::Diagnostics,
         SemanticQueryV1::TypeAtPoint { offset: 4 },
         SemanticQueryV1::PlanRename {
@@ -547,6 +549,8 @@ fn nested_results_and_all_refusal_tags_roundtrip() {
         SemanticQueryKindV1::Definition,
         SemanticQueryKindV1::References,
         SemanticQueryKindV1::Implementations,
+        SemanticQueryKindV1::IncomingCalls,
+        SemanticQueryKindV1::OutgoingCalls,
         SemanticQueryKindV1::Diagnostics,
         SemanticQueryKindV1::TypeAtPoint,
         SemanticQueryKindV1::PlanRename,

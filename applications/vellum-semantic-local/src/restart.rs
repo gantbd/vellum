@@ -310,6 +310,23 @@ enum RestartState {
         attempt: u32,
         generation: NonZeroU64,
     },
+    ReplacementBackoff {
+        sequence: NonZeroU64,
+        attempt: u32,
+        delay: Duration,
+        old_generation: NonZeroU64,
+    },
+    ReplacementLaunching {
+        sequence: NonZeroU64,
+        attempt: u32,
+        old_generation: NonZeroU64,
+        generation: NonZeroU64,
+    },
+    ReplacementCleaning {
+        sequence: NonZeroU64,
+        old_generation: NonZeroU64,
+        generation: NonZeroU64,
+    },
     Fused(SemanticProviderRestartFuseV1),
 }
 
@@ -323,6 +340,7 @@ pub struct SemanticProviderRestartControllerV1 {
     state: RestartState,
     next_sequence: u64,
     last_generation: NonZeroU64,
+    replacement_cause: Option<SemanticProviderRestartCauseV1>,
     usage: SemanticProviderRestartUsageV1,
 }
 
@@ -333,6 +351,7 @@ impl SemanticProviderRestartControllerV1 {
             state: RestartState::Running { generation },
             next_sequence: 1,
             last_generation: generation,
+            replacement_cause: None,
             usage: SemanticProviderRestartUsageV1::default(),
         }
     }
@@ -352,6 +371,9 @@ impl SemanticProviderRestartControllerV1 {
             RestartState::Backoff { attempt, delay, .. } => {
                 SemanticProviderRestartStatusV1::Backoff { attempt, delay }
             }
+            RestartState::ReplacementBackoff { attempt, delay, .. } => {
+                SemanticProviderRestartStatusV1::Backoff { attempt, delay }
+            }
             RestartState::Launching {
                 attempt,
                 generation,
@@ -360,6 +382,19 @@ impl SemanticProviderRestartControllerV1 {
                 attempt,
                 generation,
             },
+            RestartState::ReplacementLaunching {
+                attempt,
+                generation,
+                ..
+            } => SemanticProviderRestartStatusV1::Launching {
+                attempt,
+                generation,
+            },
+            RestartState::ReplacementCleaning { old_generation, .. } => {
+                SemanticProviderRestartStatusV1::Cleaning {
+                    generation: old_generation,
+                }
+            }
             RestartState::Fused(reason) => SemanticProviderRestartStatusV1::Fused(reason),
         }
     }
@@ -380,6 +415,7 @@ impl SemanticProviderRestartControllerV1 {
             return self.fuse_and_refuse(SemanticProviderRestartFuseV1::GenerationExhausted);
         };
         self.next_sequence = next_sequence;
+        self.replacement_cause = None;
         self.state = RestartState::Cleaning {
             sequence,
             generation,
@@ -390,6 +426,23 @@ impl SemanticProviderRestartControllerV1 {
             generation,
             cause,
         })
+    }
+
+    /// Starts the hot-replacement route used by compositions that retain the
+    /// authoritative provider until a fresh provider has accepted a complete
+    /// snapshot replay. Outstanding queries are invalidated and never replayed.
+    pub fn request_replacement(
+        &mut self,
+        cause: SemanticProviderRestartCauseV1,
+    ) -> Result<SemanticProviderRestartDecisionV1, SemanticProviderRestartRefusalV1> {
+        let generation = match self.state {
+            RestartState::Running { generation } => generation,
+            RestartState::Fused(reason) => return self.refuse(reason.into()),
+            _ => return self.refuse(SemanticProviderRestartRefusalV1::Busy),
+        };
+        bump(&mut self.usage.restart_requests, &mut self.usage.saturated);
+        self.replacement_cause = Some(cause);
+        Ok(self.schedule_replacement_backoff(1, generation))
     }
 
     pub fn complete_cleanup(
@@ -411,12 +464,22 @@ impl SemanticProviderRestartControllerV1 {
         SemanticProviderRestartDecisionV1,
         SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartCleanupV1>,
     > {
-        let matches = matches!(
+        let cold_matches = matches!(
             self.state,
             RestartState::Cleaning { sequence, generation }
                 if sequence == owner.sequence && generation == owner.generation
         );
-        if !matches {
+        let replacement = match self.state {
+            RestartState::ReplacementCleaning {
+                sequence,
+                old_generation,
+                generation,
+            } if sequence == owner.sequence && old_generation == owner.generation => {
+                Some(generation)
+            }
+            _ => None,
+        };
+        if !cold_matches && replacement.is_none() {
             return Err(SemanticProviderRestartOwnerFailureV1 {
                 refusal: self.current_refusal(),
                 owner,
@@ -426,7 +489,13 @@ impl SemanticProviderRestartControllerV1 {
             LocalSemanticRetirementTerminalV1::GracefulConfirmed
             | LocalSemanticRetirementTerminalV1::ForcedConfirmed => {
                 bump(&mut self.usage.cleanup_confirmed, &mut self.usage.saturated);
-                Ok(self.schedule_backoff(1))
+                if let Some(generation) = replacement {
+                    self.replacement_cause = None;
+                    self.state = RestartState::Running { generation };
+                    Ok(SemanticProviderRestartDecisionV1::Running { generation })
+                } else {
+                    Ok(self.schedule_backoff(1))
+                }
             }
             LocalSemanticRetirementTerminalV1::CleanupFailed => {
                 bump(&mut self.usage.cleanup_uncertain, &mut self.usage.saturated);
@@ -442,12 +511,23 @@ impl SemanticProviderRestartControllerV1 {
         SemanticProviderRestartLaunchV1,
         SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartBackoffV1>,
     > {
-        let matches = matches!(
+        let cold_matches = matches!(
             self.state,
             RestartState::Backoff { sequence, attempt, delay }
                 if sequence == owner.sequence && attempt == owner.attempt && delay == owner.delay
         );
-        if !matches {
+        let replacement_old = match self.state {
+            RestartState::ReplacementBackoff {
+                sequence,
+                attempt,
+                delay,
+                old_generation,
+            } if sequence == owner.sequence && attempt == owner.attempt && delay == owner.delay => {
+                Some(old_generation)
+            }
+            _ => None,
+        };
+        if !cold_matches && replacement_old.is_none() {
             return Err(SemanticProviderRestartOwnerFailureV1 {
                 refusal: self.current_refusal(),
                 owner,
@@ -464,17 +544,89 @@ impl SemanticProviderRestartControllerV1 {
         };
         let generation = NonZeroU64::new(raw_generation).expect("checked successor is nonzero");
         self.last_generation = generation;
-        self.state = RestartState::Launching {
-            sequence: owner.sequence,
-            attempt: owner.attempt,
-            generation,
-        };
+        self.state = replacement_old.map_or(
+            RestartState::Launching {
+                sequence: owner.sequence,
+                attempt: owner.attempt,
+                generation,
+            },
+            |old_generation| RestartState::ReplacementLaunching {
+                sequence: owner.sequence,
+                attempt: owner.attempt,
+                old_generation,
+                generation,
+            },
+        );
         bump(&mut self.usage.launches_admitted, &mut self.usage.saturated);
         Ok(SemanticProviderRestartLaunchV1 {
             sequence: owner.sequence,
             attempt: owner.attempt,
             generation,
         })
+    }
+
+    /// Permanently fences a restart when composition cannot prove that the
+    /// prescribed backoff elapsed in its selected clock domain.
+    pub fn fuse_backoff_uncertain(
+        &mut self,
+        owner: SemanticProviderRestartBackoffV1,
+    ) -> Result<
+        SemanticProviderRestartDecisionV1,
+        SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartBackoffV1>,
+    > {
+        let matches = matches!(
+            self.state,
+            RestartState::Backoff { sequence, attempt, delay }
+                | RestartState::ReplacementBackoff { sequence, attempt, delay, .. }
+                if sequence == owner.sequence && attempt == owner.attempt && delay == owner.delay
+        );
+        if !matches {
+            return Err(SemanticProviderRestartOwnerFailureV1 {
+                refusal: self.current_refusal(),
+                owner,
+            });
+        }
+        Ok(self.fuse(SemanticProviderRestartFuseV1::LaunchUncertain))
+    }
+
+    /// Permanently fences a restart when candidate startup or readiness cannot
+    /// be reconciled to a definitive launch result.
+    pub fn fuse_launch_uncertain(
+        &mut self,
+        owner: SemanticProviderRestartLaunchV1,
+    ) -> Result<
+        SemanticProviderRestartDecisionV1,
+        SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartLaunchV1>,
+    > {
+        self.complete_launch_resolution(owner, LaunchResolution::OutcomeUnknown)
+    }
+
+    /// Permanently fences a replacement whose displaced-provider cleanup did
+    /// not reach terminal evidence within composition's bounded drive budget.
+    pub fn fuse_cleanup_uncertain(
+        &mut self,
+        owner: SemanticProviderRestartCleanupV1,
+    ) -> Result<
+        SemanticProviderRestartDecisionV1,
+        SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartCleanupV1>,
+    > {
+        let matches = matches!(
+            self.state,
+            RestartState::Cleaning { sequence, generation }
+                if sequence == owner.sequence && generation == owner.generation
+        ) || matches!(
+            self.state,
+            RestartState::ReplacementCleaning { sequence, old_generation, .. }
+                if sequence == owner.sequence && old_generation == owner.generation
+        );
+        if !matches {
+            return Err(SemanticProviderRestartOwnerFailureV1 {
+                refusal: self.current_refusal(),
+                owner,
+            });
+        }
+        bump(&mut self.usage.cleanup_uncertain, &mut self.usage.saturated);
+        Ok(self.fuse(SemanticProviderRestartFuseV1::CleanupUncertain))
     }
 
     /// Confirms that composition now owns a started provider for this exact
@@ -490,6 +642,50 @@ impl SemanticProviderRestartControllerV1 {
         self.complete_launch_resolution(owner, LaunchResolution::Started)
     }
 
+    /// Confirms that the semantic service installed this exact fresh provider
+    /// after completing its snapshot replay. The returned cleanup owner gates
+    /// readiness on terminal evidence for the displaced provider.
+    pub fn confirm_replacement_installed(
+        &mut self,
+        owner: SemanticProviderRestartLaunchV1,
+    ) -> Result<
+        SemanticProviderRestartCleanupV1,
+        SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartLaunchV1>,
+    > {
+        let old_generation = match self.state {
+            RestartState::ReplacementLaunching {
+                sequence,
+                attempt,
+                old_generation,
+                generation,
+            } if sequence == owner.sequence
+                && attempt == owner.attempt
+                && generation == owner.generation =>
+            {
+                old_generation
+            }
+            _ => {
+                return Err(SemanticProviderRestartOwnerFailureV1 {
+                    refusal: self.current_refusal(),
+                    owner,
+                });
+            }
+        };
+        self.state = RestartState::ReplacementCleaning {
+            sequence: owner.sequence,
+            old_generation,
+            generation: owner.generation,
+        };
+        bump(&mut self.usage.launches_started, &mut self.usage.saturated);
+        Ok(SemanticProviderRestartCleanupV1 {
+            sequence: owner.sequence,
+            generation: old_generation,
+            cause: self
+                .replacement_cause
+                .expect("replacement request retains its exact cause"),
+        })
+    }
+
     fn complete_launch_resolution(
         &mut self,
         owner: SemanticProviderRestartLaunchV1,
@@ -498,14 +694,28 @@ impl SemanticProviderRestartControllerV1 {
         SemanticProviderRestartDecisionV1,
         SemanticProviderRestartOwnerFailureV1<SemanticProviderRestartLaunchV1>,
     > {
-        let matches = matches!(
+        let cold_matches = matches!(
             self.state,
             RestartState::Launching { sequence, attempt, generation }
                 if sequence == owner.sequence
                     && attempt == owner.attempt
                     && generation == owner.generation
         );
-        if !matches {
+        let replacement_old = match self.state {
+            RestartState::ReplacementLaunching {
+                sequence,
+                attempt,
+                old_generation,
+                generation,
+            } if sequence == owner.sequence
+                && attempt == owner.attempt
+                && generation == owner.generation =>
+            {
+                Some(old_generation)
+            }
+            _ => None,
+        };
+        if !cold_matches && replacement_old.is_none() {
             return Err(SemanticProviderRestartOwnerFailureV1 {
                 refusal: self.current_refusal(),
                 owner,
@@ -523,7 +733,13 @@ impl SemanticProviderRestartControllerV1 {
             }
             LaunchResolution::DefinitivelyRefused => {
                 bump(&mut self.usage.launches_refused, &mut self.usage.saturated);
-                self.schedule_backoff(owner.attempt.saturating_add(1))
+                match replacement_old {
+                    Some(old_generation) => self.schedule_replacement_backoff(
+                        owner.attempt.saturating_add(1),
+                        old_generation,
+                    ),
+                    None => self.schedule_backoff(owner.attempt.saturating_add(1)),
+                }
             }
             LaunchResolution::OutcomeUnknown => {
                 bump(
@@ -580,6 +796,36 @@ impl SemanticProviderRestartControllerV1 {
             sequence,
             attempt,
             delay,
+        };
+        bump(&mut self.usage.backoffs_issued, &mut self.usage.saturated);
+        SemanticProviderRestartDecisionV1::Backoff(SemanticProviderRestartBackoffV1 {
+            sequence,
+            attempt,
+            delay,
+        })
+    }
+
+    fn schedule_replacement_backoff(
+        &mut self,
+        attempt: u32,
+        old_generation: NonZeroU64,
+    ) -> SemanticProviderRestartDecisionV1 {
+        let index = usize::try_from(attempt.saturating_sub(1)).unwrap_or(usize::MAX);
+        let Some(delay) = self.policy.backoffs.get(index).copied() else {
+            return self.fuse(SemanticProviderRestartFuseV1::AttemptsExhausted);
+        };
+        let Some(sequence) = NonZeroU64::new(self.next_sequence) else {
+            return self.fuse(SemanticProviderRestartFuseV1::GenerationExhausted);
+        };
+        let Some(next_sequence) = self.next_sequence.checked_add(1) else {
+            return self.fuse(SemanticProviderRestartFuseV1::GenerationExhausted);
+        };
+        self.next_sequence = next_sequence;
+        self.state = RestartState::ReplacementBackoff {
+            sequence,
+            attempt,
+            delay,
+            old_generation,
         };
         bump(&mut self.usage.backoffs_issued, &mut self.usage.saturated);
         SemanticProviderRestartDecisionV1::Backoff(SemanticProviderRestartBackoffV1 {
@@ -725,6 +971,101 @@ mod tests {
                 if generation == NonZeroU64::new(10).unwrap()
         ));
         assert_eq!(controller.usage().launches_started, 1);
+    }
+
+    #[test]
+    fn replacement_keeps_old_generation_until_install_and_cleanup_are_exact() {
+        let old = NonZeroU64::new(9).unwrap();
+        let mut controller = SemanticProviderRestartControllerV1::new_running(policy(), old);
+        let SemanticProviderRestartDecisionV1::Backoff(backoff) = controller
+            .request_replacement(SemanticProviderRestartCauseV1::OperatorRequested)
+            .unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(backoff.delay(), Duration::from_millis(10));
+        let launch = controller.backoff_elapsed(backoff).unwrap();
+        assert_eq!(launch.generation(), NonZeroU64::new(10).unwrap());
+        let cleanup = controller.confirm_replacement_installed(launch).unwrap();
+        assert_eq!(cleanup.generation(), old);
+        assert_eq!(
+            cleanup.query_disposition(),
+            SemanticProviderRestartQueryDispositionV1::InvalidateWithoutReplay
+        );
+        assert_eq!(
+            controller.status(),
+            SemanticProviderRestartStatusV1::Cleaning { generation: old }
+        );
+        let decision = confirmed_cleanup(&mut controller, cleanup);
+        assert!(matches!(
+            decision,
+            SemanticProviderRestartDecisionV1::Running { generation }
+                if generation == NonZeroU64::new(10).unwrap()
+        ));
+    }
+
+    #[test]
+    fn replacement_cleanup_uncertainty_permanently_fuses() {
+        let old = NonZeroU64::new(3).unwrap();
+        let mut controller = SemanticProviderRestartControllerV1::new_running(policy(), old);
+        let SemanticProviderRestartDecisionV1::Backoff(backoff) = controller
+            .request_replacement(SemanticProviderRestartCauseV1::ProviderFailed)
+            .unwrap()
+        else {
+            panic!()
+        };
+        let launch = controller.backoff_elapsed(backoff).unwrap();
+        let cleanup = controller.confirm_replacement_installed(launch).unwrap();
+        assert!(matches!(
+            controller.fuse_cleanup_uncertain(cleanup).unwrap(),
+            SemanticProviderRestartDecisionV1::Fused(
+                SemanticProviderRestartFuseV1::CleanupUncertain
+            )
+        ));
+        assert_eq!(
+            controller.status(),
+            SemanticProviderRestartStatusV1::Fused(SemanticProviderRestartFuseV1::CleanupUncertain)
+        );
+    }
+
+    #[test]
+    fn replacement_definitive_launch_failures_exhaust_without_cleaning_old_provider() {
+        let old = NonZeroU64::new(4).unwrap();
+        let mut controller = SemanticProviderRestartControllerV1::new_running(policy(), old);
+        let SemanticProviderRestartDecisionV1::Backoff(first) = controller
+            .request_replacement(SemanticProviderRestartCauseV1::ProviderUnavailable)
+            .unwrap()
+        else {
+            panic!()
+        };
+        let first = controller.backoff_elapsed(first).unwrap();
+        let (decision, _) = controller
+            .complete_owned_launch_failure(
+                first,
+                SemanticProcessOwnedLaunchFailureV1::Confirmed(
+                    crate::SemanticProcessLaunchRefusalV1::SpawnRefused,
+                ),
+            )
+            .unwrap();
+        let SemanticProviderRestartDecisionV1::Backoff(second) = decision else {
+            panic!()
+        };
+        let second = controller.backoff_elapsed(second).unwrap();
+        let (decision, _) = controller
+            .complete_owned_launch_failure(
+                second,
+                SemanticProcessOwnedLaunchFailureV1::Confirmed(
+                    crate::SemanticProcessLaunchRefusalV1::SpawnRefused,
+                ),
+            )
+            .unwrap();
+        assert!(matches!(
+            decision,
+            SemanticProviderRestartDecisionV1::Fused(
+                SemanticProviderRestartFuseV1::AttemptsExhausted
+            )
+        ));
+        assert_eq!(controller.usage().cleanup_confirmed, 0);
     }
 
     #[test]

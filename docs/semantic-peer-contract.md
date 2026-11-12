@@ -23,10 +23,11 @@ routing state. `vellum-semantic-client` is its zero-authority facade. They are
 categorically separate from the native Vellum service/client pair: adding this
 substrate does not add a Vellum wire command or make semantics editor state.
 
-The V1 query algebra contains seven operations:
+The V1 query algebra contains nine operations:
 
 - bounded symbol search;
 - definition, references and implementations at a byte offset;
+- incoming and outgoing calls for the exact symbol prepared at a byte offset;
 - diagnostics;
 - type-at-point;
 - rename planning.
@@ -131,6 +132,16 @@ virtual documents. It rejects changes maps, resource operations, annotations,
 unknown or stale versions, foreign URIs, invalid UTF positions and overlapping
 or same-start edits. An LSP `null` result is represented as an empty proposal;
 it grants no edit authority.
+
+Call hierarchy is a bounded two-step LSP operation. The adapter first sends
+`textDocument/prepareCallHierarchy`, requires zero or one valid item bound to a
+currently admitted document, and passes that exact provider-owned item,
+including bounded opaque `data`, to `callHierarchy/incomingCalls` or
+`callHierarchy/outgoingCalls`. It never substitutes symbol text. Multiple
+prepare items refuse as ambiguous; item bytes, result count, ranges, URIs and
+snapshots are bounded and checked. Results project only caller/callee selection
+locations, while the ordinary reply retains exact source revision, index
+generation and composition-installed provider provenance.
 
 Requests use bounded non-reused numeric LSP correlations internally while the
 public request identity remains opaque. Results bind the source target and the
@@ -265,15 +276,19 @@ facade. This supplies no clock source, authentication, background loop,
 automatic restart policy, wire protocol or daemon. The current binary remains
 only a content-safe probe.
 
-`vellum-semantic-local` also exposes a policy-only, single-flight restart
-controller for a composition that already owns the provider runtime. Its
-finite schedule returns one explicit backoff obligation per attempt; the
-composition remains responsible for elapsed-time evidence, launch, and exact
-terminal cleanup receipts. A failed cleanup or outcome-unknown launch
-permanently fuses that controller instance, and every restart request fixes
-pending query disposition to invalidation without replay. The controller is
-not installed as an automatic binary policy, has no reset route, and does not
-weaken the production-promotion requirements above.
+`vellum-semantic-local` also exposes a single-flight restart controller and an
+opt-in embedded composition that consumes it. The composition accepts one
+bounded clock, follows the finite explicit backoff schedule, launches a fresh
+provider, waits for independent readiness, and uses the semantic service's
+replacement boundary to replay every exact workspace snapshot before the
+single authoritative swap. It withholds its runtime surface until the
+displaced provider's exact terminal cleanup receipt is reconciled. A failed or
+budget-exhausted cleanup, uncertain clock, or outcome-unknown launch
+permanently fuses that controller instance; retained cleanup owners are
+returned rather than erased. Every restart fixes pending query disposition to
+invalidation without replay. This composition is not installed in the binary
+by default, has no reset route, and does not weaken the production-promotion
+requirements above.
 
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority

@@ -33,6 +33,7 @@ const trusted = new Map([
     'applications/vellum-daemon/src/lib.rs',
     'applications/vellum-semantic-local/src/lib.rs',
     'applications/vellum-semantic-local/src/service.rs',
+    'distribution/launchd-activate/src/lib.rs',
     'distribution/launchd-render/src/lib.rs',
     'distribution/launchd-render/src/main.rs',
     'qualification/semantic-lsp-provider/src/lib.rs',
@@ -54,6 +55,7 @@ const trusted = new Map([
     // body; the textual gate deliberately classifies the whole source file.
     'adapters/local-authentication/src/unix.rs',
     'applications/vellum-semantic-local/src/lib.rs',
+    'distribution/launchd-activate/src/lib.rs',
   ])],
   ['native-ffi', new Set([
     'adapters/local-fs/src/macos.rs',

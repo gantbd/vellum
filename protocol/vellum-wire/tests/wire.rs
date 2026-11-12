@@ -11,8 +11,9 @@ use vellum_protocol::{
     RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
     SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
     WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
-    WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
-    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+    WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
+    WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
+    WorkspaceInventoryV1, WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
     WorkspaceRootV1,
 };
 use vellum_wire::{
@@ -34,6 +35,70 @@ fn limits() -> WireLimits {
         max_text_bytes: 64,
         max_fields: 16,
     }
+}
+
+#[test]
+fn workspace_edit_request_and_receipt_round_trip_as_bounded_packed_values() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 9).unwrap();
+    let request = WireRequestV1::Execute(RequestV1 {
+        client: ClientId::new(1).unwrap(),
+        request: RequestId::new(2).unwrap(),
+        command: CommandV1::WorkspaceEdit {
+            documents: vec![WorkspaceDocumentEditV1 {
+                document,
+                expected_revision: 11,
+                replacements: vec![WorkspaceReplacementV1 {
+                    start: 1,
+                    end: 3,
+                    inserted: "XY".into(),
+                }],
+            }],
+        },
+    });
+    let encoded = encode_request_v1(&request, limits()).unwrap();
+    assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+    assert!(!format!("{request:?}").contains("XY"));
+
+    let reply = WireReplyV1::Executed(ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(
+        WorkspaceEditReceiptV1 {
+            workspace,
+            generation: 13,
+            documents: vec![WorkspaceEditedDocumentV1 {
+                document,
+                snapshot: SnapshotV1 {
+                    witness: VersionWitness::new(17).unwrap(),
+                    revision: 19,
+                    text: Arc::from("aXYd"),
+                },
+            }],
+        },
+    )));
+    let encoded = encode_reply_v1(&reply, limits()).unwrap();
+    assert_eq!(decode_reply_v1(&encoded, limits()).unwrap(), reply);
+    assert!(!format!("{reply:?}").contains("aXYd"));
+
+    let oversized = WireRequestV1::Execute(RequestV1 {
+        client: ClientId::new(1).unwrap(),
+        request: RequestId::new(3).unwrap(),
+        command: CommandV1::WorkspaceEdit {
+            documents: (0..17)
+                .map(|_| WorkspaceDocumentEditV1 {
+                    document,
+                    expected_revision: 11,
+                    replacements: vec![WorkspaceReplacementV1 {
+                        start: 0,
+                        end: 0,
+                        inserted: String::new(),
+                    }],
+                })
+                .collect(),
+        },
+    });
+    assert_eq!(
+        encode_request_v1(&oversized, limits()),
+        Err(WireEncodeError::Limit)
+    );
 }
 
 #[test]

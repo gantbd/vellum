@@ -1,7 +1,8 @@
 # Vellum Semantic MCP
 
 `vellum-semantic-mcp` is the bounded agent-facing semantic peer for Vellum. It
-projects symbol navigation, diagnostics, type information and rename planning
+projects symbol navigation, bounded incoming/outgoing call hierarchy, diagnostics,
+type information and rename planning
 over MCP `2026-07-28`; it cannot apply edits or acquire provider authority.
 
 The useful local composition requires explicit native and semantic service

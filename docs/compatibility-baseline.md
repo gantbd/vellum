@@ -45,10 +45,21 @@ the baseline itself.
 
 ## Current reviewed change
 
-The November 2026 refresh records 31 packages, the complete native golden
+The November 2026 refresh records 34 packages, the complete native golden
 fixture directory, and the separately frozen semantic-session command/reply
 fixtures. The
 review classified the changes as follows:
+
+- the nonpublishing `vellum-launchd-activate` distribution package is additive,
+  source-built operator tooling. It is absent from both the two-binary Cargo
+  install closure and the release-candidate payload, and its test interpreter
+  injects every platform effect;
+- native command/outcome tag `17` adds the bounded atomic in-memory workspace
+  edit. Existing frames are unchanged; older exhaustive V1 peers must be
+  upgraded before receiving the additive tag;
+- semantic query-kind tags `8` and `9` add provider-native incoming and
+  outgoing call hierarchy. Existing frozen semantic frames remain unchanged;
+  older closed-vocabulary peers must be upgraded before receiving them;
 
 - the nonpublishing `vellum` distribution package is additive and contains no
   library API; it installs the existing daemon and MCP peer binaries in one

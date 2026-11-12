@@ -27,6 +27,7 @@ const requiredFiles = [
   'docs/compatibility-baseline.md',
   'docs/artifact-lifecycle.md',
   'docs/launchd-distribution.md',
+  'docs/launchd-activation.md',
   'release/dependency-policy.json',
   'release/github-source.json',
   'release/source-sbom.manifest.json',
@@ -57,6 +58,10 @@ const requiredFiles = [
   'distribution/launchd-render/src/lib.rs',
   'distribution/launchd-render/src/main.rs',
   'distribution/launchd-render/tests/qualification.rs',
+  'distribution/launchd-activate/Cargo.toml',
+  'distribution/launchd-activate/src/lib.rs',
+  'distribution/launchd-activate/src/main.rs',
+  'distribution/launchd-activate/tests/qualification.rs',
   'distribution/cargo-install/Cargo.toml',
   'distribution/cargo-install/src/bin/vellum-daemon.rs',
   'distribution/cargo-install/src/bin/vellum-mcp.rs',
@@ -144,6 +149,9 @@ if (!read('Makefile').includes('check-cargo-install-qualification:')) {
 }
 if (!read('Makefile').includes('check-activation-transaction:')) {
   fail('Makefile must expose the local activation-transaction qualification');
+}
+if (!read('Makefile').includes('check-launchd-activation:')) {
+  fail('Makefile must expose the real launchd activation qualification');
 }
 for (const target of [
   'check-semantic-provider-qualification:',
@@ -248,6 +256,7 @@ if (sourcePolicy !== undefined) {
     'make check-artifact-lifecycle',
     'make check-activation-transaction',
     'make check-launchd-distribution',
+    'make check-launchd-activation',
     'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
     'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
     '--output-dir=../candidate',

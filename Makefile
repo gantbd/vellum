@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-cargo-install-qualification check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-release-contract check-semantic-provider-qualification check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -26,6 +26,10 @@ qualify-github-source:
 check-launchd-distribution:
 	cargo test --locked --offline -p vellum-launchd-render --all-targets --all-features
 	cargo clippy --locked --offline -p vellum-launchd-render --all-targets --all-features -- -D warnings
+
+check-launchd-activation:
+	cargo test --locked --offline -p vellum-launchd-activate --all-targets --all-features
+	cargo clippy --locked --offline -p vellum-launchd-activate --all-targets --all-features -- -D warnings
 
 check-mcp-extraction:
 	node --check scripts/verify-mcp-extraction.mjs

@@ -29,6 +29,7 @@ members = [
     "applications/vellum-daemon",
     "applications/vellum-semantic-local",
     "distribution/cargo-install",
+    "distribution/launchd-activate",
     "distribution/launchd-render",
     "sdk/embedded",
     "sdk/client",

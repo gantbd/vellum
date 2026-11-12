@@ -8,6 +8,29 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Added a bounded, source-revision-bound atomic workspace edit across the
+  native protocol, wire, client SDK, service, and MCP projection. One request
+  validates every explicit document and replacement before a single in-memory
+  publication; stale or malformed participants refuse the whole batch, exact
+  no-ops remain no-ops, and receipts state that filesystem persistence was not
+  attempted.
+- Added provider-native incoming and outgoing call hierarchy queries through
+  the semantic host algebra, session protocol/wire, service/client, LSP
+  adapter, and semantic MCP peer. The two-stage LSP exchange preserves the
+  exact prepared provider item and source/index/provider provenance, rejects
+  ambiguous prepares and foreign locations, and grants no edit authority.
+- Added an opt-in semantic-local hot-restart composition that consumes the
+  bounded restart controller, launches a fresh provider, fully replays the
+  synchronized snapshot before readiness, withholds replacement publication
+  until exact old-provider cleanup, never replays queries, and permanently
+  fuses on uncertain cleanup, timing, launch, or readiness.
+- Added a separate source-built `vellum-launchd-activate` executor. An explicit
+  operator approval binds exact qualified candidate/prior artifacts; every
+  launchctl mutation is durably bracketed, running identity and daemon status
+  are requalified, known candidate failure restores the exact prior version,
+  and uncertain effects stop without retry. Tests inject all effects, and the
+  executable remains outside both Cargo-install and release-candidate binary
+  payloads.
 - Replaced the packaged Node launchd renderer with a self-contained,
   non-publishable Rust executable. GitHub candidates now build, checksum,
   smoke, and qualify the exact native renderer for both candidate and rollback

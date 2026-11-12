@@ -553,6 +553,8 @@ impl SemanticSessionCommandV1 {
                 Q::Definition { .. }
                 | Q::References { .. }
                 | Q::Implementations { .. }
+                | Q::IncomingCalls { .. }
+                | Q::OutgoingCalls { .. }
                 | Q::TypeAtPoint { .. } => TAG.checked_add(8),
                 Q::Diagnostics => Some(TAG),
                 Q::PlanRename { new_name, .. } => {
@@ -741,7 +743,9 @@ pub fn semantic_session_result_reservation_bytes_v1(
         )?,
         SemanticQueryKindV1::Definition
         | SemanticQueryKindV1::References
-        | SemanticQueryKindV1::Implementations => 1usize
+        | SemanticQueryKindV1::Implementations
+        | SemanticQueryKindV1::IncomingCalls
+        | SemanticQueryKindV1::OutgoingCalls => 1usize
             .checked_add(8)?
             .checked_add(limits.max_results.checked_mul(LOCATION)?)?,
         SemanticQueryKindV1::Diagnostics => 1usize.checked_add(8)?.checked_add(
@@ -1554,6 +1558,14 @@ mod tests {
             ),
             (
                 SemanticQueryKindV1::Implementations,
+                fixed + 1 + 8 + limits.max_results * location,
+            ),
+            (
+                SemanticQueryKindV1::IncomingCalls,
+                fixed + 1 + 8 + limits.max_results * location,
+            ),
+            (
+                SemanticQueryKindV1::OutgoingCalls,
                 fixed + 1 + 8 + limits.max_results * location,
             ),
             (

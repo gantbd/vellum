@@ -1,9 +1,11 @@
 use std::{
     collections::BTreeMap,
     env, fs,
+    future::Future,
     os::unix::{ffi::OsStrExt as _, fs::PermissionsExt as _},
     path::PathBuf,
     process::Command,
+    task::{Context, Poll, Waker},
     time::{Duration, Instant},
 };
 
@@ -27,7 +29,9 @@ use vellum_semantic_protocol::{
     SemanticSessionLimitsV1, SemanticSessionOperationRefV1, SemanticSessionOutcomeV1,
     SemanticSessionRolesV1, SemanticSynchronizationEpochV1, SemanticSynchronizationManifestV1,
 };
-use vellum_semantic_service::{SemanticClientRefV1, SemanticServiceLimitsV1};
+use vellum_semantic_service::{
+    SemanticAdmissionOutcomeV1, SemanticClientRefV1, SemanticServiceLimitsV1, SemanticSnapshotV1,
+};
 use vellum_semantic_session_actor::{
     SemanticSessionActorAdmissionV1, SemanticSessionActorControlCompletionV1,
     SemanticSessionActorLimitsV1, SemanticSessionActorPollV1, SemanticSessionActorTerminationV1,
@@ -142,6 +146,7 @@ impl Drop for MatrixScratch {
     }
 }
 
+#[derive(Clone)]
 struct MatrixGenerations(u64);
 
 impl SemanticGenerationIssuerV1 for MatrixGenerations {
@@ -237,6 +242,28 @@ fn matrix_profile(mode: &str, scratch: &MatrixScratch) -> SemanticProviderProfil
         },
     )
     .unwrap()
+}
+
+fn run_immediate<F: Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    match future
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()))
+    {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("model semantic future unexpectedly pending"),
+    }
+}
+
+#[derive(Default)]
+struct MatrixRestartClock(Vec<Duration>);
+
+impl LocalSemanticRestartClockV1 for MatrixRestartClock {
+    fn wait(&mut self, delay: Duration) -> bool {
+        self.0.push(delay);
+        std::thread::sleep(delay.min(Duration::from_millis(1)));
+        true
+    }
 }
 
 fn matrix_limits() -> (SemanticSessionLimitsV1, SemanticServiceLimitsV1) {
@@ -1000,6 +1027,101 @@ fn supervised_fixture_closes_diagnostics_nested_symbols_and_versioned_rename() {
         LocalSemanticRetirementTerminalV1::GracefulConfirmed
     );
     drop(sender);
+}
+
+#[test]
+fn opt_in_restart_launches_replays_then_reconciles_old_provider_cleanup() {
+    let scratch = MatrixScratch::new("restart-composition");
+    let (_, service_limits) = matrix_limits();
+    let lsp_limits = LspLimitsV1::reference();
+    let semantic_limits = service_limits.peer;
+    let profile = matrix_profile("serve", &scratch);
+    let mut runtime = match LocalSemanticRuntimeV1::try_launch(
+        profile.clone(),
+        MatrixGenerations(0),
+        MatrixReadiness(LspIndexReadinessV1::Current),
+        MatrixDocuments,
+        lsp_limits,
+        semantic_limits,
+        service_limits,
+    ) {
+        Ok(runtime) => runtime,
+        Err(failure) => panic!("initial runtime launch refused: {:?}", failure.refusal()),
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !matches!(
+        runtime.state().readiness,
+        vellum_semantic_service::SemanticProviderReadinessV1::Ready { .. }
+    ) {
+        runtime.drive_once();
+        assert!(
+            Instant::now() < deadline,
+            "initial provider ready deadline: {:?}",
+            runtime.state()
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let client = SemanticClientRefV1::new([111; 16]);
+    runtime.admit_client(client).unwrap();
+    let snapshot = SemanticSnapshotV1::try_new(
+        SemanticTargetV1 {
+            document: SemanticDocumentRefV1::new([112; 16]),
+            source_revision: SemanticSourceRevisionV1::new(1),
+        },
+        "rust".into(),
+        "fn alpha() {}\n".into(),
+        service_limits,
+    )
+    .unwrap();
+    assert_eq!(
+        run_immediate(runtime.bind_client(client).open_snapshot(snapshot)),
+        SemanticAdmissionOutcomeV1::Accepted
+    );
+
+    let policy = SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(1)]).unwrap();
+    let mut restarting = LocalSemanticRestartingRuntimeV1::new(
+        runtime,
+        policy,
+        std::num::NonZeroU64::new(1).unwrap(),
+    );
+    let mut clock = MatrixRestartClock::default();
+    let restart_limits = LocalSemanticRestartLimitsV1 {
+        candidate_drives: 10_000,
+        graceful_cleanup_drives: 10_000,
+        forced_cleanup_drives: 10_000,
+        ..LocalSemanticRestartLimitsV1::reference()
+    };
+    let receipt = restarting
+        .restart(
+            SemanticProviderRestartCauseV1::OperatorRequested,
+            &profile,
+            &MatrixGenerations(10),
+            &MatrixReadiness(LspIndexReadinessV1::Current),
+            &MatrixDocuments,
+            lsp_limits,
+            semantic_limits,
+            restart_limits,
+            &mut clock,
+        )
+        .unwrap();
+    assert!(matches!(
+        receipt.terminal(),
+        LocalSemanticRetirementTerminalV1::GracefulConfirmed
+            | LocalSemanticRetirementTerminalV1::ForcedConfirmed
+    ));
+    assert!(matches!(
+        restarting.status(),
+        SemanticProviderRestartStatusV1::Running { generation }
+            if generation == std::num::NonZeroU64::new(2).unwrap()
+    ));
+    let runtime = restarting.runtime().expect("cleanup-gated readiness");
+    assert_eq!(runtime.usage().snapshots_replayed, 1);
+    assert_eq!(runtime.runtime_usage().replacements_installed, 1);
+    assert_eq!(
+        LocalSemanticRestartingRuntimeV1::<MatrixGenerations, MatrixReadiness, MatrixDocuments>::query_disposition(),
+        SemanticProviderRestartQueryDispositionV1::InvalidateWithoutReplay
+    );
+    assert_eq!(clock.0.first(), Some(&Duration::from_millis(1)));
 }
 
 #[test]

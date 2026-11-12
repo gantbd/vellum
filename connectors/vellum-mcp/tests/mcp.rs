@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use std::{collections::VecDeque, io::BufReader};
 use vellum_mcp::{
     BoundedLine, CHANGES_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
-    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, read_bounded_line,
+    REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, SNAPSHOT_TOOL, WORKSPACE_EDIT_TOOL, read_bounded_line,
 };
 use vellum_sdk_client::{
     client::Client,
@@ -13,8 +13,9 @@ use vellum_sdk_client::{
         SaveSynchronizationV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
         SnapshotV1, VersionWitness, WorkspaceChangeCursorV1, WorkspaceChangeGapV1,
         WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1, WorkspaceChangesV1,
-        WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
-        WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
+        WorkspaceDocumentIdV1, WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1,
+        WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1, WorkspaceRootIdV1,
+        WorkspaceRootKindV1, WorkspaceRootV1,
     },
 };
 
@@ -127,6 +128,69 @@ fn snapshot_projects_workspace_revision_and_text_without_leaking_client_witness(
     assert_eq!(server.usage().tool_calls, 1);
     assert!(server.usage().request_bytes > 0);
     assert!(server.usage().response_bytes > 0);
+}
+
+#[test]
+fn workspace_edit_submits_one_revision_bound_atomic_native_command() {
+    let workspace = WorkspaceIdV1::new(7).unwrap();
+    let first = WorkspaceDocumentIdV1::new(workspace, 11).unwrap();
+    let second = WorkspaceDocumentIdV1::new(workspace, 12).unwrap();
+    let mut server = server(vec![Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(
+        WorkspaceEditReceiptV1 {
+            workspace,
+            generation: 6,
+            documents: vec![
+                WorkspaceEditedDocumentV1 {
+                    document: first,
+                    snapshot: SnapshotV1 {
+                        witness: VersionWitness::new(11).unwrap(),
+                        revision: 7,
+                        text: "aQQd".into(),
+                    },
+                },
+                WorkspaceEditedDocumentV1 {
+                    document: second,
+                    snapshot: SnapshotV1 {
+                        witness: VersionWitness::new(12).unwrap(),
+                        revision: 8,
+                        text: "wRRz".into(),
+                    },
+                },
+            ],
+        },
+    )))]);
+    let reply = send(
+        &mut server,
+        json!({
+            "jsonrpc":"2.0", "id":"batch", "method":"tools/call",
+            "params":{"_meta":meta(), "name":WORKSPACE_EDIT_TOOL, "arguments":{"documents":[
+                {"workspace":7, "document":11, "expected_revision":4, "replacements":[{"start":1, "end":3, "inserted":"QQ"}]},
+                {"workspace":7, "document":12, "expected_revision":5, "replacements":[{"start":1, "end":3, "inserted":"RR"}]}
+            ]}}
+        }),
+    );
+    assert_eq!(reply["result"]["isError"], false);
+    assert_eq!(
+        reply["result"]["structuredContent"]["kind"],
+        "workspace_edited"
+    );
+    assert_eq!(
+        reply["result"]["structuredContent"]["persistence"],
+        "not_attempted"
+    );
+    assert_eq!(
+        reply["result"]["structuredContent"]["documents"][1]["text"],
+        "wRRz"
+    );
+
+    let transport = server.into_client().into_transport();
+    assert_eq!(transport.requests.len(), 1);
+    let CommandV1::WorkspaceEdit { documents } = &transport.requests[0].command else {
+        panic!("the command must be one atomic workspace edit")
+    };
+    assert_eq!(documents.len(), 2);
+    assert_eq!(documents[0].expected_revision, 4);
+    assert_eq!(documents[1].expected_revision, 5);
 }
 
 #[test]
@@ -503,6 +567,7 @@ fn modern_discovery_is_per_request_and_initialize_is_always_legacy() {
             SNAPSHOT_TOOL,
             REPLACE_TOOL,
             REPLACE_AND_SAVE_TOOL,
+            WORKSPACE_EDIT_TOOL,
             CHANGES_TOOL,
             MEMBERSHIP_TOOL
         ]

@@ -11,14 +11,17 @@ use vellum_protocol::{
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
     DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
-    MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
-    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
-    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
-    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
-    WorkspaceChangeCursorV1, WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1,
-    WorkspaceChangeV1, WorkspaceChangesV1, WorkspaceDocumentIdV1, WorkspaceIdV1,
-    WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceRootIdV1,
-    WorkspaceRootKindV1, WorkspaceRootV1,
+    MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_EDIT_DOCUMENTS_V1,
+    MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1, MAX_WORKSPACE_EDIT_REPLACEMENTS_V1,
+    MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
+    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
+    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
+    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
+    WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
+    WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
+    WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
+    WorkspaceInventoryV1, WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+    WorkspaceRootV1,
 };
 
 /// Canonical restart-stable durable intent encoding. This profile is separate
@@ -907,6 +910,233 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
     Ok(reply)
 }
 
+fn push_packed_u32(output: &mut Vec<u8>, value: usize) -> Result<(), WireEncodeError> {
+    output.extend_from_slice(
+        &u32::try_from(value)
+            .map_err(|_| WireEncodeError::LengthOverflow)?
+            .to_be_bytes(),
+    );
+    Ok(())
+}
+
+fn push_packed_text(output: &mut Vec<u8>, value: &str) -> Result<(), WireEncodeError> {
+    push_packed_u32(output, value.len())?;
+    output.extend_from_slice(value.as_bytes());
+    Ok(())
+}
+
+fn encode_workspace_edit_payload(
+    documents: &[WorkspaceDocumentEditV1],
+) -> Result<Vec<u8>, WireEncodeError> {
+    if documents.is_empty() || documents.len() > MAX_WORKSPACE_EDIT_DOCUMENTS_V1 {
+        return Err(WireEncodeError::Limit);
+    }
+    let mut length = 4usize;
+    for document in documents {
+        if document.replacements.is_empty()
+            || document.replacements.len() > MAX_WORKSPACE_EDIT_REPLACEMENTS_V1
+        {
+            return Err(WireEncodeError::Limit);
+        }
+        length = length.checked_add(28).ok_or(WireEncodeError::Limit)?;
+        for replacement in &document.replacements {
+            length = length
+                .checked_add(20)
+                .and_then(|value| value.checked_add(replacement.inserted.len()))
+                .filter(|value| *value <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1)
+                .ok_or(WireEncodeError::Limit)?;
+        }
+    }
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(length)
+        .map_err(|_| WireEncodeError::Capacity)?;
+    push_packed_u32(&mut output, documents.len())?;
+    for document in documents {
+        output.extend_from_slice(&document.document.workspace().get().to_be_bytes());
+        output.extend_from_slice(&document.document.get().to_be_bytes());
+        output.extend_from_slice(&document.expected_revision.to_be_bytes());
+        push_packed_u32(&mut output, document.replacements.len())?;
+        for replacement in &document.replacements {
+            output.extend_from_slice(&replacement.start.to_be_bytes());
+            output.extend_from_slice(&replacement.end.to_be_bytes());
+            push_packed_text(&mut output, &replacement.inserted)?;
+        }
+    }
+    Ok(output)
+}
+
+fn encode_workspace_edit_receipt_payload(
+    receipt: &WorkspaceEditReceiptV1,
+) -> Result<Vec<u8>, WireEncodeError> {
+    if receipt.documents.len() > MAX_WORKSPACE_EDIT_DOCUMENTS_V1 {
+        return Err(WireEncodeError::Limit);
+    }
+    let mut length = 20usize;
+    for document in &receipt.documents {
+        length = length
+            .checked_add(28)
+            .and_then(|value| value.checked_add(document.snapshot.text.len()))
+            .filter(|value| *value <= MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1)
+            .ok_or(WireEncodeError::Limit)?;
+    }
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(length)
+        .map_err(|_| WireEncodeError::Capacity)?;
+    output.extend_from_slice(&receipt.workspace.get().to_be_bytes());
+    output.extend_from_slice(&receipt.generation.to_be_bytes());
+    push_packed_u32(&mut output, receipt.documents.len())?;
+    for document in &receipt.documents {
+        if document.document.workspace() != receipt.workspace {
+            return Err(WireEncodeError::IdentityMismatch);
+        }
+        output.extend_from_slice(&document.document.get().to_be_bytes());
+        output.extend_from_slice(&document.snapshot.witness.get().to_be_bytes());
+        output.extend_from_slice(&document.snapshot.revision.to_be_bytes());
+        push_packed_text(&mut output, &document.snapshot.text)?;
+    }
+    Ok(output)
+}
+
+struct PackedCursor<'a> {
+    input: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> PackedCursor<'a> {
+    fn new(input: &'a [u8]) -> Self {
+        Self { input, offset: 0 }
+    }
+
+    fn take(&mut self, length: usize) -> Result<&'a [u8], WireDecodeError> {
+        let end = self
+            .offset
+            .checked_add(length)
+            .ok_or(WireDecodeError::Limit)?;
+        let value = self
+            .input
+            .get(self.offset..end)
+            .ok_or(WireDecodeError::Malformed)?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn u32(&mut self) -> Result<u32, WireDecodeError> {
+        Ok(u32::from_be_bytes(
+            self.take(4)?
+                .try_into()
+                .map_err(|_| WireDecodeError::Malformed)?,
+        ))
+    }
+
+    fn u64(&mut self) -> Result<u64, WireDecodeError> {
+        Ok(u64::from_be_bytes(
+            self.take(8)?
+                .try_into()
+                .map_err(|_| WireDecodeError::Malformed)?,
+        ))
+    }
+
+    fn text(&mut self) -> Result<String, WireDecodeError> {
+        let length = usize::try_from(self.u32()?).map_err(|_| WireDecodeError::Limit)?;
+        let bytes = self.take(length)?;
+        let text = std::str::from_utf8(bytes).map_err(|_| WireDecodeError::Malformed)?;
+        let mut owned = String::new();
+        owned
+            .try_reserve_exact(length)
+            .map_err(|_| WireDecodeError::Capacity)?;
+        owned.push_str(text);
+        Ok(owned)
+    }
+
+    fn finish(self) -> Result<(), WireDecodeError> {
+        if self.offset == self.input.len() {
+            Ok(())
+        } else {
+            Err(WireDecodeError::Malformed)
+        }
+    }
+}
+
+fn packed_count(cursor: &mut PackedCursor<'_>) -> Result<usize, WireDecodeError> {
+    usize::try_from(cursor.u32()?).map_err(|_| WireDecodeError::Limit)
+}
+
+fn decode_workspace_edit_payload(
+    payload: &[u8],
+) -> Result<Vec<WorkspaceDocumentEditV1>, WireDecodeError> {
+    let mut cursor = PackedCursor::new(payload);
+    let count = packed_count(&mut cursor)?;
+    if count == 0 || count > MAX_WORKSPACE_EDIT_DOCUMENTS_V1 {
+        return Err(WireDecodeError::Limit);
+    }
+    let mut documents = Vec::new();
+    documents
+        .try_reserve_exact(count)
+        .map_err(|_| WireDecodeError::Capacity)?;
+    for _ in 0..count {
+        let workspace = workspace_id(cursor.u64()?)?;
+        let document = workspace_document_id(workspace, cursor.u64()?)?;
+        let expected_revision = cursor.u64()?;
+        let replacement_count = packed_count(&mut cursor)?;
+        if replacement_count == 0 || replacement_count > MAX_WORKSPACE_EDIT_REPLACEMENTS_V1 {
+            return Err(WireDecodeError::Limit);
+        }
+        let mut replacements = Vec::new();
+        replacements
+            .try_reserve_exact(replacement_count)
+            .map_err(|_| WireDecodeError::Capacity)?;
+        for _ in 0..replacement_count {
+            replacements.push(WorkspaceReplacementV1 {
+                start: cursor.u64()?,
+                end: cursor.u64()?,
+                inserted: cursor.text()?,
+            });
+        }
+        documents.push(WorkspaceDocumentEditV1 {
+            document,
+            expected_revision,
+            replacements,
+        });
+    }
+    cursor.finish()?;
+    Ok(documents)
+}
+
+fn decode_workspace_edit_receipt_payload(
+    payload: &[u8],
+) -> Result<WorkspaceEditReceiptV1, WireDecodeError> {
+    let mut cursor = PackedCursor::new(payload);
+    let workspace = workspace_id(cursor.u64()?)?;
+    let generation = cursor.u64()?;
+    let count = packed_count(&mut cursor)?;
+    if count > MAX_WORKSPACE_EDIT_DOCUMENTS_V1 {
+        return Err(WireDecodeError::Limit);
+    }
+    let mut documents = Vec::new();
+    documents
+        .try_reserve_exact(count)
+        .map_err(|_| WireDecodeError::Capacity)?;
+    for _ in 0..count {
+        let document = workspace_document_id(workspace, cursor.u64()?)?;
+        documents.push(WorkspaceEditedDocumentV1 {
+            document,
+            snapshot: SnapshotV1 {
+                witness: witness(cursor.u64()?)?,
+                revision: cursor.u64()?,
+                text: Arc::from(cursor.text()?),
+            },
+        });
+    }
+    cursor.finish()?;
+    Ok(WorkspaceEditReceiptV1 {
+        workspace,
+        generation,
+        documents,
+    })
+}
+
 fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), WireEncodeError> {
     match command {
         CommandV1::WorkspaceInventory => encoder.u8(3),
@@ -986,6 +1216,10 @@ fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), Wire
             encoder.u64(*start)?;
             encoder.u64(*end)?;
             encoder.text(inserted)
+        }
+        CommandV1::WorkspaceEdit { documents } => {
+            encoder.u8(17)?;
+            encoder.bytes(&encode_workspace_edit_payload(documents)?)
         }
     }
 }
@@ -1071,6 +1305,9 @@ fn decode_command(decoder: &mut Decoder<'_>) -> Result<CommandV1, WireDecodeErro
             start: read_u64(decoder)?,
             end: read_u64(decoder)?,
             inserted: read_text(decoder)?,
+        }),
+        17 => Ok(CommandV1::WorkspaceEdit {
+            documents: decode_workspace_edit_payload(decoder.read_bytes().map_err(map_decode)?)?,
         }),
         _ => Err(WireDecodeError::UnknownTag),
     }
@@ -1159,6 +1396,10 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
                     encoder.u8(2)?;
                     encode_snapshot(encoder, snapshot)
                 }
+                OutcomeV1::WorkspaceEdited(receipt) => {
+                    encoder.u8(17)?;
+                    encoder.bytes(&encode_workspace_edit_receipt_payload(receipt)?)
+                }
             }
         }
         ReplyV1::Refused(refusal) => {
@@ -1227,6 +1468,9 @@ fn decode_protocol_reply(
                 }),
                 1 => OutcomeV1::Snapshot(decode_snapshot(decoder)?),
                 2 => OutcomeV1::Replaced(decode_snapshot(decoder)?),
+                17 => OutcomeV1::WorkspaceEdited(decode_workspace_edit_receipt_payload(
+                    decoder.read_bytes().map_err(map_decode)?,
+                )?),
                 _ => return Err(WireDecodeError::UnknownTag),
             };
             Ok(ReplyV1::Accepted(outcome))
@@ -1796,6 +2040,10 @@ fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
                 check_wire_text_length(inserted.len())?;
                 checked_add(47, inserted.len())
             }
+            CommandV1::WorkspaceEdit { documents } => {
+                let payload = encode_workspace_edit_payload(documents)?;
+                checked_add(23, payload.len())
+            }
         },
     }
 }
@@ -1847,6 +2095,10 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => {
                 check_wire_text_length(snapshot.text.len())?;
                 checked_add(24, snapshot.text.len())
+            }
+            OutcomeV1::WorkspaceEdited(receipt) => {
+                let payload = encode_workspace_edit_receipt_payload(receipt)?;
+                checked_add(8, payload.len())
             }
         },
     }
@@ -1924,6 +2176,14 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
         }) => {
             check_text_limit(inserted.len(), limits)?;
             9
+        }
+        WireRequestV1::Execute(RequestV1 {
+            command: CommandV1::WorkspaceEdit { documents },
+            ..
+        }) => {
+            let payload = encode_workspace_edit_payload(documents)?;
+            check_text_limit(payload.len(), limits)?;
+            6
         }
     };
     check_field_limit(fields, limits)
@@ -2104,6 +2364,11 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
             OutcomeV1::Snapshot(snapshot) | OutcomeV1::Replaced(snapshot) => {
                 check_text_limit(snapshot.text.len(), limits)?;
                 7
+            }
+            OutcomeV1::WorkspaceEdited(receipt) => {
+                let payload = encode_workspace_edit_receipt_payload(receipt)?;
+                check_text_limit(payload.len(), limits)?;
+                5
             }
         },
     };

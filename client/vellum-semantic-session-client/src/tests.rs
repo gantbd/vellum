@@ -1257,7 +1257,7 @@ fn split_utf8_query_offset_refuses_before_transport() {
         DocumentWitnessV1::try_from_snapshot(&snapshot, SemanticSessionLimitsV1::reference())
             .unwrap();
     let mut request = query(snapshot.target(), "rust");
-    request.query = SemanticQueryV1::Definition { offset: 2 };
+    request.query = SemanticQueryV1::IncomingCalls { offset: 2 };
     let mut client = member_client([]);
     mark_query_ready(&mut client);
     let state = client.membership.as_mut().unwrap();
