@@ -39,33 +39,27 @@ impl SourceSaveAsObservationV1 {
     }
 }
 
-pub trait SourceSaveAsSessionPortV1 {
+pub trait SourceSaveAsTokenSetV1 {
     type Preparation;
     type Attempt;
     type Activation;
+}
+
+pub trait SourceSaveAsSessionPortV1<T: SourceSaveAsTokenSetV1> {
     type Error;
 
-    fn prepare(&mut self) -> Result<Self::Preparation, Self::Error>;
-    fn admit(&mut self, preparation: &Self::Preparation) -> Result<Self::Attempt, Self::Error>;
+    fn prepare(&mut self) -> Result<T::Preparation, Self::Error>;
+    fn admit(&mut self, preparation: &T::Preparation) -> Result<T::Attempt, Self::Error>;
     fn discard_preparation(
         &mut self,
-        preparation: &Self::Preparation,
+        preparation: &T::Preparation,
     ) -> Result<PreparationDischargeV1, Self::Error>;
-    fn service(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<SourceSaveAsObservationV1, Self::Error>;
-    fn observe(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<SourceSaveAsObservationV1, Self::Error>;
-    fn activate(&mut self, attempt: &Self::Attempt) -> Result<Self::Activation, Self::Error>;
-    fn recover_activation(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<Self::Activation, Self::Error>;
-    fn release(&mut self, attempt: &Self::Attempt) -> Result<bool, Self::Error>;
-    fn retire(&mut self, attempt: &Self::Attempt) -> Result<(), Self::Error>;
+    fn service(&mut self, attempt: &T::Attempt) -> Result<SourceSaveAsObservationV1, Self::Error>;
+    fn observe(&mut self, attempt: &T::Attempt) -> Result<SourceSaveAsObservationV1, Self::Error>;
+    fn activate(&mut self, attempt: &T::Attempt) -> Result<T::Activation, Self::Error>;
+    fn recover_activation(&mut self, attempt: &T::Attempt) -> Result<T::Activation, Self::Error>;
+    fn release(&mut self, attempt: &T::Attempt) -> Result<bool, Self::Error>;
+    fn retire(&mut self, attempt: &T::Attempt) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,54 +85,54 @@ pub enum RetainedSourceSaveAsErrorV1<E> {
     Port(E),
 }
 
-enum State<P: SourceSaveAsSessionPortV1> {
+enum State<T: SourceSaveAsTokenSetV1> {
     Transitioning,
     Ready,
-    Prepared(P::Preparation),
-    AdmissionFenced(P::Preparation),
-    Queued(P::Attempt),
-    WriteFenced(P::Attempt),
-    Written(P::Attempt),
-    ActivationFenced(P::Attempt),
+    Prepared(T::Preparation),
+    AdmissionFenced(T::Preparation),
+    Queued(T::Attempt),
+    WriteFenced(T::Attempt),
+    Written(T::Attempt),
+    ActivationFenced(T::Attempt),
     Activated {
-        attempt: P::Attempt,
-        activation: P::Activation,
+        attempt: T::Attempt,
+        activation: T::Activation,
     },
     CompletionPending {
-        attempt: P::Attempt,
-        activation: Option<P::Activation>,
+        attempt: T::Attempt,
+        activation: Option<T::Activation>,
     },
     ReleaseFenced {
-        attempt: P::Attempt,
-        activation: Option<P::Activation>,
+        attempt: T::Attempt,
+        activation: Option<T::Activation>,
     },
     Released {
-        attempt: P::Attempt,
-        activation: Option<P::Activation>,
+        attempt: T::Attempt,
+        activation: Option<T::Activation>,
     },
     RetirementFenced {
-        attempt: P::Attempt,
-        activation: Option<P::Activation>,
+        attempt: T::Attempt,
+        activation: Option<T::Activation>,
     },
-    Complete(Option<P::Activation>),
+    Complete(Option<T::Activation>),
 }
 
 /// Retains every affine token until the corresponding native obligation is
 /// discharged. Dropping a live value performs no hidden cleanup.
 #[must_use = "a retained Save As coordinator may own native cleanup or reconciliation obligations"]
-pub struct RetainedSourceSaveAsV1<P: SourceSaveAsSessionPortV1> {
-    state: State<P>,
+pub struct RetainedSourceSaveAsV1<T: SourceSaveAsTokenSetV1> {
+    state: State<T>,
     persistence: SaveAsPersistenceV1,
     binding: SaveAsBindingV1,
 }
 
-impl<P: SourceSaveAsSessionPortV1> Default for RetainedSourceSaveAsV1<P> {
+impl<T: SourceSaveAsTokenSetV1> Default for RetainedSourceSaveAsV1<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
+impl<T: SourceSaveAsTokenSetV1> RetainedSourceSaveAsV1<T> {
     pub const fn new() -> Self {
         Self {
             state: State::Ready,
@@ -174,7 +168,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn prepare(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn prepare<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         if !matches!(state, State::Ready) {
             self.state = state;
@@ -192,7 +189,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn admit(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn admit<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::Prepared(preparation) = state else {
             self.state = state;
@@ -210,10 +210,13 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn reconcile_admission(
+    pub fn reconcile_admission<P>(
         &mut self,
         port: &mut P,
-    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>> {
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::AdmissionFenced(preparation) = state else {
             self.state = state;
@@ -235,7 +238,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn service(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn service<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::Queued(attempt) = state else {
             self.state = state;
@@ -264,10 +270,13 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn reconcile_write(
+    pub fn reconcile_write<P>(
         &mut self,
         port: &mut P,
-    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>> {
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::WriteFenced(attempt) = state else {
             self.state = state;
@@ -301,7 +310,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn activate(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn activate<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::Written(attempt) = state else {
             self.state = state;
@@ -324,10 +336,13 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn reconcile_activation(
+    pub fn reconcile_activation<P>(
         &mut self,
         port: &mut P,
-    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>> {
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::ActivationFenced(attempt) = state else {
             self.state = state;
@@ -369,7 +384,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn release(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn release<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let (attempt, activation) = match state {
             State::Activated {
@@ -403,10 +421,13 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn reconcile_release(
+    pub fn reconcile_release<P>(
         &mut self,
         port: &mut P,
-    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>> {
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::ReleaseFenced {
             attempt,
@@ -434,7 +455,10 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn retire(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>> {
+    pub fn retire<P>(&mut self, port: &mut P) -> Result<(), RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::Released {
             attempt,
@@ -459,10 +483,13 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn reconcile_retirement(
+    pub fn reconcile_retirement<P>(
         &mut self,
         port: &mut P,
-    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>> {
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsSessionPortV1<T>,
+    {
         let state = self.take_state();
         let State::RetirementFenced {
             attempt,
@@ -487,7 +514,7 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    pub fn into_activation(self) -> Result<Option<P::Activation>, Self> {
+    pub fn into_activation(self) -> Result<Option<T::Activation>, Self> {
         match self {
             Self {
                 state: State::Complete(activation),
@@ -497,7 +524,7 @@ impl<P: SourceSaveAsSessionPortV1> RetainedSourceSaveAsV1<P> {
         }
     }
 
-    fn take_state(&mut self) -> State<P> {
+    fn take_state(&mut self) -> State<T> {
         std::mem::replace(&mut self.state, State::Transitioning)
     }
 }

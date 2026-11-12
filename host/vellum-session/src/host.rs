@@ -29,7 +29,7 @@ pub use source_export::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
     RetainedSourceSaveAsV1, SaveAsActivation, SourceExportAttempt,
     SourceExportCopyPreparationErrorV1, SourceExportPreparation, SourceSaveAsObservationV1,
-    SourceSaveAsSessionPortV1,
+    SourceSaveAsSessionPortV1, SourceSaveAsTokenSetV1,
 };
 mod invocation_claims;
 mod invocations;

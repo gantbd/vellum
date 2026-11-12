@@ -3,6 +3,7 @@ use vellum_host::save_as::{SaveAsBindingV1, SaveAsPersistenceV1};
 use vellum_session::host::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
     RetainedSourceSaveAsV1, SourceSaveAsObservationV1, SourceSaveAsSessionPortV1,
+    SourceSaveAsTokenSetV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,6 +37,14 @@ struct FakePort {
     retire_failures: usize,
 }
 
+struct FakeTokens;
+
+impl SourceSaveAsTokenSetV1 for FakeTokens {
+    type Preparation = u8;
+    type Attempt = u8;
+    type Activation = u8;
+}
+
 impl Default for FakePort {
     fn default() -> Self {
         Self {
@@ -53,13 +62,10 @@ impl Default for FakePort {
     }
 }
 
-impl SourceSaveAsSessionPortV1 for FakePort {
-    type Preparation = u8;
-    type Attempt = u8;
-    type Activation = u8;
+impl SourceSaveAsSessionPortV1<FakeTokens> for FakePort {
     type Error = Fault;
 
-    fn prepare(&mut self) -> Result<Self::Preparation, Self::Error> {
+    fn prepare(&mut self) -> Result<u8, Self::Error> {
         self.calls.prepare += 1;
         if self.prepare_fails {
             Err(Fault::Injected)
@@ -68,7 +74,7 @@ impl SourceSaveAsSessionPortV1 for FakePort {
         }
     }
 
-    fn admit(&mut self, preparation: &Self::Preparation) -> Result<Self::Attempt, Self::Error> {
+    fn admit(&mut self, preparation: &u8) -> Result<u8, Self::Error> {
         self.calls.admit += 1;
         assert_eq!(*preparation, 1);
         if self.admit_fails {
@@ -80,26 +86,20 @@ impl SourceSaveAsSessionPortV1 for FakePort {
 
     fn discard_preparation(
         &mut self,
-        preparation: &Self::Preparation,
+        preparation: &u8,
     ) -> Result<PreparationDischargeV1, Self::Error> {
         self.calls.discard += 1;
         assert_eq!(*preparation, 1);
         self.discard
     }
 
-    fn service(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<SourceSaveAsObservationV1, Self::Error> {
+    fn service(&mut self, attempt: &u8) -> Result<SourceSaveAsObservationV1, Self::Error> {
         self.calls.service += 1;
         assert_eq!(*attempt, 2);
         self.service
     }
 
-    fn observe(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<SourceSaveAsObservationV1, Self::Error> {
+    fn observe(&mut self, attempt: &u8) -> Result<SourceSaveAsObservationV1, Self::Error> {
         self.calls.observe += 1;
         assert_eq!(*attempt, 2);
         self.observations
@@ -107,7 +107,7 @@ impl SourceSaveAsSessionPortV1 for FakePort {
             .unwrap_or(Ok(observation(SaveAsPersistenceV1::Unknown, None)))
     }
 
-    fn activate(&mut self, attempt: &Self::Attempt) -> Result<Self::Activation, Self::Error> {
+    fn activate(&mut self, attempt: &u8) -> Result<u8, Self::Error> {
         self.calls.activate += 1;
         assert_eq!(*attempt, 2);
         if self.activate_fails {
@@ -117,10 +117,7 @@ impl SourceSaveAsSessionPortV1 for FakePort {
         }
     }
 
-    fn recover_activation(
-        &mut self,
-        attempt: &Self::Attempt,
-    ) -> Result<Self::Activation, Self::Error> {
+    fn recover_activation(&mut self, attempt: &u8) -> Result<u8, Self::Error> {
         self.calls.recover += 1;
         assert_eq!(*attempt, 2);
         if self.recover_fails {
@@ -130,7 +127,7 @@ impl SourceSaveAsSessionPortV1 for FakePort {
         }
     }
 
-    fn release(&mut self, attempt: &Self::Attempt) -> Result<bool, Self::Error> {
+    fn release(&mut self, attempt: &u8) -> Result<bool, Self::Error> {
         self.calls.release += 1;
         assert_eq!(*attempt, 2);
         if self.release_failures > 0 {
@@ -141,7 +138,7 @@ impl SourceSaveAsSessionPortV1 for FakePort {
         }
     }
 
-    fn retire(&mut self, attempt: &Self::Attempt) -> Result<(), Self::Error> {
+    fn retire(&mut self, attempt: &u8) -> Result<(), Self::Error> {
         self.calls.retire += 1;
         assert_eq!(*attempt, 2);
         if self.retire_failures > 0 {
@@ -160,14 +157,14 @@ const fn observation(
     SourceSaveAsObservationV1::new(persistence, binding)
 }
 
-fn queued(port: &mut FakePort) -> RetainedSourceSaveAsV1<FakePort> {
-    let mut operation = RetainedSourceSaveAsV1::new();
+fn queued(port: &mut FakePort) -> RetainedSourceSaveAsV1<FakeTokens> {
+    let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
     operation.prepare(port).unwrap();
     operation.admit(port).unwrap();
     operation
 }
 
-fn written(port: &mut FakePort) -> RetainedSourceSaveAsV1<FakePort> {
+fn written(port: &mut FakePort) -> RetainedSourceSaveAsV1<FakeTokens> {
     let mut operation = queued(port);
     operation.service(port).unwrap();
     assert_eq!(operation.stage(), RetainedSourceSaveAsStageV1::Written);
@@ -204,7 +201,7 @@ fn admission_error_fences_preparation_and_never_retries_admission() {
         admit_fails: true,
         ..FakePort::default()
     };
-    let mut operation = RetainedSourceSaveAsV1::new();
+    let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
     operation.prepare(&mut port).unwrap();
     assert!(matches!(
         operation.admit(&mut port),
@@ -235,7 +232,7 @@ fn consumed_or_unknown_preparation_remains_fenced() {
             discard: Ok(discharge),
             ..FakePort::default()
         };
-        let mut operation = RetainedSourceSaveAsV1::new();
+        let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
         operation.prepare(&mut port).unwrap();
         let _ = operation.admit(&mut port);
         assert!(!operation.reconcile_admission(&mut port).unwrap());
@@ -377,7 +374,7 @@ fn release_and_retirement_errors_retain_tokens_for_reconciliation() {
 #[test]
 fn illegal_transitions_preserve_state_and_make_no_port_calls() {
     let mut port = FakePort::default();
-    let mut operation = RetainedSourceSaveAsV1::new();
+    let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
     assert!(matches!(
         operation.service(&mut port),
         Err(RetainedSourceSaveAsErrorV1::InvalidTransition)

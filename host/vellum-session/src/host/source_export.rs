@@ -17,6 +17,7 @@ mod retained;
 pub use retained::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
     RetainedSourceSaveAsV1, SourceSaveAsObservationV1, SourceSaveAsSessionPortV1,
+    SourceSaveAsTokenSetV1,
 };
 
 #[derive(Debug)]
