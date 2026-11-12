@@ -54,6 +54,17 @@ if (
 if (first.blockers.length !== 0) {
   throw new Error('qualified immutable Keystone inputs were reported as blockers');
 }
+{
+  const emitted = spawnSync(
+    'node',
+    ['scripts/check-supply-chain.mjs', '--emit=-'],
+    { cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024 },
+  );
+  if (emitted.status !== 0 || emitted.stdout !== first.serialized) {
+    throw new Error('stdout SBOM emission was truncated or changed');
+  }
+  JSON.parse(emitted.stdout);
+}
 
 {
   const altered = clone(metadata);

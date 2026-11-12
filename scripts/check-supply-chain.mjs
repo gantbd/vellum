@@ -183,7 +183,7 @@ const qualificationResult = evaluateSupplyChain({
 if (qualificationEmitArgument !== undefined) {
   const destination = qualificationEmitArgument.slice('--emit-qualification='.length);
   if (destination === '-') {
-    process.stdout.write(qualificationResult.serialized);
+    fs.writeFileSync(1, qualificationResult.serialized);
   } else {
     fs.writeFileSync(destination, qualificationResult.serialized, { flag: 'wx', mode: 0o600 });
   }
@@ -193,7 +193,7 @@ if (qualificationEmitArgument !== undefined) {
 if (emitArgument !== undefined) {
   const destination = emitArgument.slice('--emit='.length);
   if (destination === '-') {
-    process.stdout.write(result.serialized);
+    fs.writeFileSync(1, result.serialized);
   } else {
     fs.writeFileSync(destination, result.serialized, { flag: 'wx', mode: 0o600 });
   }
