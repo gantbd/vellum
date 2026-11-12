@@ -29,15 +29,12 @@ const requiredFiles = [
   'docs/launchd-distribution.md',
   'docs/launchd-activation.md',
   'release/dependency-policy.json',
-  'release/portable-core.json',
   'release/github-source.json',
   'release/source-sbom.manifest.json',
   'release/semantic-provider-qualification-sbom.manifest.json',
   'release/compatibility-baseline.json',
   'scripts/check-compatibility-baseline.mjs',
   'scripts/check-compatibility-baseline.test.mjs',
-  'scripts/check-portable-core.mjs',
-  'scripts/check-portable-core.test.mjs',
   'scripts/check-supply-chain.mjs',
   'scripts/check-supply-chain.test.mjs',
   'scripts/supply-chain-lib.mjs',
@@ -94,7 +91,6 @@ const requiredFiles = [
   '.github/workflows/release-candidate.yml',
   '.github/workflows/semantic-provider-qualification.yml',
   '.github/workflows/ci.yml',
-  '.github/workflows/portable-core.yml',
 ];
 for (const file of requiredFiles) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {

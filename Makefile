@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-candidate-install check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-mcp-official-client-profile check-portable-core check-release-contract check-semantic-provider-qualification check-shipped-mcp check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-mcp-official-client qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-candidate-install check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-mcp-official-client-profile check-release-contract check-semantic-provider-qualification check-shipped-mcp check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-mcp-official-client qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-candidate-install check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-mcp-official-client-profile check-shipped-mcp check-boundaries check-portable-core check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-candidate-install check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-mcp-official-client-profile check-shipped-mcp check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -78,10 +78,6 @@ check-shipped-mcp:
 
 check-boundaries:
 	node scripts/check-project-boundaries.mjs
-
-check-portable-core:
-	node scripts/check-portable-core.mjs
-	node scripts/check-portable-core.test.mjs
 
 check-effect-boundaries:
 	node scripts/check-effect-boundaries.mjs

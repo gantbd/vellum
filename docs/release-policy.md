@@ -282,17 +282,3 @@ Publication requires a deliberate change that, at minimum:
 6. changes the fail-closed release gate rather than bypassing it.
 
 Until all of those conditions are met, crates.io publication remains disabled.
-
-## Portable library closure
-
-The separately checked `release/portable-core.json` inventory is a compile-only
-contract for the complete engine, host, protocol, service, client and SDK
-library closure on macOS, Linux and Windows GitHub hosts. It deliberately
-excludes applications, connectors, adapters, standalone transports,
-qualifiers and distribution tools.
-
-A passing matrix proves host compilation of those libraries. It does not
-qualify filesystem behavior, local IPC, process supervision, UI frameworks,
-confinement, signing, installation or runtime semantics on any operating
-system. The workflow is read-only and cannot publish, install or upload an
-artifact.

@@ -42,7 +42,6 @@ const inputNames = [
   'Cargo.lock',
   'release/compatibility-baseline.json',
   'release/dependency-policy.json',
-  'release/portable-core.json',
   'release/github-source.json',
   'release/source-sbom.manifest.json',
   'distribution/launchd-render/Cargo.toml',
@@ -57,7 +56,6 @@ const inputNames = [
   'scripts/compare-release-candidates.mjs',
   'scripts/release-reproducibility-lib.mjs',
   '.github/workflows/release-candidate.yml',
-  '.github/workflows/portable-core.yml',
   'rust-toolchain.toml',
 ];
 

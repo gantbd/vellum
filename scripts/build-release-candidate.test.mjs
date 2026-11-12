@@ -149,7 +149,6 @@ try {
   for (const [index, name] of [
     'release/compatibility-baseline.json',
     'release/dependency-policy.json',
-    'release/portable-core.json',
     'release/source-sbom.manifest.json',
   ].entries()) {
     write(vellum, name, `qualified build input ${index}\n`);
@@ -161,7 +160,6 @@ try {
     'scripts/compare-release-candidates.mjs',
     'scripts/release-reproducibility-lib.mjs',
     '.github/workflows/release-candidate.yml',
-    '.github/workflows/portable-core.yml',
   ]) {
     write(vellum, name, fs.readFileSync(path.resolve(name), 'utf8'));
   }
