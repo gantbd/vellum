@@ -38,6 +38,9 @@ const trusted = new Map([
   ])],
   ['local-network', new Set([
     'applications/vellum-daemon/src/lib.rs',
+    // The semantic-local composition root clones only its accepted Unix
+    // stream so SIGINT/SIGTERM can interrupt a blocked authenticated read.
+    'applications/vellum-semantic-local/src/main.rs',
     'applications/vellum-semantic-local/src/service.rs',
     'connectors/vellum-semantic-mcp/src/main.rs',
     'transport/vellum-transport/src/lib.rs',

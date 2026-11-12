@@ -18,8 +18,15 @@ fn main() {
 mod unix {
     use std::collections::BTreeMap;
     use std::ffi::OsString;
+    use std::net::Shutdown;
     use std::num::NonZeroU64;
+    use std::os::unix::net::UnixStream;
     use std::path::PathBuf;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
 
     use vellum_adapter_local_authentication::{LocalCredentialStoreV1, LocalCredentialVerifierV1};
@@ -40,16 +47,108 @@ mod unix {
         AuthenticatedSemanticConnectionLimitsV1, AuthenticatedSemanticDispatchLimitsV1,
         AuthenticatedSemanticRoleDecisionV1, AuthenticatedSemanticRolePortV1,
         LocalOrderedClockFailureV1, LocalOrderedDeadlinePolicyV1, LocalOrderedInstantV1,
-        LocalOrderedMonotonicClockV1, SemanticLocalListenerV1, SemanticProcessDeadlinesV1,
-        SemanticProcessLimitsV1, SemanticProviderProfileV1, authenticate_semantic_stream_v1,
+        LocalOrderedManagedTimedStopResolutionV1, LocalOrderedMonotonicClockV1,
+        LocalOrderedTimedStoppedRecoveryAdvanceV1, LocalSemanticRetirementStateV1,
+        SemanticLocalListenerV1, SemanticProcessDeadlinesV1, SemanticProcessLimitsV1,
+        SemanticProviderProfileV1, authenticate_semantic_stream_v1,
         launch_supervised_ordered_lsp_with_deadlines_rust_analyzer_standalone_v1,
         qualify_provider_launch_v1, serve_one_authenticated_semantic_exchange_v1,
     };
     use vellum_semantic_protocol::{
         SemanticSessionIncarnationV1, SemanticSessionLimitsV1, SemanticSessionRolesV1,
     };
+    use vellum_semantic_service::SemanticClientRetirementStateV1;
     use vellum_semantic_service::SemanticServiceLimitsV1;
-    use vellum_semantic_session_actor::SemanticSessionActorLimitsV1;
+    use vellum_semantic_session_actor::{
+        SemanticSessionActorEventAdmissionV1, SemanticSessionActorLimitsV1,
+    };
+
+    struct SignalSupervisor {
+        requested: Arc<AtomicBool>,
+        active_stream: Arc<Mutex<Option<UnixStream>>>,
+        handle: signal_hook::iterator::Handle,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl SignalSupervisor {
+        fn install() -> Result<Self, CliError> {
+            let mut signals = signal_hook::iterator::Signals::new([
+                signal_hook::consts::signal::SIGINT,
+                signal_hook::consts::signal::SIGTERM,
+            ])
+            .map_err(|_| CliError("signal supervision refused"))?;
+            let handle = signals.handle();
+            let requested = Arc::new(AtomicBool::new(false));
+            let active_stream = Arc::new(Mutex::new(None::<UnixStream>));
+            let signal_requested = Arc::clone(&requested);
+            let signal_stream = Arc::clone(&active_stream);
+            let thread = std::thread::Builder::new()
+                .name("vellum-semantic-signal".to_owned())
+                .spawn(move || {
+                    if signals.forever().next().is_some() {
+                        signal_requested.store(true, Ordering::Release);
+                        if let Some(stream) = signal_stream
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .as_ref()
+                        {
+                            let _ = stream.shutdown(Shutdown::Both);
+                        }
+                    }
+                })
+                .map_err(|_| CliError("signal supervision refused"))?;
+            Ok(Self {
+                requested,
+                active_stream,
+                handle,
+                thread: Some(thread),
+            })
+        }
+
+        fn requested(&self) -> bool {
+            self.requested.load(Ordering::Acquire)
+        }
+
+        fn track(&self, stream: &UnixStream) -> Result<(), CliError> {
+            let tracked = stream
+                .try_clone()
+                .map_err(|_| CliError("semantic connection tracking refused"))?;
+            *self
+                .active_stream
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tracked);
+            if self.requested()
+                && let Some(stream) = self
+                    .active_stream
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .as_ref()
+            {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+            Ok(())
+        }
+
+        fn clear(&self) {
+            self.active_stream
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+        }
+
+        fn finish(mut self) -> Result<(), CliError> {
+            self.clear();
+            self.handle.close();
+            if self
+                .thread
+                .take()
+                .is_some_and(|thread| thread.join().is_err())
+            {
+                return Err(CliError("signal supervisor join refused"));
+            }
+            Ok(())
+        }
+    }
 
     const HELP: &str = concat!(
         "vellum-semantic-local 0.1.0\n",
@@ -332,9 +431,13 @@ mod unix {
             .map_err(|_| CliError("semantic actor launch refused"))?;
         let listener = SemanticLocalListenerV1::try_bind(arguments.socket)
             .map_err(|_| CliError("semantic socket bind refused"))?;
+        let shutdown = SignalSupervisor::install()?;
         eprintln!("vellum-semantic-local: endpoint_ready probe-profile provider_indexing");
-        loop {
+        'serve: loop {
             let mut stream = loop {
+                if shutdown.requested() {
+                    break 'serve;
+                }
                 match listener
                     .try_accept()
                     .map_err(|_| CliError("semantic endpoint fenced"))?
@@ -351,6 +454,7 @@ mod unix {
                     }
                 }
             };
+            shutdown.track(&stream)?;
             stream.set_read_timeout(Some(Duration::from_secs(30)))?;
             stream.set_write_timeout(Some(Duration::from_secs(30)))?;
             let challenge = random_nonzero()?;
@@ -364,6 +468,7 @@ mod unix {
                 Ok(authenticated) => authenticated,
                 Err(refusal) => {
                     eprintln!("vellum-semantic-local: authentication_refused reason={refusal:?}");
+                    shutdown.clear();
                     continue;
                 }
             };
@@ -386,6 +491,7 @@ mod unix {
                             failure.reason(),
                             failure.usage()
                         );
+                        shutdown.clear();
                         continue;
                     }
                 };
@@ -399,6 +505,15 @@ mod unix {
                         "vellum-semantic-local: exchange_refused reason={refusal:?} usage={:?}",
                         dispatcher.usage()
                     );
+                    shutdown.clear();
+                    if shutdown.requested() {
+                        if let SemanticSessionActorEventAdmissionV1::Submitted(ticket) =
+                            actor.try_event(dispatcher.authority_lost_event())
+                        {
+                            let _ = ticket.receive();
+                        }
+                        break 'serve;
+                    }
                     break;
                 }
                 if let Ok(ticket) = actor.try_drive_provider() {
@@ -409,6 +524,115 @@ mod unix {
                 }
             }
         }
+
+        drop(listener);
+        drop(sender);
+        shutdown.finish()?;
+        eprintln!("vellum-semantic-local: shutdown_draining");
+
+        let _ = actor.begin_drain();
+        let mut actor = Some(actor);
+        let mut stopped = None;
+        'stop: for _ in 0..64 {
+            let current = actor
+                .take()
+                .ok_or(CliError("semantic actor ownership lost"))?;
+            if let Ok(ticket) = current.try_drive_retirement() {
+                let _ = ticket.receive();
+            }
+            let mut ticket = match current.try_begin_stop() {
+                Ok(ticket) => ticket,
+                Err(failure) => {
+                    actor = Some(failure.into_actor());
+                    std::thread::yield_now();
+                    continue;
+                }
+            };
+            for _ in 0..4_096 {
+                match ticket.try_complete() {
+                    Ok(LocalOrderedManagedTimedStopResolutionV1::Terminal(terminal)) => {
+                        stopped = Some(terminal);
+                        break 'stop;
+                    }
+                    Ok(LocalOrderedManagedTimedStopResolutionV1::Refused(refusal)) => {
+                        actor = Some(refusal.into_actor());
+                        continue 'stop;
+                    }
+                    Err(pending) => {
+                        ticket = *pending;
+                        std::thread::yield_now();
+                    }
+                }
+            }
+            stopped = Some(ticket.abandon());
+            break;
+        }
+        let mut stopped = stopped.ok_or(CliError("semantic actor retirement exhausted"))?;
+        let recovery_deadline = Instant::now() + Duration::from_secs(5);
+        let timed_cleanup = loop {
+            match stopped.try_advance() {
+                LocalOrderedTimedStoppedRecoveryAdvanceV1::Pending(pending) => {
+                    if Instant::now() >= recovery_deadline {
+                        return Err(Box::new(CliError("semantic actor recovery exhausted")));
+                    }
+                    stopped = *pending;
+                    std::thread::yield_now();
+                }
+                LocalOrderedTimedStoppedRecoveryAdvanceV1::Ready(cleanup) => break *cleanup,
+                LocalOrderedTimedStoppedRecoveryAdvanceV1::Mismatch(mismatch) => {
+                    break mismatch.into_cleanup();
+                }
+            }
+        };
+        let mut cleanup = match timed_cleanup.try_retire_deadlines() {
+            Ok(cleanup) => cleanup,
+            Err(unresolved) => unresolved.abandon_deadlines(),
+        };
+        for _ in 0..256 {
+            if matches!(
+                cleanup.drive_client_retirement_once().state,
+                SemanticClientRetirementStateV1::Absent
+                    | SemanticClientRetirementStateV1::Retired { .. }
+            ) {
+                break;
+            }
+        }
+        let mut provider = match cleanup.try_into_provider_cleanup() {
+            Ok(provider) => provider,
+            Err(blocked) => blocked.into_owner().force_into_provider_cleanup(
+                vellum_semantic_service::SemanticBridgeForcedEffectPolicyV1::AttemptBounded,
+            ),
+        };
+        let graceful_deadline = Instant::now() + Duration::from_secs(7);
+        let terminal_deadline = Instant::now() + Duration::from_secs(14);
+        loop {
+            let state = provider.drive_once();
+            if matches!(
+                state,
+                LocalSemanticRetirementStateV1::GracefulConfirmed
+                    | LocalSemanticRetirementStateV1::ForcedConfirmed
+                    | LocalSemanticRetirementStateV1::CleanupFailed
+            ) {
+                break;
+            }
+            if Instant::now() >= graceful_deadline
+                && state != LocalSemanticRetirementStateV1::ForcedShutdownPending
+            {
+                let _ = provider.escalate();
+            }
+            if Instant::now() >= terminal_deadline {
+                return Err(Box::new(CliError("semantic provider retirement exhausted")));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let receipt = provider
+            .try_into_terminal_receipt()
+            .map_err(|_| CliError("semantic provider retirement incomplete"))?;
+        eprintln!(
+            "vellum-semantic-local: shutdown_complete provider={:?}",
+            receipt.provider().terminal()
+        );
+        Ok(())
     }
 
     #[cfg(test)]

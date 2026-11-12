@@ -265,6 +265,14 @@ fn run_connection(
     )
     .unwrap();
     assert_eq!(policy.observed, Some(expected_context));
+    assert_eq!(
+        dispatcher.authority_lost_event(),
+        SemanticSessionActorExternalEventV1::PolicyLost {
+            subject: expected_context.subject,
+            session: expected_context.session.unwrap(),
+            policy_epoch: 7,
+        }
+    );
     let (mut client, mut server) = UnixStream::pair().unwrap();
     client
         .set_read_timeout(Some(Duration::from_secs(3)))

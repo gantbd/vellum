@@ -73,6 +73,7 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
@@ -134,10 +135,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "keystone-codec"
+version = "0.0.1"
+source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
 
 [[package]]
 name = "keystone-observe"
@@ -333,6 +348,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -357,6 +382,12 @@ dependencies = [
  "libc",
  "windows-sys",
 ]
+
+[[package]]
+name = "subtle"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"
@@ -466,6 +497,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
+name = "vellum-adapter-local-authentication"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hmac",
+ "rustix",
+ "sha2",
+ "vellum-host",
+ "vellum-transport",
+]
+
+[[package]]
 name = "vellum-adapter-local-fs"
 version = "0.1.0"
 dependencies = [
@@ -483,6 +526,13 @@ dependencies = [
  "serde_json",
  "vellum-host",
  "vellum-semantic-service",
+]
+
+[[package]]
+name = "vellum-client"
+version = "0.1.0"
+dependencies = [
+ "vellum-protocol",
 ]
 
 [[package]]
@@ -520,6 +570,16 @@ name = "vellum-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "vellum-sdk-client"
+version = "0.1.0"
+dependencies = [
+ "vellum-client",
+ "vellum-protocol",
+ "vellum-transport",
+ "vellum-wire",
+]
+
+[[package]]
 name = "vellum-semantic-apply-service"
 version = "0.1.0"
 dependencies = [
@@ -535,18 +595,23 @@ name = "vellum-semantic-client"
 version = "0.1.0"
 dependencies = [
  "vellum-host",
+ "vellum-semantic-protocol",
  "vellum-semantic-service",
+ "vellum-semantic-session-client",
 ]
 
 [[package]]
 name = "vellum-semantic-local"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "processkit",
  "rustix",
  "sha2",
+ "signal-hook",
  "tokio",
  "tokio-util",
+ "vellum-adapter-local-authentication",
  "vellum-adapter-semantic-lsp",
  "vellum-host",
  "vellum-semantic-client",
@@ -554,6 +619,8 @@ dependencies = [
  "vellum-semantic-service",
  "vellum-semantic-session-actor",
  "vellum-semantic-session-broker",
+ "vellum-semantic-session-client",
+ "vellum-semantic-wire",
 ]
 
 [[package]]
@@ -608,11 +675,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-semantic-session-client"
+version = "0.1.0"
+dependencies = [
+ "vellum-host",
+ "vellum-sdk-client",
+ "vellum-semantic-protocol",
+]
+
+[[package]]
+name = "vellum-semantic-wire"
+version = "0.1.0"
+dependencies = [
+ "keystone-codec",
+ "vellum-host",
+ "vellum-semantic-protocol",
+]
+
+[[package]]
 name = "vellum-session"
 version = "0.1.0"
 dependencies = [
  "vellum-engine",
  "vellum-host",
+]
+
+[[package]]
+name = "vellum-transport"
+version = "0.1.0"
+dependencies = [
+ "vellum-protocol",
+ "vellum-wire",
+]
+
+[[package]]
+name = "vellum-wire"
+version = "0.1.0"
+dependencies = [
+ "keystone-codec",
+ "vellum-protocol",
 ]
 
 [[package]]

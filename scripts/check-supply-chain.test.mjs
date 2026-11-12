@@ -51,10 +51,8 @@ if (
 ) {
   throw new Error('source SBOM contains a local filesystem identity');
 }
-if (
-  first.blockers.map((blocker) => blocker.name).join(',') !== 'keystone,keystone-replay'
-) {
-  throw new Error('source SBOM hid the external Keystone blocker');
+if (first.blockers.length !== 0) {
+  throw new Error('qualified immutable Keystone inputs were reported as blockers');
 }
 
 {
@@ -106,24 +104,12 @@ if (
 }
 {
   const altered = clone(metadata);
-  altered.packages.find((pkg) => pkg.name === 'keystone-codec').manifest_path =
-    '/private/tmp/escaped-keystone-codec/Cargo.toml';
+  altered.packages.find((pkg) => pkg.name === 'vellum-engine').manifest_path =
+    '/etc/hosts';
   expectFailure(
     'escaped path dependency',
     { metadata: altered, policy, lockText },
-    'unapproved or escaped external path dependency',
-  );
-}
-{
-  const alteredPolicy = clone(policy);
-  alteredPolicy.pathPolicy.external[0].packages =
-    alteredPolicy.pathPolicy.external[0].packages.filter(
-      (pkg) => pkg.name !== 'keystone-replay',
-    );
-  expectFailure(
-    'undeclared external path dependency',
-    { metadata, policy: alteredPolicy, lockText },
-    'unapproved or escaped external path dependency',
+    'workspace package escapes the workspace root',
   );
 }
 expectFailure(

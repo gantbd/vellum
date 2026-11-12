@@ -399,9 +399,16 @@ Vellum snapshot products, not an MCP argument or workspace manifest. The
 connector does not mint the seal, infer membership from document ids, or
 automatically replay an uncertain mutation. MCP callers can explicitly release
 terminal replay payloads; the broker retains a bounded non-reusable identity
-tombstone. Remaining delivery work includes live multi-document
-resynchronization, membership rollover after tombstone exhaustion, graceful
-semantic-service shutdown, and extraction of the MCP peer into its sibling
+tombstone. The semantic-local process observes SIGINT/SIGTERM, interrupts a
+blocked authenticated connection, projects that connection's exact
+subject/session/policy epoch as lost authority, drains fenced memberships,
+joins actor recovery, retires retained client source, and drives the provider
+through protocol shutdown with bounded forced escalation. Successful exit
+reports only the closed provider terminal class. Signal receipt is host
+lifecycle authority, not semantic query authority, and does not make a
+same-user process boundary into principal authentication. Remaining delivery
+work includes live multi-document resynchronization, membership rollover after
+tombstone exhaustion, and extraction of the MCP peer into its sibling
 repository.
 
 Construction requires the semantic client's sealed sovereign-validation port,
@@ -452,6 +459,11 @@ provenance, project configuration/plugin execution, workspace isolation,
 cancellation, bounded stderr/output, index retention/deletion and transport
 confidentiality. Runtime evaluation is outside this contract and requires an
 independent execution authority and sandbox profile.
+
+Local signal supervision prevents an idle socket read from orphaning the
+provider, but it does not authenticate the sender of an OS signal, survive
+SIGKILL, prove provider-cache erasure, or provide a remote shutdown protocol.
+Those remain separate deployment and privacy obligations.
 
 Selected executable evidence covers construction ceilings, capability
 attenuation, stale outcomes, request/revision/index transplant rejection,

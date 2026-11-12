@@ -15,8 +15,9 @@ use vellum_semantic_protocol::{
     SemanticSessionRolesV1,
 };
 use vellum_semantic_session_actor::{
-    SemanticSessionActorAdmissionV1, SemanticSessionActorNotSentReasonV1,
-    SemanticSessionActorPollV1, SemanticSessionActorReplyTicketV1, SemanticSessionActorSenderV1,
+    SemanticSessionActorAdmissionV1, SemanticSessionActorExternalEventV1,
+    SemanticSessionActorNotSentReasonV1, SemanticSessionActorPollV1,
+    SemanticSessionActorReplyTicketV1, SemanticSessionActorSenderV1,
 };
 use vellum_semantic_session_broker::SemanticBrokerContextV1;
 use vellum_semantic_session_client::SemanticSessionExchangePortV1;
@@ -386,6 +387,17 @@ impl AuthenticatedSemanticDispatcherV1 {
             .usage
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Exact authority-loss event for this authenticated connection. The
+    /// composition root decides when transport loss terminates the authority
+    /// lifetime; the dispatcher cannot submit owner-only actor events itself.
+    pub const fn authority_lost_event(&self) -> SemanticSessionActorExternalEventV1 {
+        SemanticSessionActorExternalEventV1::PolicyLost {
+            subject: self.broker_context.subject,
+            session: self.broker_context.session,
+            policy_epoch: self.broker_context.policy_epoch,
+        }
     }
 
     pub fn try_dispatch(

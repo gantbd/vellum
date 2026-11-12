@@ -904,6 +904,7 @@ dependencies = [
  "processkit",
  "rustix",
  "sha2",
+ "signal-hook",
  "tokio",
  "tokio-util",
  "vellum-adapter-local-authentication",
