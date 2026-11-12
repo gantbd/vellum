@@ -1,7 +1,7 @@
 # Vellum MCP repository extraction
 
-Status: deterministic peer repository payload materialized and qualified;
-sibling Git repository not created.
+Status: deterministic peer repository payload materialized and qualified; local
+sibling Git repository established without a remote.
 
 `vellum-mcp` can be extracted as an independently versioned peer once the
 current Vellum work is committed and remotely addressable. Its production
@@ -63,8 +63,11 @@ second exact peer binary from the Vellum source archive because the declared
 extraction still depends on the Vellum public SDK. Its isolated install/root checks do not collapse MCP back into the
 daemon or claim that the future sibling repository is independently installable.
 
-The ignored `.peer-staging/vellum-mcp` tree is ready to copy into the eventual
-sibling repository. Creating that sibling now requires only choosing its local
-path, copying these bytes, initializing Git, reviewing and committing them,
-then rerunning the locked tests. No remote, publication, or sibling Git history
-has been created.
+The ignored `.peer-staging/vellum-mcp` tree was refreshed from Vellum
+`aa9075409f4eb45f4391dc7a199dfaf9b8d926fd` and copied to the local sibling at
+`../vellum-mcp`. Its reviewed initial commit is
+`57510ed03959d9a688c32af03e3f8cf50a8d26e4`; the locked sibling suite passes
+against the exact Vellum and Keystone inputs recorded in `release/source.json`.
+No remote or publication has been configured. Coordinated live-daemon
+qualification remains owned by Vellum until the peer release lifecycle is
+available from immutable remote inputs.
