@@ -1222,6 +1222,7 @@ enum Event {
 const TERMINAL_PENDING: u8 = 0;
 const TERMINAL_CLOSED: u8 = 1;
 const TERMINAL_FAILED: u8 = 2;
+const TERMINAL_FAILED_CLEANUP_CONFIRMED: u8 = 3;
 const STDOUT_FRESH: u8 = 0;
 const STDOUT_TAINTED: u8 = 1;
 const STDOUT_CLAIMED: u8 = 2;
@@ -1595,7 +1596,7 @@ impl LspTransportPortV1 for LocalLspTransportV1 {
             Err(TryRecvError::Empty) => LspReceiveOutcomeV1::Pending,
             Err(TryRecvError::Disconnected) => match self.shared.terminal.load(Ordering::Acquire) {
                 TERMINAL_CLOSED => LspReceiveOutcomeV1::Closed,
-                TERMINAL_FAILED => LspReceiveOutcomeV1::Failed,
+                TERMINAL_FAILED | TERMINAL_FAILED_CLEANUP_CONFIRMED => LspReceiveOutcomeV1::Failed,
                 TERMINAL_PENDING => LspReceiveOutcomeV1::Pending,
                 _ => LspReceiveOutcomeV1::Failed,
             },
@@ -1621,6 +1622,7 @@ impl LspTransportPortV1 for LocalLspTransportV1 {
         match self.shared.terminal.load(Ordering::Acquire) {
             TERMINAL_PENDING => LspTransportTerminalV1::Active,
             TERMINAL_FAILED => LspTransportTerminalV1::Failed,
+            TERMINAL_FAILED_CLEANUP_CONFIRMED => LspTransportTerminalV1::FailedCleanupConfirmed,
             TERMINAL_CLOSED => {
                 let usage = self.shared.usage.lock().expect("semantic usage mutex");
                 if usage.group_hard_kills_accepted == 0 {
@@ -2402,7 +2404,9 @@ fn run_worker(
                 .and_then(Option::as_ref)
                 .is_some();
         shared.terminal.store(
-            if terminal_failure || !kill_succeeded {
+            if terminal_failure && cleanup_confirmed {
+                TERMINAL_FAILED_CLEANUP_CONFIRMED
+            } else if terminal_failure || !kill_succeeded {
                 TERMINAL_FAILED
             } else {
                 TERMINAL_CLOSED

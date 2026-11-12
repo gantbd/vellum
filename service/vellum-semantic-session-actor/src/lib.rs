@@ -402,6 +402,14 @@ impl SemanticSessionActorSenderV1 {
         lock_shared(&self.shared).phase
     }
 
+    /// Exact terminal provider-drive failure, when provider polling rather
+    /// than another actor failure caused the worker to stop. This is evidence
+    /// for composition-owned recovery; absence must never be inferred as a
+    /// provider failure.
+    pub fn provider_failure(&self) -> Option<SemanticBrokerProviderDriveFailureClassV1> {
+        lock_shared(&self.shared).provider_failure
+    }
+
     pub const fn limits(&self) -> SemanticSessionActorLimitsV1 {
         self.limits
     }
@@ -1004,6 +1012,11 @@ impl SemanticSessionActorOwnerV1 {
         lock_shared(&self.shared).phase
     }
 
+    /// Exact terminal provider-drive failure, when present.
+    pub fn provider_failure(&self) -> Option<SemanticBrokerProviderDriveFailureClassV1> {
+        lock_shared(&self.shared).provider_failure
+    }
+
     pub const fn limits(&self) -> SemanticSessionActorLimitsV1 {
         self.limits
     }
@@ -1154,6 +1167,7 @@ where
     let shared = Arc::new(Mutex::new(Shared {
         phase: SemanticSessionActorPhaseV1::Running,
         usage: initial_usage,
+        provider_failure: None,
     }));
     let worker_shared = Arc::clone(&shared);
     let runtime = Arc::new(Mutex::new(Some((broker, port))));
@@ -1262,6 +1276,7 @@ enum Control {
 struct Shared {
     phase: SemanticSessionActorPhaseV1,
     usage: SemanticSessionActorUsageV1,
+    provider_failure: Option<SemanticBrokerProviderDriveFailureClassV1>,
 }
 
 impl Default for Shared {
@@ -1269,6 +1284,7 @@ impl Default for Shared {
         Self {
             phase: SemanticSessionActorPhaseV1::Running,
             usage: SemanticSessionActorUsageV1::default(),
+            provider_failure: None,
         }
     }
 }
@@ -1386,6 +1402,7 @@ fn apply_control<P: SemanticBrokerEffectPortV1>(
                         broker.event(SemanticBrokerEventV1::ProviderDriveFailed { report });
                     let mut state = lock_shared(shared);
                     state.phase = SemanticSessionActorPhaseV1::Failed;
+                    state.provider_failure = Some(failure);
                     bump_usage(&mut state.usage, Counter::ProviderPollFailures);
                     bump_usage(&mut state.usage, Counter::OutcomeUnknown);
                     if matches!(decision, SemanticBrokerDecisionV1::Diverged(_)) {
@@ -1407,6 +1424,17 @@ fn apply_control<P: SemanticBrokerEffectPortV1>(
                 Err(failure) => {
                     let mut state = lock_shared(shared);
                     state.phase = SemanticSessionActorPhaseV1::Failed;
+                    state.provider_failure = Some(match failure {
+                        SemanticBrokerEffectFailureV1::Poisoned => {
+                            SemanticBrokerProviderDriveFailureClassV1::Poisoned
+                        }
+                        SemanticBrokerEffectFailureV1::RuntimeUnavailable => {
+                            SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+                        }
+                        SemanticBrokerEffectFailureV1::DeliveryRefused => {
+                            SemanticBrokerProviderDriveFailureClassV1::DeliveryRefused
+                        }
+                    });
                     bump_usage(&mut state.usage, Counter::ProviderPollFailures);
                     bump_usage(&mut state.usage, Counter::OutcomeUnknown);
                     let reason = match failure {
@@ -3241,6 +3269,11 @@ mod tests {
             SemanticSessionActorControlCompletionV1::OutcomeUnknown
         );
         assert_eq!(sender.phase(), SemanticSessionActorPhaseV1::Failed);
+        assert_eq!(
+            owner.provider_failure(),
+            Some(SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable)
+        );
+        assert_eq!(owner.provider_failure(), sender.provider_failure());
         assert_eq!(sender.usage().provider_poll_failures, 1);
         let SemanticSessionActorAdmissionV1::NotSent { reason, command } =
             sender.try_exchange(context(), describe(30))

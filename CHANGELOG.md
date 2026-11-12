@@ -47,6 +47,11 @@ will follow Semantic Versioning once a public release contract is selected.
   classified as `OperatorRequested`, deferred while an authenticated stream is
   active, and admitted through a finite backoff/readiness/cleanup policy. The
   default remains restart-disabled; uncertainty permanently exits the process.
+  A second explicit `--restart-on-provider-failure` policy retains the exact
+  provider-drive failure class, recovers the failed actor's broker, snapshots,
+  pending requests and deadline graph, invalidates queries without replay, and
+  installs a separately qualified ready provider. A crashed process can resume
+  only after whole-group cleanup and leader reap are separately confirmed.
 - Added a separate source-built `vellum-launchd-activate` executor. An explicit
   operator approval binds exact qualified candidate/prior artifacts; every
   launchctl mutation is durably bracketed, running identity and daemon status

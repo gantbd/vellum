@@ -8,8 +8,9 @@ stdio driver, and background-session protocol/client/broker/actor substrate are
 implemented. The semantic MCP executable has both an explicit unavailable
 qualification composition and an authenticated local rust-analyzer composition
 that serves bounded startup workspace snapshots. No remote network semantic
-transport, PSI, nREPL, automatic provider restart policy or post-start file
-watching is claimed.
+transport, PSI, nREPL, default-on provider restart policy or post-start file
+watching is claimed. The local standalone composition has separate explicit
+operator and exact provider-failure restart opt-ins.
 
 Vellum's useful semantic surface is a peer capability, not an editor wrapper.
 `vellum_host::semantic` defines the outbound contract that a trusted embedded
@@ -309,6 +310,15 @@ composition: `--restart-on-sighup` classifies only SIGHUP as
 finite backoff and readiness deadline, requires terminal displaced cleanup, and
 then resumes the same broker/session state with a fresh sender. It is disabled
 by default, never replays queries, and exits permanently on uncertain progress.
+`--restart-on-provider-failure` is a separate default-off policy. Only an exact
+provider-drive terminal class may enter it: runtime unavailability maps to
+`ProviderUnavailable`, while poisoned or refused delivery maps to
+`ProviderFailed`. The failed actor recovers its same broker, timed scheduler,
+snapshots, pending requests and provider owner; no other actor failure becomes
+restart authority. Resumption additionally requires a fresh pinned-ready
+candidate and terminal displaced cleanup. A crashed process is accepted as
+cleaned only when its supervisor separately confirms whole-group cleanup and
+leader reap; protocol failure remains visible in the transport evidence.
 
 This substrate does not prove an immutable executable, interpreter,
 dynamic-library or plugin closure: spawning remains path-based and same-authority

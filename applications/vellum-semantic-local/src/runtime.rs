@@ -717,7 +717,10 @@ where
                     LocalSemanticRetirementStateV1::CleanupFailed
                 }
             }
-            LspTransportTerminalV1::ForcedClosed => LocalSemanticRetirementStateV1::ForcedConfirmed,
+            LspTransportTerminalV1::ForcedClosed
+            | LspTransportTerminalV1::FailedCleanupConfirmed => {
+                LocalSemanticRetirementStateV1::ForcedConfirmed
+            }
             LspTransportTerminalV1::Failed => LocalSemanticRetirementStateV1::CleanupFailed,
             LspTransportTerminalV1::Active | LspTransportTerminalV1::Unobserved => return false,
         };
@@ -1006,7 +1009,9 @@ where
     let _ = adapter.poll();
     let confirmed = matches!(
         adapter.transport_terminal_state(),
-        LspTransportTerminalV1::GracefulClosed | LspTransportTerminalV1::ForcedClosed
+        LspTransportTerminalV1::GracefulClosed
+            | LspTransportTerminalV1::ForcedClosed
+            | LspTransportTerminalV1::FailedCleanupConfirmed
     );
     let refusal = if confirmed {
         match outcome {

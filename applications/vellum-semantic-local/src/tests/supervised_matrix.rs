@@ -39,7 +39,9 @@ use vellum_semantic_session_actor::{
     SemanticSessionActorLimitsV1, SemanticSessionActorPhaseV1, SemanticSessionActorPollV1,
     SemanticSessionActorTerminationV1,
 };
-use vellum_semantic_session_broker::SemanticBrokerContextV1;
+use vellum_semantic_session_broker::{
+    SemanticBrokerContextV1, SemanticBrokerProviderDriveFailureClassV1,
+};
 
 use super::*;
 
@@ -95,6 +97,13 @@ fn main() {
             } else if body.contains("\"method\":\"initialized\"") {
                 if mode == "pinned-serve" {
                     write_frame(&mut output, "{\"jsonrpc\":\"2.0\",\"method\":\"$/vellumStatus\",\"params\":{\"health\":\"ok\",\"quiescent\":true}}");
+                } else if mode == "crash-once" {
+                    write_frame(&mut output, "{\"jsonrpc\":\"2.0\",\"method\":\"$/vellumStatus\",\"params\":{\"health\":\"ok\",\"quiescent\":true}}");
+                    let marker = std::env::var("VELLUM_MATRIX_MARKER").unwrap();
+                    if std::fs::OpenOptions::new().write(true).create_new(true).open(marker).is_ok() {
+                        std::thread::sleep(Duration::from_millis(750));
+                        return;
+                    }
                 }
             } else if body.contains("\"method\":\"textDocument/diagnostic\"") {
                 write_frame(&mut output, &format!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"kind\":\"full\",\"items\":[{{\"range\":{{\"start\":{{\"line\":0,\"character\":3}},\"end\":{{\"line\":0,\"character\":8}}}},\"severity\":2,\"message\":\"fixture warning\",\"code\":\"W1\"}}]}}}}", request_id(&body)));
@@ -115,6 +124,7 @@ fn main() {
 struct MatrixScratch {
     root: PathBuf,
     server: PathBuf,
+    marker: PathBuf,
 }
 
 impl MatrixScratch {
@@ -123,7 +133,12 @@ impl MatrixScratch {
             "vellum-real-provider-matrix-{}-{label}",
             std::process::id()
         ));
+        let marker = env::temp_dir().join(format!(
+            "vellum-real-provider-matrix-{}-{label}.marker",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_file(&marker);
         fs::create_dir(&path).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         let source = path.join("matrix-lsp-server.rs");
@@ -139,6 +154,7 @@ impl MatrixScratch {
         Self {
             root: fs::canonicalize(path).unwrap(),
             server: fs::canonicalize(server).unwrap(),
+            marker,
         }
     }
 }
@@ -146,6 +162,7 @@ impl MatrixScratch {
 impl Drop for MatrixScratch {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
+        let _ = fs::remove_file(&self.marker);
     }
 }
 
@@ -226,6 +243,10 @@ fn matrix_profile(mode: &str, scratch: &MatrixScratch) -> SemanticProviderProfil
         Vec::new(),
         BTreeMap::from([
             ("VELLUM_MATRIX_MODE".into(), mode.into()),
+            (
+                "VELLUM_MATRIX_MARKER".into(),
+                scratch.marker.display().to_string(),
+            ),
             ("VELLUM_MATRIX_ROOT_URI".into(), matrix_file_uri(&workspace)),
         ]),
         scratch.root.clone(),
@@ -890,6 +911,217 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
         current_receipt.provider().terminal(),
         LocalSemanticRetirementTerminalV1::GracefulConfirmed
     );
+    drop(sender);
+    drop(old_sender);
+}
+
+#[test]
+fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
+    let scratch = MatrixScratch::new("ordered-real-crash-recovery");
+    let (session, service) = matrix_limits();
+    let initial = qualify_provider_launch_v1(matrix_profile("crash-once", &scratch)).unwrap();
+    let protocol = LspProviderProtocolProfileV1::try_new(
+        initial.profile_identity().digest(),
+        "vellum-matrix-lsp".to_owned(),
+        Some("1.0.0".to_owned()),
+        "$/vellumStatus".to_owned(),
+    )
+    .unwrap();
+    let prepared = launch_supervised_ordered_lsp_with_deadlines_rust_analyzer_standalone_v1(
+        initial,
+        MatrixGenerations(0),
+        MatrixReadiness(LspIndexReadinessV1::Current),
+        MatrixDocuments,
+        LspLimitsV1::reference(),
+        session.semantic,
+        SemanticClientRefV1::new([102; 16]),
+        SemanticSessionIncarnationV1::new([103; 16]).unwrap(),
+        session,
+        service,
+        MatrixOrderedClock::default(),
+        LocalOrderedDeadlinePolicyV1 {
+            relative_budget_ticks: NonZeroU64::new(100).unwrap(),
+            max_deadlines: service.max_pending,
+        },
+        &protocol,
+    )
+    .unwrap();
+    let (actor, old_sender) = prepared
+        .spawn_managed(SemanticSessionActorLimitsV1::reference())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut observation = 880_u64;
+    loop {
+        assert_eq!(
+            await_control(&actor.try_drive_provider().unwrap()),
+            SemanticSessionActorControlCompletionV1::Applied
+        );
+        if matches!(
+            observed_readiness(&old_sender, observation),
+            SemanticProviderReadinessProjectionV1::Ready { .. }
+        ) {
+            break;
+        }
+        observation = observation.checked_add(1).unwrap();
+        assert!(Instant::now() < deadline, "provider ready deadline");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(scratch.marker.exists());
+    std::thread::sleep(Duration::from_millis(900));
+    let deadline = Instant::now() + Duration::from_secs(4);
+    loop {
+        if await_control(&actor.try_drive_provider().unwrap())
+            == SemanticSessionActorControlCompletionV1::OutcomeUnknown
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "provider crash deadline");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(actor.phase(), SemanticSessionActorPhaseV1::Failed);
+    assert_eq!(
+        actor.provider_failure(),
+        Some(SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable)
+    );
+
+    let mut restart = SemanticProviderRestartControllerV1::new_running(
+        SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(1)]).unwrap(),
+        NonZeroU64::new(1).unwrap(),
+    );
+    let SemanticProviderRestartDecisionV1::Backoff(backoff) = restart
+        .request_replacement(SemanticProviderRestartCauseV1::ProviderUnavailable)
+        .unwrap()
+    else {
+        panic!("provider crash did not enter bounded backoff")
+    };
+    let launch = restart.backoff_elapsed(backoff).unwrap();
+    let mut recovery = actor.try_begin_failed_provider_replacement().unwrap();
+    let failed = loop {
+        match recovery.try_advance() {
+            LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Pending(pending) => {
+                recovery = *pending
+            }
+            LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Ready(runtime) => break *runtime,
+            LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Mismatch(_) => {
+                panic!("failed provider recovery mismatched")
+            }
+        }
+        assert!(Instant::now() < deadline, "failed actor recovery deadline");
+        std::thread::yield_now();
+    };
+    assert_eq!(
+        failed.failure(),
+        SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+    );
+
+    let candidate_launch =
+        qualify_provider_launch_v1(matrix_profile("crash-once", &scratch)).unwrap();
+    let mut candidate = launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1(
+        candidate_launch,
+        MatrixGenerations(10),
+        MatrixReadiness(LspIndexReadinessV1::Current),
+        MatrixDocuments,
+        LspLimitsV1::reference(),
+        session.semantic,
+        session,
+        service,
+        &protocol,
+    )
+    .unwrap();
+    loop {
+        match candidate.drive_once() {
+            LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
+            LocalSupervisedOrderedLspCandidateDriveV1::Pending => {}
+            other => panic!("crash replacement candidate contaminated: {other:?}"),
+        }
+        assert!(Instant::now() < deadline, "candidate readiness deadline");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let (mut installed, failure) = failed.try_install_ready_candidate(candidate).unwrap();
+    assert_eq!(
+        failure,
+        SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+    );
+    let cleanup_token = restart.confirm_replacement_installed(launch).unwrap();
+    installed.escalate_displaced();
+    let (runtime, displaced_receipt, candidate_usage) = loop {
+        let _ = installed.drive_displaced_once();
+        match installed.try_into_reconciled() {
+            Ok(reconciled) => break reconciled,
+            Err(returned) => installed = *returned,
+        }
+        assert!(
+            Instant::now() < deadline,
+            "failed provider cleanup deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assert!(matches!(
+        displaced_receipt.terminal(),
+        LocalSemanticRetirementTerminalV1::GracefulConfirmed
+            | LocalSemanticRetirementTerminalV1::ForcedConfirmed
+    ));
+    assert_eq!(candidate_usage.ready_observations, 1);
+    let (actor, sender) = runtime.resume().unwrap();
+    assert!(matches!(
+        restart
+            .complete_cleanup(cleanup_token, &displaced_receipt)
+            .unwrap(),
+        SemanticProviderRestartDecisionV1::Running { generation }
+            if generation == NonZeroU64::new(2).unwrap()
+    ));
+    assert_eq!(actor.usage().provider_poll_failures, 1);
+    assert_eq!(actor.usage().provider_poll_failures_by_reason, [0, 1, 0]);
+    assert_eq!(old_sender.phase(), SemanticSessionActorPhaseV1::Failed);
+    assert_eq!(
+        observed_readiness(&sender, 900),
+        SemanticProviderReadinessProjectionV1::Ready {
+            generation: SemanticIndexGenerationV1::new(11).unwrap(),
+        }
+    );
+
+    assert!(actor.begin_drain());
+    let mut stop = actor.try_begin_stop().unwrap();
+    let mut stopped = loop {
+        match stop.try_complete() {
+            Ok(LocalOrderedManagedTimedStopResolutionV1::Terminal(stopped)) => break stopped,
+            Ok(LocalOrderedManagedTimedStopResolutionV1::Refused(_)) => {
+                panic!("recovered actor refused stop")
+            }
+            Err(pending) => stop = *pending,
+        }
+        assert!(Instant::now() < deadline, "recovered actor stop deadline");
+        std::thread::yield_now();
+    };
+    let timed_cleanup = loop {
+        match stopped.try_advance() {
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Pending(pending) => stopped = *pending,
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Ready(cleanup) => break *cleanup,
+            LocalOrderedTimedStoppedRecoveryAdvanceV1::Mismatch(_) => {
+                panic!("recovered actor cleanup mismatched")
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "recovered actor cleanup deadline"
+        );
+        std::thread::yield_now();
+    };
+    let mut cleanup = timed_cleanup.try_retire_deadlines().unwrap();
+    let _ = cleanup.drive_client_retirement_once();
+    let mut provider = cleanup.try_into_provider_cleanup().unwrap();
+    loop {
+        let _ = provider.drive_once();
+        match provider.try_into_terminal_receipt() {
+            Ok(_) => break,
+            Err(returned) => provider = *returned,
+        }
+        assert!(
+            Instant::now() < deadline,
+            "recovered provider cleanup deadline"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
     drop(sender);
     drop(old_sender);
 }

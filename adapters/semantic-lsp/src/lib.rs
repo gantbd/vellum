@@ -860,6 +860,9 @@ pub enum LspTransportTerminalV1 {
     Active,
     GracefulClosed,
     ForcedClosed,
+    /// Provider/session failed, but the owning transport separately confirmed
+    /// whole-group cleanup and leader reap. Protocol success is not implied.
+    FailedCleanupConfirmed,
     Failed,
     Unobserved,
 }

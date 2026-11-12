@@ -311,7 +311,8 @@ impl<G, R, U> LocalSupervisedTransportCleanupOwnerV1<G, R, U> {
         }
         cleanup_bump(&mut self.usage.drives, &mut self.usage.saturated);
         self.state = match self.transport.terminal_state() {
-            LspTransportTerminalV1::ForcedClosed => {
+            LspTransportTerminalV1::ForcedClosed
+            | LspTransportTerminalV1::FailedCleanupConfirmed => {
                 cleanup_bump(&mut self.usage.forced_confirmed, &mut self.usage.saturated);
                 LocalSupervisedTransportCleanupStateV1::ForcedConfirmed
             }
@@ -2234,6 +2235,10 @@ impl<P, C> LocalOrderedManagedTimedSemanticActorV1<P, C> {
         self.owner.usage()
     }
 
+    pub fn provider_failure(&self) -> Option<SemanticBrokerProviderDriveFailureClassV1> {
+        self.owner.provider_failure()
+    }
+
     pub fn try_begin_stop(
         self,
     ) -> Result<
@@ -2294,6 +2299,39 @@ impl<P, C> LocalOrderedManagedTimedSemanticActorV1<P, C> {
         })
     }
 
+    /// Recovers only an actor whose terminal cause is an exact provider-drive
+    /// failure. Other actor failures remain cleanup-only and cannot be
+    /// promoted into restart authority.
+    pub fn try_begin_failed_provider_replacement(
+        self,
+    ) -> Result<LocalOrderedTimedFailedProviderRecoveryOwnerV1<P, C>, Box<Self>> {
+        let Some(failure) = self.owner.provider_failure() else {
+            return Err(Box::new(self));
+        };
+        if self.owner.phase() != SemanticSessionActorPhaseV1::Failed {
+            return Err(Box::new(self));
+        }
+        let Self {
+            owner,
+            recovery,
+            refusal_attempts,
+            last_refusal,
+            saturated,
+        } = self;
+        let usage = owner.usage();
+        let limits = owner.limits();
+        drop(owner);
+        Ok(LocalOrderedTimedFailedProviderRecoveryOwnerV1 {
+            failure,
+            recovery,
+            limits,
+            usage,
+            refusal_attempts,
+            last_refusal,
+            saturated,
+        })
+    }
+
     /// Atomically fences new commands and preserves the complete live broker,
     /// snapshot, deadline, and provider product for a composition-owned
     /// replacement. The caller must discard every old sender before exposing a
@@ -2330,6 +2368,154 @@ impl<P, C> LocalOrderedManagedTimedSemanticActorV1<P, C> {
                 saturated,
             })),
         }
+    }
+}
+
+#[must_use = "failed provider recovery must retain the exact runtime"]
+pub struct LocalOrderedTimedFailedProviderRecoveryOwnerV1<P, C> {
+    failure: SemanticBrokerProviderDriveFailureClassV1,
+    recovery: SemanticSessionActorRecoveryV1<LocalOrderedTimedSemanticPortV1<P, C>>,
+    limits: SemanticSessionActorLimitsV1,
+    usage: SemanticSessionActorUsageV1,
+    refusal_attempts: u64,
+    last_refusal: Option<SemanticSessionActorStopReceiptV1>,
+    saturated: bool,
+}
+
+impl<P, C> LocalOrderedTimedFailedProviderRecoveryOwnerV1<P, C> {
+    pub const fn failure(&self) -> SemanticBrokerProviderDriveFailureClassV1 {
+        self.failure
+    }
+
+    pub fn try_advance(self) -> LocalOrderedTimedFailedProviderRecoveryAdvanceV1<P, C> {
+        let Self {
+            failure,
+            recovery,
+            limits,
+            usage,
+            refusal_attempts,
+            last_refusal,
+            saturated,
+        } = self;
+        let recovered = match recovery.try_recover() {
+            Ok(recovered) => recovered,
+            Err(recovery) => {
+                return LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Pending(Box::new(Self {
+                    failure,
+                    recovery,
+                    limits,
+                    usage,
+                    refusal_attempts,
+                    last_refusal,
+                    saturated,
+                }));
+            }
+        };
+        if recovered.termination() != SemanticSessionActorTerminationV1::Failed {
+            return LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Mismatch(Box::new(
+                LocalOrderedTimedFailedProviderRecoveryMismatchV1 {
+                    failure,
+                    recovered,
+                    usage,
+                    refusal_attempts,
+                    last_refusal,
+                    saturated,
+                },
+            ));
+        }
+        let (_, recovered_usage, broker, port) = recovered.into_parts();
+        LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Ready(Box::new(
+            LocalOrderedFailedTimedRuntimeV1 {
+                failure,
+                inner: LocalOrderedSuspendedTimedRuntimeV1 {
+                    broker,
+                    port,
+                    limits,
+                    prior_actor_usage: recovered_usage,
+                    refusal_attempts,
+                    last_refusal,
+                    saturated,
+                },
+            },
+        ))
+    }
+}
+
+pub enum LocalOrderedTimedFailedProviderRecoveryAdvanceV1<P, C> {
+    Pending(Box<LocalOrderedTimedFailedProviderRecoveryOwnerV1<P, C>>),
+    Ready(Box<LocalOrderedFailedTimedRuntimeV1<P, C>>),
+    Mismatch(Box<LocalOrderedTimedFailedProviderRecoveryMismatchV1<P, C>>),
+}
+
+#[must_use = "failed-provider recovery mismatch retains cleanup authority"]
+pub struct LocalOrderedTimedFailedProviderRecoveryMismatchV1<P, C> {
+    failure: SemanticBrokerProviderDriveFailureClassV1,
+    recovered: SemanticSessionActorRecoveredV1<LocalOrderedTimedSemanticPortV1<P, C>>,
+    usage: SemanticSessionActorUsageV1,
+    refusal_attempts: u64,
+    last_refusal: Option<SemanticSessionActorStopReceiptV1>,
+    saturated: bool,
+}
+
+impl<P, C> LocalOrderedTimedFailedProviderRecoveryMismatchV1<P, C>
+where
+    P: SemanticBridgeProviderPollV1 + Send + 'static,
+    C: LocalOrderedMonotonicClockV1,
+{
+    pub const fn failure(&self) -> SemanticBrokerProviderDriveFailureClassV1 {
+        self.failure
+    }
+
+    pub fn into_cleanup(self) -> LocalOrderedTimedCleanupOwnerV1<P, C> {
+        LocalOrderedTimedCleanupOwnerV1::from_managed_actor_recovered(
+            self.recovered,
+            LocalOrderedActorStopEvidenceV1 {
+                terminal: LocalOrderedActorTerminalStopV1::FailedBeforeStop { usage: self.usage },
+                refusal_attempts: self.refusal_attempts,
+                last_refusal: self.last_refusal,
+                saturated: self.saturated,
+            },
+            LocalOrderedActorRecoveryJoinV1::Mismatch,
+        )
+    }
+}
+
+/// Failed actor runtime that cannot resume until a fresh provider is installed
+/// and the displaced failed provider reaches terminal cleanup.
+#[must_use = "failed provider runtime must install a candidate or be cleaned up"]
+pub struct LocalOrderedFailedTimedRuntimeV1<P, C> {
+    failure: SemanticBrokerProviderDriveFailureClassV1,
+    inner: LocalOrderedSuspendedTimedRuntimeV1<P, C>,
+}
+
+pub type LocalOrderedFailedProviderReplacementResultV1<P, C> = Result<
+    (
+        LocalOrderedSuspendedTimedRuntimeV1<P, C>,
+        SemanticProviderRetirementV1<P>,
+        SemanticBrokerProviderDriveFailureClassV1,
+    ),
+    Box<LocalOrderedSuspendedReplacementFailureV1<P, C>>,
+>;
+
+impl<P, C> LocalOrderedFailedTimedRuntimeV1<P, C> {
+    pub const fn failure(&self) -> SemanticBrokerProviderDriveFailureClassV1 {
+        self.failure
+    }
+}
+
+impl<P, C> LocalOrderedFailedTimedRuntimeV1<P, C>
+where
+    P: SemanticBridgeProviderPollV1 + Send + 'static,
+    C: LocalOrderedMonotonicClockV1,
+{
+    pub fn try_replace_provider(
+        self,
+        candidate: P,
+    ) -> LocalOrderedFailedProviderReplacementResultV1<P, C> {
+        let Self { failure, inner } = self;
+        inner
+            .try_replace_provider(candidate)
+            .map(|(runtime, retirement)| (runtime, retirement, failure))
     }
 }
 
@@ -2700,6 +2886,33 @@ where
         }
     }
 }
+
+impl<G, R, U, C>
+    LocalOrderedFailedTimedRuntimeV1<LocalSupervisedOrderedLspCandidateAdapterV1<G, R, U>, C>
+where
+    G: SemanticGenerationIssuerV1 + Send + 'static,
+    R: LspIndexReadinessPortV1 + Send + 'static,
+    U: LspVirtualDocumentIssuerV1 + Send + 'static,
+    C: LocalOrderedMonotonicClockV1,
+{
+    pub fn try_install_ready_candidate(
+        self,
+        candidate: LocalSupervisedOrderedLspCandidateV1<G, R, U>,
+    ) -> LocalOrderedFailedLspReplacementInstallResultV1<G, R, U, C> {
+        let Self { failure, inner } = self;
+        inner
+            .try_install_ready_candidate(candidate)
+            .map(|installed| (installed, failure))
+    }
+}
+
+pub type LocalOrderedFailedLspReplacementInstallResultV1<G, R, U, C> = Result<
+    (
+        LocalOrderedLspInstalledReplacementV1<G, R, U, C>,
+        SemanticBrokerProviderDriveFailureClassV1,
+    ),
+    Box<LocalOrderedLspReplacementInstallFailureV1<G, R, U, C>>,
+>;
 
 #[must_use = "failed timed stop admission retains the same-spawn actor product"]
 pub struct LocalOrderedManagedTimedStopStartFailureV1<P, C> {
@@ -6836,6 +7049,73 @@ mod tests {
             LocalOrderedActorTerminalStopV1::FailedBeforeStop { .. }
         ));
         drop(sender);
+    }
+
+    #[test]
+    fn exact_provider_failure_recovers_into_replacement_without_query_replay() {
+        let mut failed_provider = provider(ready(4, 1));
+        failed_provider.poll_failure = Some(SemanticBridgePollFailureV1::RuntimeUnavailable);
+        let (prepared, _) = prepared(failed_provider, 2);
+        let timed = prepared
+            .try_with_deadlines(ScriptClock::ticks([0]), deadline_policy(2, 10))
+            .unwrap();
+        let (actor, old_sender) = timed
+            .spawn_managed(SemanticSessionActorLimitsV1::reference())
+            .unwrap();
+        assert_eq!(
+            actor.try_drive_provider().unwrap().receive(),
+            SemanticSessionActorControlCompletionV1::OutcomeUnknown
+        );
+        for _ in 0..100_000 {
+            if actor.phase() == SemanticSessionActorPhaseV1::Failed {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert_eq!(
+            actor.provider_failure(),
+            Some(SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable)
+        );
+        let mut recovery = actor
+            .try_begin_failed_provider_replacement()
+            .expect("exact provider failure must retain replacement ownership");
+        assert_eq!(
+            recovery.failure(),
+            SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+        );
+        let failed = loop {
+            match recovery.try_advance() {
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Pending(pending) => {
+                    recovery = *pending;
+                    std::thread::yield_now();
+                }
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Ready(failed) => break *failed,
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Mismatch(_) => {
+                    panic!("failed actor recovery termination mismatched")
+                }
+            }
+        };
+        assert_eq!(
+            failed.failure(),
+            SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+        );
+        let (runtime, retirement, failure) = failed
+            .try_replace_provider(provider(ready(5, 2)))
+            .expect("fresh ready provider must replace failed provider");
+        assert_eq!(
+            failure,
+            SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable
+        );
+        assert!(retirement.into_provider_if_drained().is_ok());
+        let (actor, new_sender) = runtime.resume().unwrap();
+        assert_eq!(actor.phase(), SemanticSessionActorPhaseV1::Running);
+        assert_eq!(actor.usage().provider_poll_failures, 1);
+        assert_eq!(actor.usage().provider_poll_failures_by_reason, [0, 1, 0]);
+        assert_eq!(old_sender.phase(), SemanticSessionActorPhaseV1::Failed);
+        assert_eq!(new_sender.phase(), SemanticSessionActorPhaseV1::Running);
+        drop(old_sender);
+        drop(new_sender);
+        drop(actor);
     }
 
     #[test]

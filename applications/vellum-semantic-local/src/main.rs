@@ -48,11 +48,12 @@ mod unix {
         AuthenticatedSemanticRoleDecisionV1, AuthenticatedSemanticRolePortV1,
         LocalOrderedClockFailureV1, LocalOrderedDeadlinePolicyV1, LocalOrderedInstantV1,
         LocalOrderedManagedTimedSemanticActorV1, LocalOrderedManagedTimedStopResolutionV1,
-        LocalOrderedMonotonicClockV1, LocalOrderedTimedStoppedRecoveryAdvanceV1,
-        LocalOrderedTimedSuspensionAdvanceV1, LocalSemanticRetirementStateV1,
-        LocalSupervisedOrderedLspCandidateAdapterV1, LocalSupervisedOrderedLspCandidateDriveV1,
-        LocalSupervisedOrderedLspCandidateV1, SemanticLocalListenerV1, SemanticProcessDeadlinesV1,
-        SemanticProcessLimitsV1, SemanticProviderProfileV1, SemanticProviderRestartCauseV1,
+        LocalOrderedMonotonicClockV1, LocalOrderedTimedFailedProviderRecoveryAdvanceV1,
+        LocalOrderedTimedStoppedRecoveryAdvanceV1, LocalOrderedTimedSuspensionAdvanceV1,
+        LocalSemanticRetirementStateV1, LocalSupervisedOrderedLspCandidateAdapterV1,
+        LocalSupervisedOrderedLspCandidateDriveV1, LocalSupervisedOrderedLspCandidateV1,
+        SemanticLocalListenerV1, SemanticProcessDeadlinesV1, SemanticProcessLimitsV1,
+        SemanticProviderProfileV1, SemanticProviderRestartCauseV1,
         SemanticProviderRestartControllerV1, SemanticProviderRestartDecisionV1,
         SemanticProviderRestartPolicyV1, authenticate_semantic_stream_v1,
         launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1,
@@ -67,8 +68,9 @@ mod unix {
     use vellum_semantic_session_actor::{
         SemanticSessionActorControlCompletionV1, SemanticSessionActorControlRefusalV1,
         SemanticSessionActorEventAdmissionV1, SemanticSessionActorLimitsV1,
-        SemanticSessionActorSenderV1,
+        SemanticSessionActorPhaseV1, SemanticSessionActorSenderV1,
     };
+    use vellum_semantic_session_broker::SemanticBrokerProviderDriveFailureClassV1;
 
     struct SignalSupervisor {
         requested: Arc<AtomicBool>,
@@ -184,11 +186,12 @@ mod unix {
         "    --workspace-root ABSOLUTE_DIRECTORY ",
         "--private-cwd ABSOLUTE_PRIVATE_DIRECTORY \\\n",
         "    [--provider-arg ARG]... [--provider-env NAME=VALUE]... ",
-        "[--restart-on-sighup]\n\n",
+        "[--restart-on-sighup] [--restart-on-provider-failure]\n\n",
         "--serve-probe explicitly runs with observed launch evidence. It does not claim the\n",
         "closed production assurance lattice. The credential establishes attribution; this\n",
         "operator profile independently grants synchronize and query semantic roles.\n",
         "--restart-on-sighup enables bounded OperatorRequested replacement only.\n",
+        "--restart-on-provider-failure enables bounded exact provider-failure replacement.\n",
     );
 
     #[derive(Debug)]
@@ -210,6 +213,7 @@ mod unix {
         provider_arguments: Vec<String>,
         provider_environment: BTreeMap<String, String>,
         restart_on_sighup: bool,
+        restart_on_provider_failure: bool,
     }
 
     fn parse() -> Result<Option<Arguments>, CliError> {
@@ -238,6 +242,7 @@ mod unix {
         let mut provider_arguments = Vec::new();
         let mut provider_environment = BTreeMap::new();
         let mut restart_on_sighup = false;
+        let mut restart_on_provider_failure = false;
         let mut cursor = 1;
         while cursor < values.len() {
             let flag = values[cursor]
@@ -248,6 +253,14 @@ mod unix {
                     return Err(CliError("duplicate restart policy refused"));
                 }
                 restart_on_sighup = true;
+                cursor += 1;
+                continue;
+            }
+            if flag == "--restart-on-provider-failure" {
+                if restart_on_provider_failure {
+                    return Err(CliError("duplicate provider-failure policy refused"));
+                }
+                restart_on_provider_failure = true;
                 cursor += 1;
                 continue;
             }
@@ -306,6 +319,7 @@ mod unix {
             provider_arguments,
             provider_environment,
             restart_on_sighup,
+            restart_on_provider_failure,
         }))
     }
 
@@ -552,6 +566,201 @@ mod unix {
         Ok((actor, sender))
     }
 
+    fn restart_cause_for_provider_failure(
+        failure: SemanticBrokerProviderDriveFailureClassV1,
+    ) -> SemanticProviderRestartCauseV1 {
+        match failure {
+            SemanticBrokerProviderDriveFailureClassV1::RuntimeUnavailable => {
+                SemanticProviderRestartCauseV1::ProviderUnavailable
+            }
+            SemanticBrokerProviderDriveFailureClassV1::Poisoned
+            | SemanticBrokerProviderDriveFailureClassV1::DeliveryRefused => {
+                SemanticProviderRestartCauseV1::ProviderFailed
+            }
+        }
+    }
+
+    fn observe_provider_failure(
+        actor: &StandaloneActor,
+    ) -> Option<SemanticBrokerProviderDriveFailureClassV1> {
+        let ticket = actor.try_drive_provider().ok()?;
+        let completion = ticket.receive();
+        (completion == SemanticSessionActorControlCompletionV1::OutcomeUnknown
+            && actor.phase() == SemanticSessionActorPhaseV1::Failed)
+            .then(|| actor.provider_failure())
+            .flatten()
+    }
+
+    fn drive_provider_with_failure_policy(
+        actor: &StandaloneActor,
+        enabled: bool,
+    ) -> Option<SemanticBrokerProviderDriveFailureClassV1> {
+        if enabled {
+            observe_provider_failure(actor)
+        } else {
+            if let Ok(ticket) = actor.try_drive_provider() {
+                let _ = ticket.receive();
+            }
+            None
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn replace_provider_after_exact_failure(
+        actor: StandaloneActor,
+        failure: SemanticBrokerProviderDriveFailureClassV1,
+        profile: SemanticProviderProfileV1,
+        protocol: &LspProviderProtocolProfileV1,
+        session_limits: SemanticSessionLimitsV1,
+        service_limits: SemanticServiceLimitsV1,
+        controller: &mut SemanticProviderRestartControllerV1,
+    ) -> Result<(StandaloneActor, SemanticSessionActorSenderV1), CliError> {
+        let SemanticProviderRestartDecisionV1::Backoff(backoff) = controller
+            .request_replacement(restart_cause_for_provider_failure(failure))
+            .map_err(|_| CliError("semantic failure replacement policy refused"))?
+        else {
+            return Err(CliError("semantic failure replacement policy fused"));
+        };
+        std::thread::sleep(backoff.delay());
+        let launch = controller
+            .backoff_elapsed(backoff)
+            .map_err(|_| CliError("semantic failure replacement backoff uncertain"))?;
+
+        let recovery_deadline = Instant::now() + Duration::from_secs(5);
+        let mut recovery = match actor.try_begin_failed_provider_replacement() {
+            Ok(recovery) if recovery.failure() == failure => recovery,
+            Ok(_) | Err(_) => {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic provider failure recovery refused"));
+            }
+        };
+        let failed_runtime = loop {
+            match recovery.try_advance() {
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Pending(pending) => {
+                    recovery = *pending
+                }
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Ready(runtime)
+                    if runtime.failure() == failure =>
+                {
+                    break *runtime;
+                }
+                LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Ready(_)
+                | LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Mismatch(_) => {
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError("semantic provider failure recovery uncertain"));
+                }
+            }
+            if Instant::now() >= recovery_deadline {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic provider failure recovery exhausted"));
+            }
+            std::thread::yield_now();
+        };
+
+        let qualified = match qualify_provider_launch_v1(profile) {
+            Ok(qualified) => qualified,
+            Err(_failure) => {
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError(
+                    "semantic failure replacement qualification refused",
+                ));
+            }
+        };
+        let generation_seed = launch.generation().get().saturating_sub(1);
+        let mut candidate =
+            match launch_supervised_ordered_lsp_candidate_rust_analyzer_standalone_v1(
+                qualified,
+                Generations(generation_seed),
+                RustAnalyzerReadiness(LspIndexReadinessV1::Indexing),
+                StandaloneDocuments::default(),
+                LspLimitsV1::reference(),
+                SemanticLimitsV1::reference(),
+                session_limits,
+                service_limits,
+                protocol,
+            ) {
+                Ok(candidate) => candidate,
+                Err(_failure) => {
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError("semantic failure replacement launch refused"));
+                }
+            };
+        let readiness_deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            match candidate.drive_once() {
+                LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
+                LocalSupervisedOrderedLspCandidateDriveV1::Pending => {}
+                LocalSupervisedOrderedLspCandidateDriveV1::PollFailed(_)
+                | LocalSupervisedOrderedLspCandidateDriveV1::UnexpectedCompletion => {
+                    let _ = retire_failed_candidate(candidate);
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError(
+                        "semantic failure replacement candidate contaminated",
+                    ));
+                }
+            }
+            if Instant::now() >= readiness_deadline {
+                let _ = retire_failed_candidate(candidate);
+                let _ = controller.fuse_launch_uncertain(launch);
+                return Err(CliError("semantic failure replacement readiness exhausted"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let (mut installed, observed_failure) =
+            match failed_runtime.try_install_ready_candidate(candidate) {
+                Ok(installed) => installed,
+                Err(_failure) => {
+                    let _ = controller.fuse_launch_uncertain(launch);
+                    return Err(CliError(
+                        "semantic failure replacement installation refused",
+                    ));
+                }
+            };
+        if observed_failure != failure {
+            let _ = controller.fuse_launch_uncertain(launch);
+            return Err(CliError("semantic provider failure identity changed"));
+        }
+        let cleanup_token = controller
+            .confirm_replacement_installed(launch)
+            .map_err(|_| CliError("semantic failure replacement installation uncertain"))?;
+        // The displaced provider has already failed, so a graceful protocol
+        // exchange cannot establish cleanup. Enter the supervised forced
+        // kill-and-reap path immediately and require its terminal evidence.
+        installed.escalate_displaced();
+        let terminal_deadline = Instant::now() + Duration::from_secs(14);
+        let (suspended, receipt, candidate_usage) = loop {
+            let _ = installed.drive_displaced_once();
+            match installed.try_into_reconciled() {
+                Ok(reconciled) => break reconciled,
+                Err(returned) => installed = *returned,
+            }
+            if Instant::now() >= terminal_deadline {
+                let _ = controller.fuse_cleanup_uncertain(cleanup_token);
+                return Err(CliError("semantic failure replacement cleanup exhausted"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let (actor, sender) = match suspended.resume() {
+            Ok(resumed) => resumed,
+            Err(_failure) => {
+                let _ = controller.fuse_cleanup_uncertain(cleanup_token);
+                return Err(CliError("semantic failure replacement resume refused"));
+            }
+        };
+        if !matches!(
+            controller.complete_cleanup(cleanup_token, &receipt),
+            Ok(SemanticProviderRestartDecisionV1::Running { .. })
+        ) {
+            return Err(CliError("semantic failure replacement cleanup uncertain"));
+        }
+        eprintln!(
+            "vellum-semantic-local: provider_failure_recovered class={failure:?} restart={:?} candidate={candidate_usage:?}",
+            controller.usage()
+        );
+        Ok((actor, sender))
+    }
+
     struct OperatorRolePolicy;
     impl AuthenticatedSemanticRolePortV1 for OperatorRolePolicy {
         type Context = ();
@@ -662,19 +871,39 @@ mod unix {
         let listener = SemanticLocalListenerV1::try_bind(arguments.socket)
             .map_err(|_| CliError("semantic socket bind refused"))?;
         let shutdown = SignalSupervisor::install(arguments.restart_on_sighup)?;
-        let mut restart_controller = arguments.restart_on_sighup.then(|| {
-            SemanticProviderRestartControllerV1::new_running(
-                SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(250)])
-                    .expect("fixed standalone restart policy is valid"),
-                NonZeroU64::new(1).unwrap(),
-            )
-        });
+        let mut restart_controller =
+            (arguments.restart_on_sighup || arguments.restart_on_provider_failure).then(|| {
+                SemanticProviderRestartControllerV1::new_running(
+                    SemanticProviderRestartPolicyV1::try_new(vec![Duration::from_millis(250)])
+                        .expect("fixed standalone restart policy is valid"),
+                    NonZeroU64::new(1).unwrap(),
+                )
+            });
         let mut rotation_candidate = None;
+        let mut pending_provider_failure = None;
         eprintln!("vellum-semantic-local: endpoint_ready probe-profile provider_indexing");
         'serve: loop {
             let mut stream = loop {
                 if shutdown.requested() {
                     break 'serve;
+                }
+                if let Some(failure) = pending_provider_failure.take() {
+                    let controller = restart_controller
+                        .as_mut()
+                        .ok_or(CliError("semantic failure replacement policy absent"))?;
+                    let replacement = replace_provider_after_exact_failure(
+                        actor,
+                        failure,
+                        restart_profile.clone(),
+                        &protocol,
+                        session_limits,
+                        service_limits,
+                        controller,
+                    )?;
+                    actor = replacement.0;
+                    sender = replacement.1;
+                    rotation_candidate = None;
+                    continue;
                 }
                 if shutdown.take_restart_requested() {
                     let controller = restart_controller
@@ -693,8 +922,12 @@ mod unix {
                     continue;
                 }
                 if let Some(next) = rotation_candidate {
-                    if let Ok(ticket) = actor.try_drive_provider() {
-                        let _ = ticket.receive();
+                    if let Some(failure) = drive_provider_with_failure_policy(
+                        &actor,
+                        arguments.restart_on_provider_failure,
+                    ) {
+                        pending_provider_failure = Some(failure);
+                        continue;
                     }
                     if let Ok(ticket) = actor.try_drive_expiry() {
                         let _ = ticket.receive();
@@ -735,8 +968,12 @@ mod unix {
                 {
                     Some(stream) => break stream,
                     None => {
-                        if let Ok(ticket) = actor.try_drive_provider() {
-                            let _ = ticket.receive();
+                        if let Some(failure) = drive_provider_with_failure_policy(
+                            &actor,
+                            arguments.restart_on_provider_failure,
+                        ) {
+                            pending_provider_failure = Some(failure);
+                            continue;
                         }
                         if let Ok(ticket) = actor.try_drive_expiry() {
                             let _ = ticket.receive();
@@ -826,8 +1063,13 @@ mod unix {
                     );
                     break;
                 }
-                if let Ok(ticket) = actor.try_drive_provider() {
-                    let _ = ticket.receive();
+                if let Some(failure) = drive_provider_with_failure_policy(
+                    &actor,
+                    arguments.restart_on_provider_failure,
+                ) {
+                    pending_provider_failure = Some(failure);
+                    shutdown.clear();
+                    break;
                 }
                 if let Ok(ticket) = actor.try_drive_expiry() {
                     let _ = ticket.receive();
@@ -1006,6 +1248,7 @@ mod unix {
         fn restart_policy_is_absent_by_default_and_requires_one_explicit_flag() {
             let default = parse_values(service_arguments()).unwrap().unwrap();
             assert!(!default.restart_on_sighup);
+            assert!(!default.restart_on_provider_failure);
 
             let mut opted_in = service_arguments();
             opted_in.push(OsString::from("--restart-on-sighup"));
@@ -1018,6 +1261,14 @@ mod unix {
 
             opted_in.push(OsString::from("--restart-on-sighup"));
             assert!(parse_values(opted_in).is_err());
+
+            let mut provider_failure = service_arguments();
+            provider_failure.push(OsString::from("--restart-on-provider-failure"));
+            let parsed = parse_values(provider_failure.clone()).unwrap().unwrap();
+            assert!(parsed.restart_on_provider_failure);
+            assert!(!parsed.restart_on_sighup);
+            provider_failure.push(OsString::from("--restart-on-provider-failure"));
+            assert!(parse_values(provider_failure).is_err());
         }
     }
 }
