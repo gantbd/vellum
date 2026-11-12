@@ -65,11 +65,15 @@ requireClean(root, 'Vellum');
 requireClean(keystone, 'Keystone');
 
 const candidate = policy.releaseCandidate ?? {};
-const profilesByPackage = new Map(
-  (policy.sourceInstallProfiles ?? []).map((profile) => [profile.package, profile]),
-);
 const candidatePackages = candidate.packages ?? [];
-const profiles = candidatePackages.map((name) => profilesByPackage.get(name));
+const installProfiles = policy.sourceInstallProfiles ?? [];
+const profiles = candidatePackages.map((binary) => {
+  const owners = installProfiles.filter((profile) => {
+    const binaries = profile.binaries ?? (profile.binary === undefined ? [] : [profile.binary]);
+    return binaries.includes(binary);
+  });
+  return owners.length === 1 ? { ...owners[0], binary } : undefined;
+});
 if (
   candidate.platform !== 'macos'
   || candidate.publishing !== 'none'
@@ -107,7 +111,9 @@ try {
   const cargoArguments = [
     'build', '--locked', '--release', '--target', host, '--target-dir', target,
   ];
-  for (const profile of profiles) cargoArguments.push('--package', profile.package);
+  for (const packageName of new Set(profiles.map((profile) => profile.package))) {
+    cargoArguments.push('--package', packageName);
+  }
   for (const name of DEPLOYMENT_NAMES) cargoArguments.push('--package', name);
   run('cargo', cargoArguments, { env: buildEnvironment });
 
@@ -128,7 +134,9 @@ try {
       file: profile.binary,
       bytes: fs.statSync(staged).size,
       sha256: sha256(staged),
-      ...(profile.role === undefined ? {} : { role: profile.role }),
+      ...(profile.binary === 'vellum-mcp'
+        ? { role: 'peer connector to an already-running daemon' }
+        : {}),
     });
   }
   const deployment = DEPLOYMENT_NAMES.map((name, index) => {
@@ -179,7 +187,7 @@ try {
       locked: true,
       rustc: `rustc ${rustcRelease}`,
       cargo: cargoVersion,
-      packages: [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES],
+      packages: ['vellum', ...DEPLOYMENT_NAMES],
       features: 'default',
       environment: {
         CARGO_BUILD_TARGET: 'unset',

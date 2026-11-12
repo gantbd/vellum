@@ -57,7 +57,7 @@ const makeCandidate = (directory, revision, marker) => {
   const artifacts = ['vellum-daemon', 'vellum-mcp'].map((name, index) => {
     const file = path.join(directory, name);
     return {
-      package: name,
+      package: 'vellum',
       binary: name,
       file: name,
       bytes: fs.statSync(file).size,
@@ -104,7 +104,7 @@ const makeCandidate = (directory, revision, marker) => {
       rustc: 'rustc 1.95.0',
       cargo: 'cargo 1.95.0',
       packages: [
-        'vellum-daemon', 'vellum-mcp', 'vellum-launchd-render', 'vellum-launchd-activate',
+        'vellum', 'vellum-launchd-render', 'vellum-launchd-activate',
       ],
       features: 'default',
       environment: {

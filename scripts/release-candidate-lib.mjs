@@ -103,7 +103,7 @@ export function validateCandidate(directory, options = {}) {
     || manifest.build.profile !== 'release'
     || manifest.build.locked !== true
     || manifest.build.targetSelection !== 'cargo --target'
-    || manifest.build.packages.join(',') !== [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES].join(',')
+    || manifest.build.packages.join(',') !== ['vellum', ...DEPLOYMENT_NAMES].join(',')
     || manifest.build.features !== 'default'
     || JSON.stringify(manifest.build.environment) !== JSON.stringify({
       CARGO_BUILD_TARGET: 'unset',
@@ -150,7 +150,7 @@ export function validateCandidate(directory, options = {}) {
       : ['package', 'binary', 'file', 'bytes', 'sha256'];
     exactKeys(artifact, required, `artifacts[${index}]`);
     const expectedName = ARTIFACT_NAMES[index];
-    if (artifact.package !== expectedName || artifact.binary !== expectedName || artifact.file !== expectedName) {
+    if (artifact.package !== 'vellum' || artifact.binary !== expectedName || artifact.file !== expectedName) {
       fail('artifact ordering or identity is incompatible');
     }
     if (index === 1 && artifact.role !== 'peer connector to an already-running daemon') {

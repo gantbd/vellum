@@ -182,7 +182,8 @@ gates after both repository objects are remotely retrievable.
 The manually dispatched `release-candidate.yml` workflow checks out the exact
 Vellum workflow revision and the Keystone commit pinned by the coordinated
 source manifest. On macOS its product scope remains exactly `vellum-daemon`
-and `vellum-mcp`; it also builds the two separately classified launchd
+and `vellum-mcp`, both built from the installation-only `vellum` package; it
+also builds the two separately classified launchd
 deployment tools. It stages the product binaries, executes each staged
 `--help` path, and checksum-closes the inert, relocatable
 `vellum-launchd-render` helper and activation executor. It uploads a short-lived Actions artifact

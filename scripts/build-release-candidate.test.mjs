@@ -59,7 +59,7 @@ try {
   write(
     vellum,
     'Cargo.toml',
-    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/launchd-render", "distribution/launchd-activate"]\nresolver = "3"\n',
+    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/cargo-install", "distribution/launchd-render", "distribution/launchd-activate"]\nresolver = "3"\n',
   );
   const profiles = [
     ['applications/vellum-daemon', 'vellum-daemon', 'keystone-observe'],
@@ -77,6 +77,21 @@ try {
       `fn main() { println!("${name} --help"); }\n`,
     );
   }
+  write(
+    vellum,
+    'distribution/cargo-install/Cargo.toml',
+    '[package]\nname = "vellum"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n[[bin]]\nname = "vellum-mcp"\npath = "src/bin/vellum-mcp.rs"\n',
+  );
+  write(
+    vellum,
+    'distribution/cargo-install/src/bin/vellum-daemon.rs',
+    'fn main() { println!("vellum-daemon --help"); }\n',
+  );
+  write(
+    vellum,
+    'distribution/cargo-install/src/bin/vellum-mcp.rs',
+    'fn main() { println!("vellum-mcp --help"); }\n',
+  );
   write(
     vellum,
     'distribution/launchd-render/Cargo.toml',
@@ -114,17 +129,11 @@ try {
       },
       sourceInstallProfiles: [
         {
-          package: 'vellum-daemon',
-          path: 'applications/vellum-daemon',
-          binary: 'vellum-daemon',
+          package: 'vellum',
+          path: 'distribution/cargo-install',
+          binaries: ['vellum-daemon', 'vellum-mcp'],
           platform: 'macos',
-        },
-        {
-          package: 'vellum-mcp',
-          path: 'connectors/vellum-mcp',
-          binary: 'vellum-mcp',
-          platform: 'unix',
-          role: 'peer connector to an already-running daemon',
+          role: 'installation-only composition of the daemon and its peer MCP connector',
         },
       ],
       releaseCandidate: {
