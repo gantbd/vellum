@@ -87,8 +87,10 @@ The following gaps are release-blocking for that public surface:
    covered by a target-neutral test that observes the original task without retrying
    the write or changing the binding. Content-free workspace gauges expose bounded
    capacity, issued/retained/live/fenced tasks, physical and binding classes, and
-   completion. Service-level RED counters and stage latency remain required before
-   protocol projection.
+   completion. The service adds saturating RED counters and accumulated monotonic
+   latency for the closed Begin, Admission, Persistence, Activation, Release, and
+   Retirement stage sum; reconciliation calls remain classified under the stage
+   whose obligation they close. These observations never participate in semantics.
 5. The durable request journal must encode the eventual command and receipt before
    wire publication. A crash after the external write but before a completed journal
    record must replay/fence as unknown; it must never repeat the overwrite under a

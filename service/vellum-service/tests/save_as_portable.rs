@@ -30,7 +30,7 @@ use vellum_host::{
     workspace::WorkspaceIdentityLimitsV1,
 };
 use vellum_protocol::WorkspaceDocumentIdV1;
-use vellum_service::{Service, ServiceLimits};
+use vellum_service::{Service, ServiceLimits, ServiceSaveAsStageV1};
 
 type Resources = Arc<Mutex<BTreeMap<PathBuf, (Vec<u8>, u64)>>>;
 
@@ -379,4 +379,22 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     assert_eq!(usage.save_as_live, 1);
     assert_eq!(usage.save_as_fenced, 1);
     assert_eq!(usage.save_as_retained, 1);
+    for stage in [
+        ServiceSaveAsStageV1::Begin,
+        ServiceSaveAsStageV1::Admission,
+        ServiceSaveAsStageV1::Persistence,
+        ServiceSaveAsStageV1::Activation,
+        ServiceSaveAsStageV1::Release,
+    ] {
+        let observed = usage.save_as_stage(stage);
+        assert_eq!(observed.requests, 1);
+        assert_eq!(observed.completed, 1);
+        assert_eq!(observed.errors, 0);
+        assert_eq!(observed.latency_samples, 1);
+    }
+    let retirement = usage.save_as_stage(ServiceSaveAsStageV1::Retirement);
+    assert_eq!(retirement.requests, 2);
+    assert_eq!(retirement.completed, 0);
+    assert_eq!(retirement.errors, 2);
+    assert_eq!(retirement.latency_samples, 2);
 }

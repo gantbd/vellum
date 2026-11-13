@@ -9,6 +9,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::{Duration, Instant},
 };
 use vellum_editor::{
     DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
@@ -154,6 +155,40 @@ pub enum RequestRetentionOutcome {
     CapacityFull,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceSaveAsStageV1 {
+    Begin,
+    Admission,
+    Persistence,
+    Activation,
+    Release,
+    Retirement,
+}
+
+impl ServiceSaveAsStageV1 {
+    const COUNT: usize = 6;
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Begin => 0,
+            Self::Admission => 1,
+            Self::Persistence => 2,
+            Self::Activation => 3,
+            Self::Release => 4,
+            Self::Retirement => 5,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ServiceSaveAsStageUsageV1 {
+    pub requests: u64,
+    pub completed: u64,
+    pub errors: u64,
+    pub latency_samples: u64,
+    pub latency_nanos: u64,
+}
+
 /// Saturating, non-authoritative operational evidence.
 ///
 /// Counters never participate in admission or semantic decisions. Retention
@@ -268,6 +303,7 @@ pub struct ServiceUsage {
     pub save_as_retained: usize,
     pub save_as_live: usize,
     pub save_as_fenced: usize,
+    pub save_as_stages: [ServiceSaveAsStageUsageV1; ServiceSaveAsStageV1::COUNT],
     pub counter_saturated: bool,
     pub active_clients: usize,
     pub client_capacity: usize,
@@ -278,6 +314,12 @@ pub struct ServiceUsage {
     pub request_capacity: usize,
     pub retained_witnesses: usize,
     pub witness_capacity: usize,
+}
+
+impl ServiceUsage {
+    pub const fn save_as_stage(&self, stage: ServiceSaveAsStageV1) -> ServiceSaveAsStageUsageV1 {
+        self.save_as_stages[stage.index()]
+    }
 }
 
 #[derive(Clone)]
@@ -1066,6 +1108,7 @@ impl Service {
         rebind: AuthorityRequestV1,
         destination: SaveAsDestinationRequestV1,
     ) -> Result<ServiceSaveAsIdV1, ServiceSaveAsErrorV1> {
+        let started = Instant::now();
         bump(
             &mut self.usage.save_as_begin_requests,
             &mut self.usage.counter_saturated,
@@ -1080,9 +1123,15 @@ impl Service {
                 &mut self.usage.save_as_refused,
                 &mut self.usage.counter_saturated,
             );
+            observe_save_as_stage(
+                &mut self.usage,
+                ServiceSaveAsStageV1::Begin,
+                false,
+                started.elapsed(),
+            );
             return Err(ServiceSaveAsErrorV1::UnknownDocument);
         };
-        match self.workspace.begin_document_save_as(
+        let result = match self.workspace.begin_document_save_as(
             &native,
             expected_revision,
             authority,
@@ -1104,7 +1153,14 @@ impl Service {
                 );
                 Err(error.into())
             }
-        }
+        };
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Begin,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn admit_save_as(
@@ -1113,9 +1169,18 @@ impl Service {
         requirements: SaveRequirements,
         facts: &TrustedSourceExportFactsV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .admit_document_save_as(&operation.0, requirements, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Admission,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn service_save_as(
@@ -1123,9 +1188,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportFactsV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .service_document_save_as(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Persistence,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn reconcile_save_as_write(
@@ -1133,9 +1207,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportFactsV1,
     ) -> Result<bool, ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .reconcile_document_save_as_write(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Persistence,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn activate_save_as(
@@ -1144,24 +1227,47 @@ impl Service {
         maximum_binding_history: usize,
         facts: &TrustedSourceSaveAsFactsV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
-        self.preflight_save_as_binding_revision(operation)?;
-        let before = self.workspace.document_save_as_status(&operation.0)?;
-        self.workspace
-            .activate_document_save_as(&operation.0, maximum_binding_history, facts)?;
-        self.commit_save_as_binding_revision(operation, before)
+        let started = Instant::now();
+        let result = (|| {
+            self.preflight_save_as_binding_revision(operation)?;
+            let before = self.workspace.document_save_as_status(&operation.0)?;
+            self.workspace.activate_document_save_as(
+                &operation.0,
+                maximum_binding_history,
+                facts,
+            )?;
+            self.commit_save_as_binding_revision(operation, before)
+        })();
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Activation,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn reconcile_save_as_activation(
         &mut self,
         operation: &ServiceSaveAsIdV1,
     ) -> Result<bool, ServiceSaveAsErrorV1> {
-        self.preflight_save_as_binding_revision(operation)?;
-        let before = self.workspace.document_save_as_status(&operation.0)?;
-        let closed = self
-            .workspace
-            .reconcile_document_save_as_activation(&operation.0)?;
-        self.commit_save_as_binding_revision(operation, before)?;
-        Ok(closed)
+        let started = Instant::now();
+        let result = (|| {
+            self.preflight_save_as_binding_revision(operation)?;
+            let before = self.workspace.document_save_as_status(&operation.0)?;
+            let closed = self
+                .workspace
+                .reconcile_document_save_as_activation(&operation.0)?;
+            self.commit_save_as_binding_revision(operation, before)?;
+            Ok(closed)
+        })();
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Activation,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn release_save_as(
@@ -1169,9 +1275,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportControlV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .release_document_save_as(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Release,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn reconcile_save_as_release(
@@ -1179,9 +1294,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportControlV1,
     ) -> Result<bool, ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .reconcile_document_save_as_release(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Release,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn retire_save_as(
@@ -1189,9 +1313,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportControlV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .retire_document_save_as(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Retirement,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn reconcile_save_as_retirement(
@@ -1199,9 +1332,18 @@ impl Service {
         operation: &ServiceSaveAsIdV1,
         facts: &TrustedSourceExportControlV1,
     ) -> Result<bool, ServiceSaveAsErrorV1> {
-        self.workspace
+        let started = Instant::now();
+        let result = self
+            .workspace
             .reconcile_document_save_as_retirement(&operation.0, facts)
-            .map_err(Into::into)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Retirement,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
     }
 
     pub fn save_as_status(
@@ -3532,6 +3674,27 @@ fn add(value: &mut u64, amount: u64, saturated: &mut bool) {
     *value = next;
 }
 
+fn observe_save_as_stage(
+    usage: &mut ServiceUsage,
+    stage: ServiceSaveAsStageV1,
+    completed: bool,
+    elapsed: Duration,
+) {
+    let stage = &mut usage.save_as_stages[stage.index()];
+    bump(&mut stage.requests, &mut usage.counter_saturated);
+    if completed {
+        bump(&mut stage.completed, &mut usage.counter_saturated);
+    } else {
+        bump(&mut stage.errors, &mut usage.counter_saturated);
+    }
+    bump(&mut stage.latency_samples, &mut usage.counter_saturated);
+    add(
+        &mut stage.latency_nanos,
+        u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
+        &mut usage.counter_saturated,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3548,6 +3711,26 @@ mod tests {
         assert_eq!(usage.request_new, u64::MAX);
         assert!(usage.counter_saturated);
         assert_eq!(format!("{:?}", RequestRetentionOutcome::New), "New");
+    }
+
+    #[test]
+    fn save_as_stage_observation_saturates_without_affecting_semantics() {
+        let mut usage = ServiceUsage::default();
+        usage.save_as_stages[ServiceSaveAsStageV1::Persistence.index()].requests = u64::MAX;
+
+        observe_save_as_stage(
+            &mut usage,
+            ServiceSaveAsStageV1::Persistence,
+            false,
+            Duration::ZERO,
+        );
+
+        let observed = usage.save_as_stage(ServiceSaveAsStageV1::Persistence);
+        assert_eq!(observed.requests, u64::MAX);
+        assert_eq!(observed.completed, 0);
+        assert_eq!(observed.errors, 1);
+        assert_eq!(observed.latency_samples, 1);
+        assert!(usage.counter_saturated);
     }
 
     #[test]
