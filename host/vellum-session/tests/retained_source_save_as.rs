@@ -3,8 +3,9 @@ use vellum_host::save_as::{SaveAsBindingV1, SaveAsPersistenceV1};
 use vellum_session::host::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
     RetainedSourceSaveAsV1, SourceSaveAsActivationPortV1, SourceSaveAsAdmissionPortV1,
-    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1, SourceSaveAsPreparePortV1,
-    SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
+    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1,
+    SourceSaveAsPreparationDischargePortV1, SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1,
+    SourceSaveAsTokenSetV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,18 +77,8 @@ impl SourceSaveAsPreparePortV1<FakeTokens> for FakePort {
     }
 }
 
-impl SourceSaveAsAdmissionPortV1<FakeTokens> for FakePort {
+impl SourceSaveAsPreparationDischargePortV1<FakeTokens> for FakePort {
     type Error = Fault;
-
-    fn admit(&mut self, preparation: &mut u8) -> Result<u8, Self::Error> {
-        self.calls.admit += 1;
-        assert_eq!(*preparation, 1);
-        if self.admit_fails {
-            Err(Fault::Injected)
-        } else {
-            Ok(2)
-        }
-    }
 
     fn discard_preparation(
         &mut self,
@@ -96,6 +87,18 @@ impl SourceSaveAsAdmissionPortV1<FakeTokens> for FakePort {
         self.calls.discard += 1;
         assert_eq!(*preparation, 1);
         self.discard
+    }
+}
+
+impl SourceSaveAsAdmissionPortV1<FakeTokens> for FakePort {
+    fn admit(&mut self, preparation: &mut u8) -> Result<u8, Self::Error> {
+        self.calls.admit += 1;
+        assert_eq!(*preparation, 1);
+        if self.admit_fails {
+            Err(Fault::Injected)
+        } else {
+            Ok(2)
+        }
     }
 }
 
@@ -210,6 +213,44 @@ fn happy_path_performs_each_effect_once_and_returns_activation() {
     assert_eq!(port.calls.recover, 0);
     assert_eq!(port.calls.release, 1);
     assert_eq!(port.calls.retire, 1);
+}
+
+#[test]
+fn prepared_operation_can_be_closed_without_admission_or_write() {
+    let mut port = FakePort::default();
+    let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
+    operation.prepare(&mut port).unwrap();
+
+    assert!(operation.discard_prepared(&mut port).unwrap());
+    assert_eq!(operation.stage(), RetainedSourceSaveAsStageV1::Complete);
+    assert_eq!(operation.persistence(), SaveAsPersistenceV1::NotAttempted);
+    assert_eq!(operation.binding(), SaveAsBindingV1::NotActivated);
+    assert_eq!(port.calls.prepare, 1);
+    assert_eq!(port.calls.discard, 1);
+    assert_eq!(port.calls.admit, 0);
+    assert_eq!(port.calls.service, 0);
+}
+
+#[test]
+fn indeterminate_pre_admission_discharge_is_absorbing() {
+    let mut port = FakePort {
+        discard: Ok(PreparationDischargeV1::Unknown),
+        ..FakePort::default()
+    };
+    let mut operation = RetainedSourceSaveAsV1::<FakeTokens>::new();
+    operation.prepare(&mut port).unwrap();
+
+    assert!(!operation.discard_prepared(&mut port).unwrap());
+    assert_eq!(
+        operation.stage(),
+        RetainedSourceSaveAsStageV1::AdmissionFenced
+    );
+    assert!(matches!(
+        operation.discard_prepared(&mut port),
+        Err(RetainedSourceSaveAsErrorV1::InvalidTransition)
+    ));
+    assert_eq!(port.calls.discard, 1);
+    assert_eq!(port.calls.admit, 0);
 }
 
 #[test]

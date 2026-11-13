@@ -100,9 +100,13 @@ The following gaps are release-blocking for that public surface:
    identity in which the target document locator alone changed, checkpoints that
    identity, and completes the journal only from a terminal replayable receipt that
    proves the stable binding changed. Intermediate crash cuts remain pending and the
-   type exposes no retry or effect-execution method. Release and retirement fences
-   retain explicit reconciliation calls. This coordinator is not yet installed in
-   daemon composition, so no public command is admitted.
+   type exposes no retry or effect-execution method. If intent persistence refuses
+   after authority/capture but before admission, the retained preparation now has an
+   explicit discharge transition: a proven discard closes and reclaims the workspace
+   slot, while unknown or failed discharge becomes an absorbing admission fence.
+   Release and retirement fences retain explicit reconciliation calls. This
+   coordinator is not yet installed in daemon composition, so no public command is
+   admitted.
 
 Until all five laws are implemented together, no command tag, client convenience
 method, wire fixture, daemon flag, or MCP tool is advertised. In particular,

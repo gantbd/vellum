@@ -50,13 +50,18 @@ pub trait SourceSaveAsPreparePortV1<T: SourceSaveAsTokenSetV1> {
     fn prepare(&mut self) -> Result<T::Preparation, Self::Error>;
 }
 
-pub trait SourceSaveAsAdmissionPortV1<T: SourceSaveAsTokenSetV1> {
+pub trait SourceSaveAsPreparationDischargePortV1<T: SourceSaveAsTokenSetV1> {
     type Error;
-    fn admit(&mut self, preparation: &mut T::Preparation) -> Result<T::Attempt, Self::Error>;
     fn discard_preparation(
         &mut self,
         preparation: &T::Preparation,
     ) -> Result<PreparationDischargeV1, Self::Error>;
+}
+
+pub trait SourceSaveAsAdmissionPortV1<T: SourceSaveAsTokenSetV1>:
+    SourceSaveAsPreparationDischargePortV1<T>
+{
+    fn admit(&mut self, preparation: &mut T::Preparation) -> Result<T::Attempt, Self::Error>;
 }
 
 pub trait SourceSaveAsServicePortV1<T: SourceSaveAsTokenSetV1> {
@@ -229,12 +234,43 @@ impl<T: SourceSaveAsTokenSetV1> RetainedSourceSaveAsV1<T> {
         }
     }
 
+    /// Closes an authorized preparation before native admission. No write or
+    /// activation authority is exercised. An indeterminate discharge becomes
+    /// the same absorbing admission fence used after an admission refusal.
+    pub fn discard_prepared<P>(
+        &mut self,
+        port: &mut P,
+    ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
+    where
+        P: SourceSaveAsPreparationDischargePortV1<T>,
+    {
+        let state = self.take_state();
+        let State::Prepared(preparation) = state else {
+            self.state = state;
+            return Err(RetainedSourceSaveAsErrorV1::InvalidTransition);
+        };
+        match port.discard_preparation(&preparation) {
+            Ok(PreparationDischargeV1::Discarded) => {
+                self.state = State::Complete(None);
+                Ok(true)
+            }
+            Ok(PreparationDischargeV1::AlreadyConsumed | PreparationDischargeV1::Unknown) => {
+                self.state = State::AdmissionFenced(preparation);
+                Ok(false)
+            }
+            Err(error) => {
+                self.state = State::AdmissionFenced(preparation);
+                Err(RetainedSourceSaveAsErrorV1::Port(error))
+            }
+        }
+    }
+
     pub fn reconcile_admission<P>(
         &mut self,
         port: &mut P,
     ) -> Result<bool, RetainedSourceSaveAsErrorV1<P::Error>>
     where
-        P: SourceSaveAsAdmissionPortV1<T>,
+        P: SourceSaveAsPreparationDischargePortV1<T>,
     {
         let state = self.take_state();
         let State::AdmissionFenced(preparation) = state else {

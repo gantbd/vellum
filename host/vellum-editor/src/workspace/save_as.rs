@@ -20,8 +20,9 @@ use vellum_session::host::{
     AuthorizedSourceSaveAsPreparationV1, PreparationDischargeV1, RetainedSourceSaveAsErrorV1,
     RetainedSourceSaveAsStageV1, RetainedSourceSaveAsV1, SaveAsActivation, SourceExportAttempt,
     SourceSaveAsActivationPortV1, SourceSaveAsAdmissionPortV1, SourceSaveAsCompletionPortV1,
-    SourceSaveAsObservationV1, SourceSaveAsPreparationErrorV1, SourceSaveAsPreparePortV1,
-    SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
+    SourceSaveAsObservationV1, SourceSaveAsPreparationDischargePortV1,
+    SourceSaveAsPreparationErrorV1, SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1,
+    SourceSaveAsTokenSetV1,
 };
 
 #[derive(Clone)]
@@ -157,9 +158,41 @@ struct AdmissionPort<'a> {
     facts: &'a TrustedSourceExportFactsV1,
 }
 
-impl SourceSaveAsAdmissionPortV1<WorkspaceSaveAsTokens> for AdmissionPort<'_> {
+struct PreparationDischargePort<'a> {
+    host: &'a mut LocalHost,
+}
+
+impl SourceSaveAsPreparationDischargePortV1<WorkspaceSaveAsTokens>
+    for PreparationDischargePort<'_>
+{
     type Error = PortError;
 
+    fn discard_preparation(
+        &mut self,
+        preparation: &AuthorizedSourceSaveAsPreparationV1,
+    ) -> Result<PreparationDischargeV1, Self::Error> {
+        self.host
+            .discard_source_export_preparation(preparation.native())
+            .map(|()| PreparationDischargeV1::Discarded)
+            .map_err(PortError::Session)
+    }
+}
+
+impl SourceSaveAsPreparationDischargePortV1<WorkspaceSaveAsTokens> for AdmissionPort<'_> {
+    type Error = PortError;
+
+    fn discard_preparation(
+        &mut self,
+        preparation: &AuthorizedSourceSaveAsPreparationV1,
+    ) -> Result<PreparationDischargeV1, Self::Error> {
+        self.host
+            .discard_source_export_preparation(preparation.native())
+            .map(|()| PreparationDischargeV1::Discarded)
+            .map_err(PortError::Session)
+    }
+}
+
+impl SourceSaveAsAdmissionPortV1<WorkspaceSaveAsTokens> for AdmissionPort<'_> {
     fn admit(
         &mut self,
         preparation: &mut AuthorizedSourceSaveAsPreparationV1,
@@ -185,16 +218,6 @@ impl SourceSaveAsAdmissionPortV1<WorkspaceSaveAsTokens> for AdmissionPort<'_> {
             authorization: Some(authorization),
             evidence: None,
         })
-    }
-
-    fn discard_preparation(
-        &mut self,
-        preparation: &AuthorizedSourceSaveAsPreparationV1,
-    ) -> Result<PreparationDischargeV1, Self::Error> {
-        self.host
-            .discard_source_export_preparation(preparation.native())
-            .map(|()| PreparationDischargeV1::Discarded)
-            .map_err(PortError::Session)
     }
 }
 
@@ -444,6 +467,28 @@ impl Workspace {
                 facts,
             })
             .map_err(map_port)
+    }
+
+    /// Discharges a prepared transaction before native admission. A closed
+    /// preparation is removed immediately; an indeterminate discharge stays
+    /// retained behind the admission fence for explicit reconciliation.
+    pub fn discard_document_save_as_preparation(
+        &mut self,
+        id: &WorkspaceSaveAsIdV1,
+    ) -> Result<bool, WorkspaceSaveAsErrorV1> {
+        let index = self.save_as_index(id)?;
+        let (host, transactions) = (&mut self.host, &mut self.save_as_transactions);
+        let transaction = transactions[index]
+            .as_mut()
+            .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)?;
+        let closed = transaction
+            .operation
+            .discard_prepared(&mut PreparationDischargePort { host })
+            .map_err(map_port)?;
+        if closed {
+            transactions[index] = None;
+        }
+        Ok(closed)
     }
 
     pub fn service_document_save_as(

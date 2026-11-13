@@ -21,8 +21,9 @@ mod retained;
 pub use retained::{
     PreparationDischargeV1, RetainedSourceSaveAsErrorV1, RetainedSourceSaveAsStageV1,
     RetainedSourceSaveAsV1, SourceSaveAsActivationPortV1, SourceSaveAsAdmissionPortV1,
-    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1, SourceSaveAsPreparePortV1,
-    SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
+    SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1,
+    SourceSaveAsPreparationDischargePortV1, SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1,
+    SourceSaveAsTokenSetV1,
 };
 
 #[derive(Debug)]

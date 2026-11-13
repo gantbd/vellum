@@ -457,6 +457,52 @@ fn authority_for(
 }
 
 #[test]
+fn prepared_save_as_can_be_discarded_without_admission_or_write() {
+    let base = std::env::temp_dir().join("vellum-portable-discard-memory");
+    let source = base.join("source");
+    let destination = base.join("destination");
+    let resources = Arc::new(Mutex::new(BTreeMap::from([
+        (source.clone(), (b"alpha".to_vec(), 1)),
+        (destination.clone(), (b"old".to_vec(), 1)),
+    ])));
+    let mut profile = reference_workspace_profile(ErasedPathResourceAdapterFactory::new(
+        MemoryFactory(resources.clone()),
+    ));
+    profile.engine.resources.as_mut().unwrap().max_key_bytes = 4096;
+    let mut workspace = Workspace::open(std::slice::from_ref(&source), profile).unwrap();
+    let document = workspace.inventory().unwrap().documents[0].clone();
+    let version = workspace.document_version(&document).unwrap();
+    let (persist, rebind, destination_request, mut authority) =
+        authority_for(&version, destination.clone());
+    let operation = workspace
+        .begin_document_save_as(
+            &document,
+            version.revision,
+            &mut authority,
+            persist,
+            rebind,
+            destination_request,
+        )
+        .unwrap();
+    assert_eq!(workspace.save_as_usage().retained, 1);
+
+    assert!(
+        workspace
+            .discard_document_save_as_preparation(&operation)
+            .unwrap()
+    );
+    assert_eq!(workspace.save_as_usage().retained, 0);
+    assert!(
+        workspace
+            .discard_document_save_as_preparation(&operation)
+            .is_err()
+    );
+    let resources = resources.lock().unwrap();
+    assert_eq!(resources.get(&source).unwrap(), &(b"alpha".to_vec(), 1));
+    assert_eq!(resources.get(&destination).unwrap(), &(b"old".to_vec(), 1));
+}
+
+#[test]
 fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_binding() {
     let base = std::env::temp_dir().join("vellum-portable-memory");
     let source = base.join("source");

@@ -1183,6 +1183,24 @@ impl Service {
         result
     }
 
+    pub fn discard_save_as_preparation(
+        &mut self,
+        operation: &ServiceSaveAsIdV1,
+    ) -> Result<bool, ServiceSaveAsErrorV1> {
+        let started = Instant::now();
+        let result = self
+            .workspace
+            .discard_document_save_as_preparation(&operation.0)
+            .map_err(Into::into);
+        observe_save_as_stage(
+            &mut self.usage,
+            ServiceSaveAsStageV1::Admission,
+            result.is_ok(),
+            started.elapsed(),
+        );
+        result
+    }
+
     pub fn service_save_as(
         &mut self,
         operation: &ServiceSaveAsIdV1,

@@ -30,8 +30,8 @@ pub use source_export::{
     RetainedSourceSaveAsStageV1, RetainedSourceSaveAsV1, SaveAsActivation, SourceExportAttempt,
     SourceExportCopyPreparationErrorV1, SourceExportPreparation, SourceSaveAsActivationPortV1,
     SourceSaveAsAdmissionPortV1, SourceSaveAsCompletionPortV1, SourceSaveAsObservationV1,
-    SourceSaveAsPreparationErrorV1, SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1,
-    SourceSaveAsTokenSetV1,
+    SourceSaveAsPreparationDischargePortV1, SourceSaveAsPreparationErrorV1,
+    SourceSaveAsPreparePortV1, SourceSaveAsServicePortV1, SourceSaveAsTokenSetV1,
 };
 mod invocation_claims;
 mod invocations;
