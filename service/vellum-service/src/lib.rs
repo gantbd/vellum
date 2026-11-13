@@ -1,6 +1,11 @@
 //! Bounded in-process Vellum service interpreter.
 #![forbid(unsafe_code)]
 
+mod save_as_durable;
+pub use save_as_durable::{
+    DurableServiceSaveAsBeginErrorV1, DurableServiceSaveAsErrorV1, DurableServiceSaveAsV1,
+};
+
 use keystone_replay::{ReplayDecision, ReplayRegister};
 use std::{
     collections::VecDeque,

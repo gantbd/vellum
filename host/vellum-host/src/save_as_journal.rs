@@ -175,14 +175,18 @@ impl DurableSaveAsTransactionV1 {
         receipt: &SaveAsReceiptV1,
         frozen_reply: &[u8],
     ) -> Result<(), DurableSaveAsErrorV1> {
-        if self.stage != DurableSaveAsStageV1::BindingCheckpointed {
-            return Err(DurableSaveAsErrorV1::InvalidTransition);
-        }
         if receipt.lifecycle() != SaveAsLifecycleV1::TerminalReplayable {
             return Err(DurableSaveAsErrorV1::ReceiptNotTerminal);
         }
-        if !receipt.changes_stable_binding() {
-            return Err(DurableSaveAsErrorV1::ReceiptDoesNotCommitBinding);
+        match (self.stage, receipt.changes_stable_binding()) {
+            (DurableSaveAsStageV1::BindingCheckpointed, true)
+            | (DurableSaveAsStageV1::IntentDurable, false) => {}
+            (DurableSaveAsStageV1::BindingCheckpointed, false) => {
+                return Err(DurableSaveAsErrorV1::ReceiptDoesNotCommitBinding);
+            }
+            (DurableSaveAsStageV1::IntentDurable, true) | (DurableSaveAsStageV1::Complete, _) => {
+                return Err(DurableSaveAsErrorV1::InvalidTransition);
+            }
         }
         if frozen_reply.is_empty() {
             return Err(DurableSaveAsErrorV1::InvalidRequest);

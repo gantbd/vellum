@@ -37,7 +37,8 @@ use vellum_host::{
     },
     save_as::{
         FixedSaveAsAuthorityV1, SaveAsAuthorityRequestV1, SaveAsFailureV1, SaveAsFenceReasonV1,
-        SaveAsLifecycleV1, SaveAsNotActivatedReasonV1, SaveAsPhysicalUnknownReasonV1,
+        SaveAsLifecycleV1, SaveAsNotActivatedReasonV1, SaveAsNotDurableReasonV1,
+        SaveAsPhysicalUnknownReasonV1, SaveAsReceiptV1,
     },
     save_as_journal::{
         DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
@@ -686,6 +687,38 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
             DurableEvent::BindingCheckpoint,
             DurableEvent::Completion,
         ]
+    );
+    let mut failed_ports = DurablePorts::default();
+    let mut failed = DurableSaveAsTransactionV1::begin(
+        &mut failed_ports,
+        Path::new("journal"),
+        journal_limits(),
+        RequestJournalScopeV1::new(1, 1).unwrap(),
+        DurableOperationRefV1::new([6; 16]).unwrap(),
+        [5; 16],
+        b"canonical failed save as request",
+        1,
+        &identity(1, &source, &source),
+    )
+    .unwrap();
+    let failed_receipt = SaveAsReceiptV1::not_durable(
+        complete.evidence().clone(),
+        SaveAsNotDurableReasonV1::Conflict,
+        SaveAsLifecycleV1::TerminalReplayable,
+    );
+    failed
+        .complete(
+            &mut failed_ports,
+            Path::new("journal"),
+            journal_limits(),
+            &failed_receipt,
+            b"canonical failed save as receipt",
+        )
+        .unwrap();
+    assert_eq!(failed.stage(), DurableSaveAsStageV1::Complete);
+    assert_eq!(
+        failed_ports.events,
+        vec![DurableEvent::Intent, DurableEvent::Completion]
     );
     let usage = workspace.save_as_usage();
     assert_eq!(usage.issued_lifetime, 1);

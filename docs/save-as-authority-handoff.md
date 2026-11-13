@@ -104,9 +104,12 @@ The following gaps are release-blocking for that public surface:
    after authority/capture but before admission, the retained preparation now has an
    explicit discharge transition: a proven discard closes and reclaims the workspace
    slot, while unknown or failed discharge becomes an absorbing admission fence.
-   Release and retirement fences retain explicit reconciliation calls. This
-   coordinator is not yet installed in daemon composition, so no public command is
-   admitted.
+   Release and retirement fences retain explicit reconciliation calls. The service
+   now owns this product directly: durable begin joins authority/capture to intent,
+   activation joins the private binding commit to the exact metadata checkpoint,
+   and completion reads the retained terminal receipt. Journal refusal proves the
+   preparation closed or returns its opaque retained operation. Daemon restart
+   recovery is not yet installed, so no public command is admitted.
 
 Until all five laws are implemented together, no command tag, client convenience
 method, wire fixture, daemon flag, or MCP tool is advertised. In particular,
