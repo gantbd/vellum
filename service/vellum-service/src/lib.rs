@@ -1252,14 +1252,14 @@ impl Service {
     ) -> Result<(), ServiceSaveAsErrorV1> {
         let started = Instant::now();
         let result = (|| {
-            self.preflight_save_as_binding_revision(operation)?;
+            let document = self.preflight_save_as_binding_revision(operation)?;
             let before = self.workspace.document_save_as_status(&operation.0)?;
             self.workspace.activate_document_save_as(
                 &operation.0,
                 maximum_binding_history,
                 facts,
             )?;
-            self.commit_save_as_binding_revision(operation, before)
+            self.commit_save_as_binding_revision(operation, before, document)
         })();
         observe_save_as_stage(
             &mut self.usage,
@@ -1276,12 +1276,12 @@ impl Service {
     ) -> Result<bool, ServiceSaveAsErrorV1> {
         let started = Instant::now();
         let result = (|| {
-            self.preflight_save_as_binding_revision(operation)?;
+            let document = self.preflight_save_as_binding_revision(operation)?;
             let before = self.workspace.document_save_as_status(&operation.0)?;
             let closed = self
                 .workspace
                 .reconcile_document_save_as_activation(&operation.0)?;
-            self.commit_save_as_binding_revision(operation, before)?;
+            self.commit_save_as_binding_revision(operation, before, document)?;
             Ok(closed)
         })();
         observe_save_as_stage(
@@ -1390,21 +1390,29 @@ impl Service {
     fn preflight_save_as_binding_revision(
         &self,
         operation: &ServiceSaveAsIdV1,
-    ) -> Result<(), ServiceSaveAsErrorV1> {
+    ) -> Result<WorkspaceDocumentIdV1, ServiceSaveAsErrorV1> {
         let status = self.workspace.document_save_as_status(&operation.0)?;
-        if self.identity_materialized
-            && !status.binding_committed
-            && self.identity_generation == u64::MAX
-        {
-            return Err(ServiceSaveAsErrorV1::CounterExhausted);
+        let target = self.workspace.document_save_as_target(&operation.0)?;
+        if !status.binding_committed {
+            if self.identity_materialized && self.identity_generation == u64::MAX {
+                return Err(ServiceSaveAsErrorV1::CounterExhausted);
+            }
+            self.next_change_revision
+                .checked_add(1)
+                .ok_or(ServiceSaveAsErrorV1::CounterExhausted)?;
         }
-        Ok(())
+        self.document_projections
+            .iter()
+            .find(|projection| projection.native == target)
+            .map(|projection| projection.protocol)
+            .ok_or(ServiceSaveAsErrorV1::UnknownDocument)
     }
 
     fn commit_save_as_binding_revision(
         &mut self,
         operation: &ServiceSaveAsIdV1,
         before: WorkspaceSaveAsStatusV1,
+        document: WorkspaceDocumentIdV1,
     ) -> Result<(), ServiceSaveAsErrorV1> {
         let after = self.workspace.document_save_as_status(&operation.0)?;
         if !before.binding_committed && after.binding_committed {
@@ -1418,6 +1426,7 @@ impl Service {
                 &mut self.usage.save_as_binding_commits,
                 &mut self.usage.counter_saturated,
             );
+            self.publish_change(WorkspaceChangeKindV1::DocumentBindingChanged(document));
         }
         Ok(())
     }

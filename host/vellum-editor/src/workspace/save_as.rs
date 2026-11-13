@@ -647,6 +647,20 @@ impl Workspace {
         })
     }
 
+    /// Stable workspace document targeted by this retained transaction. This
+    /// projects neither the source nor destination locator and performs no
+    /// lifecycle effect.
+    pub fn document_save_as_target(
+        &self,
+        id: &WorkspaceSaveAsIdV1,
+    ) -> Result<WorkspaceDocumentId, WorkspaceSaveAsErrorV1> {
+        let index = self.save_as_index(id)?;
+        self.save_as_transactions[index]
+            .as_ref()
+            .map(|transaction| transaction.document.clone())
+            .ok_or(WorkspaceSaveAsErrorV1::InvalidTransaction)
+    }
+
     /// Projects only retained native evidence. Before the one-use authority
     /// carrier has entered the native attempt there is no receipt to return.
     /// A non-complete operation is explicitly fenced by its retained task;

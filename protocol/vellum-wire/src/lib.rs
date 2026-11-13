@@ -1590,6 +1590,7 @@ fn encode_workspace_change_kind(
             document.get(),
             Some(source_revision),
         ),
+        WorkspaceChangeKindV1::DocumentBindingChanged(id) => (6, id.workspace(), id.get(), None),
     };
     encoder.u8(tag)?;
     encoder.u64(workspace.get())?;
@@ -1695,6 +1696,9 @@ fn decode_workspace_change_kind(
             document: workspace_document_id(workspace, local)?,
             source_revision: read_u64(decoder)?,
         }),
+        6 => Ok(WorkspaceChangeKindV1::DocumentBindingChanged(
+            workspace_document_id(workspace, local)?,
+        )),
         _ => Err(WireDecodeError::UnknownTag),
     }
 }
@@ -2359,7 +2363,10 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
                                     | WorkspaceChangeKindV1::DocumentRemoved(id)
                                     | WorkspaceChangeKindV1::DocumentChanged {
                                         document: id, ..
-                                    } => id.workspace() != page.workspace,
+                                    }
+                                    | WorkspaceChangeKindV1::DocumentBindingChanged(id) => {
+                                        id.workspace() != page.workspace
+                                    }
                                     WorkspaceChangeKindV1::RootAdded(id)
                                     | WorkspaceChangeKindV1::RootRemoved(id) => {
                                         id.workspace() != page.workspace

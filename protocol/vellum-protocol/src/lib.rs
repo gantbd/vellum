@@ -193,6 +193,10 @@ pub enum WorkspaceChangeKindV1 {
         document: WorkspaceDocumentIdV1,
         source_revision: u64,
     },
+    /// The same stable document identity now has a different private source
+    /// binding. The locator is deliberately absent; clients that already know
+    /// a candidate locator may resolve it through the separate exact join.
+    DocumentBindingChanged(WorkspaceDocumentIdV1),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

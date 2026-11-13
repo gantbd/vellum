@@ -459,6 +459,14 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
                     self.projection.persistence = PersistenceProjectionV1::Unknown;
                 }
             }
+            WorkspaceChangeKindV1::DocumentBindingChanged(document) => {
+                if self.projection.selected == Some(document) {
+                    // The document identity and source revision remain valid,
+                    // but an independent client changed where later saves
+                    // persist. No persistence conclusion crosses that event.
+                    self.projection.persistence = PersistenceProjectionV1::Unknown;
+                }
+            }
             WorkspaceChangeKindV1::DocumentAdded(_)
             | WorkspaceChangeKindV1::RootAdded(_)
             | WorkspaceChangeKindV1::RootRemoved(_) => {
@@ -816,6 +824,44 @@ mod tests {
         assert_eq!(
             controller.projection().snapshot_freshness(),
             ProjectionFreshnessV1::Current
+        );
+    }
+
+    #[test]
+    fn binding_change_preserves_snapshot_and_invalidates_persistence_projection() {
+        let snapshot = SnapshotV1 {
+            witness: VersionWitness::new(3).unwrap(),
+            revision: 5,
+            text: Arc::from("source"),
+        };
+        let change =
+            WorkspaceChangeV1::new(1, WorkspaceChangeKindV1::DocumentBindingChanged(document()))
+                .unwrap();
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(snapshot.clone()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(
+                WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+                    workspace: workspace(),
+                    observed_head: 1,
+                    changes: vec![change],
+                    next: WorkspaceChangeCursorV1::new(workspace(), 2, 1).unwrap(),
+                }),
+            ))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.select_document(document()).unwrap();
+        controller.refresh_snapshot().unwrap();
+        controller.poll_changes().unwrap();
+        assert_eq!(controller.projection().snapshot(), Some(&snapshot));
+        assert_eq!(
+            controller.projection().snapshot_freshness(),
+            ProjectionFreshnessV1::Current
+        );
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Unknown
         );
     }
 

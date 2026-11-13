@@ -2916,6 +2916,8 @@ fn changes_json(changes: WorkspaceChangesV1) -> Value {
                         ("root_removed", root.workspace().get(), root.get(), None),
                     WorkspaceChangeKindV1::DocumentChanged { document, source_revision } =>
                         ("document_changed", document.workspace().get(), document.get(), Some(source_revision)),
+                    WorkspaceChangeKindV1::DocumentBindingChanged(document) =>
+                        ("document_binding_changed", document.workspace().get(), document.get(), None),
                 };
                 json!({
                     "revision": change.revision(),
@@ -2935,6 +2937,32 @@ fn changes_json(changes: WorkspaceChangesV1) -> Value {
             "observed_head": gap.observed_head,
             "recovery": "relist_resources_then_poll_without_cursor"
         }),
+    }
+}
+
+#[cfg(test)]
+mod change_projection_tests {
+    use super::*;
+    use vellum_sdk_client::protocol::{WorkspaceChangePageV1, WorkspaceChangeV1, WorkspaceIdV1};
+
+    #[test]
+    fn binding_change_projection_is_locator_free() {
+        let workspace = WorkspaceIdV1::new(7).unwrap();
+        let document = WorkspaceDocumentIdV1::new(workspace, 9).unwrap();
+        let projected = changes_json(WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+            workspace,
+            observed_head: 1,
+            changes: vec![
+                WorkspaceChangeV1::new(1, WorkspaceChangeKindV1::DocumentBindingChanged(document))
+                    .unwrap(),
+            ],
+            next: WorkspaceChangeCursorV1::new(workspace, 1, 1).unwrap(),
+        }));
+
+        assert_eq!(projected["changes"][0]["kind"], "document_binding_changed");
+        assert_eq!(projected["changes"][0]["identity"], 9);
+        assert!(projected["changes"][0]["source_revision"].is_null());
+        assert!(!projected.to_string().contains('/'));
     }
 }
 

@@ -635,6 +635,27 @@ fn golden_change_feed_frames_are_bounded_content_free_and_canonical() {
 }
 
 #[test]
+fn binding_change_round_trips_without_a_locator_or_source_revision() {
+    let workspace = WorkspaceIdV1::new(11).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 13).unwrap();
+    let reply = WireReplyV1::Executed(ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(
+        WorkspaceChangesV1::Page(WorkspaceChangePageV1 {
+            workspace,
+            observed_head: 1,
+            changes: vec![
+                WorkspaceChangeV1::new(1, WorkspaceChangeKindV1::DocumentBindingChanged(document))
+                    .unwrap(),
+            ],
+            next: WorkspaceChangeCursorV1::new(workspace, 3, 1).unwrap(),
+        }),
+    )));
+
+    let encoded = encode_reply_v1(&reply, limits()).unwrap();
+    assert_eq!(decode_reply_v1(&encoded, limits()).unwrap(), reply);
+    assert!(!format!("{reply:?}").contains("/"));
+}
+
+#[test]
 fn change_feed_decode_rejects_oversized_and_mismatched_pages() {
     let mut oversized = fixture(include_str!("fixtures/change-feed-reply-v1.hex"));
     oversized[28] = 2;

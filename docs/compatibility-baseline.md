@@ -57,6 +57,9 @@ review classified the changes as follows:
 - native command/outcome tag `17` adds the bounded atomic in-memory workspace
   edit. Existing frames are unchanged; older exhaustive V1 peers must be
   upgraded before receiving the additive tag;
+- workspace change-kind tag `6` adds the locator-free
+  `DocumentBindingChanged` notification. Existing frames are unchanged; older
+  exhaustive V1 peers must be upgraded before receiving the additive event;
 - semantic query-kind tags `8` and `9` add provider-native incoming and
   outgoing call hierarchy. Existing frozen semantic frames remain unchanged;
   older closed-vocabulary peers must be upgraded before receiving them;

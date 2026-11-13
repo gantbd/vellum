@@ -41,7 +41,10 @@ use vellum_host::{
         WorkspaceIdentityRecoveryRefusalV1, WorkspaceIdentityRecoveryV1,
     },
 };
-use vellum_protocol::WorkspaceDocumentIdV1;
+use vellum_protocol::{
+    CommandV1, OutcomeV1, ReplyV1, RequestId, RequestV1, WorkspaceChangeKindV1, WorkspaceChangesV1,
+    WorkspaceDocumentIdV1,
+};
 use vellum_service::{Service, ServiceLimits, ServiceSaveAsStageV1};
 
 type Resources = Arc<Mutex<BTreeMap<PathBuf, (Vec<u8>, u64)>>>;
@@ -404,6 +407,7 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     let native = workspace.inventory().unwrap().documents[0].clone();
     let version = workspace.document_version(&native).unwrap();
     let mut service = Service::new(workspace, ServiceLimits::reference()).unwrap();
+    let observer = service.connect().unwrap();
     let limits = WorkspaceIdentityLimitsV1 {
         max_documents: 16,
         max_roots: 16,
@@ -540,6 +544,24 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
 
     let after_revision = service.identity_revision_evidence();
     assert_eq!(after_revision.0, before_revision.0 + 1);
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceChanges(WorkspaceChangesV1::Page(changes))) = service
+        .execute(RequestV1 {
+            client: observer,
+            request: RequestId::new(1).unwrap(),
+            command: CommandV1::WorkspaceChanges {
+                after: None,
+                page_size: 1,
+            },
+        })
+    else {
+        panic!("expected binding change page")
+    };
+    assert_eq!(changes.observed_head, 1);
+    assert_eq!(changes.changes.len(), 1);
+    assert!(matches!(
+        changes.changes[0].kind,
+        WorkspaceChangeKindV1::DocumentBindingChanged(changed) if changed == document
+    ));
     let checkpoint = service.identity_metadata(limits).unwrap();
     assert_eq!(checkpoint.document_bindings()[0].locator(), destination);
     let in_flight = service
