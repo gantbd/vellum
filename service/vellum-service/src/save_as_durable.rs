@@ -40,7 +40,10 @@ use vellum_protocol::{
     DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, RefusalV1, WorkspaceDocumentIdV1,
 };
-use vellum_wire::{WireEncodeError, WireLimits, encode_durable_save_as_intent_v1};
+use vellum_wire::{
+    WireEncodeError, WireLimits, encode_durable_save_as_intent_v1,
+    encode_durable_save_as_receipt_v1,
+};
 
 #[must_use = "a durable service Save As may own journal, metadata, or native cleanup obligations"]
 pub struct DurableServiceSaveAsV1 {
@@ -100,6 +103,7 @@ pub enum DurableServiceSaveAsErrorV1 {
     Service(ServiceSaveAsErrorV1),
     Identity(RefusalV1),
     Durable(DurableSaveAsErrorV1),
+    Wire(WireEncodeError),
     MissingReceipt,
     InvalidReceipt,
 }
@@ -334,11 +338,14 @@ impl Service {
         journal: &mut J,
         journal_directory: &Path,
         journal_limits: RequestJournalLimitsV1,
-        frozen_reply: &[u8],
+        wire_limits: WireLimits,
     ) -> Result<(), DurableServiceSaveAsErrorV1> {
         let receipt = self
             .save_as_receipt(&operation.operation)?
             .ok_or(DurableServiceSaveAsErrorV1::MissingReceipt)?;
+        let portable = project_save_as_receipt(operation.document, &receipt)?;
+        let frozen_reply = encode_durable_save_as_receipt_v1(portable, wire_limits)
+            .map_err(DurableServiceSaveAsErrorV1::Wire)?;
         operation
             .durable
             .complete(
@@ -346,7 +353,7 @@ impl Service {
                 journal_directory,
                 journal_limits,
                 &receipt,
-                frozen_reply,
+                &frozen_reply,
             )
             .map_err(DurableServiceSaveAsErrorV1::Durable)
     }

@@ -643,7 +643,7 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
                 &mut durable_ports,
                 Path::new("journal"),
                 journal_limits(),
-                b"canonical save as receipt",
+                wire_limits(),
             )
             .is_err()
     );
