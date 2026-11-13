@@ -9,7 +9,10 @@ use vellum_engine::{
     resource::SaveRequirements,
 };
 use vellum_host::{
-    authority::{AuthorityRequestV1, SaveAsDestinationRequestV1},
+    authority::{
+        AuthorityRequestV1, SaveAsDestinationEffectV1 as HostDestinationEffectV1,
+        SaveAsDestinationRequestV1,
+    },
     request_journal::{
         DurableOperationEnvelopeRefusalV1, DurableOperationSortV1, RequestJournalLimitsV1,
         RequestJournalPortV1, RequestJournalScopeV1, encode_durable_operation_envelope_v1,
@@ -31,11 +34,13 @@ use vellum_host::{
     workspace::{WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1},
 };
 use vellum_protocol::{
-    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
-    DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
-    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
+    DurableSaveAsFailureV1, DurableSaveAsFenceSetV1, DurableSaveAsIntentV1,
+    DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, RefusalV1, WorkspaceDocumentIdV1,
 };
+use vellum_wire::{WireEncodeError, WireLimits, encode_durable_save_as_intent_v1};
 
 #[must_use = "a durable service Save As may own journal, metadata, or native cleanup obligations"]
 pub struct DurableServiceSaveAsV1 {
@@ -63,6 +68,8 @@ impl DurableServiceSaveAsV1 {
 
 #[derive(Debug)]
 pub enum DurableServiceSaveAsBeginErrorV1 {
+    IntentMismatch,
+    Wire(WireEncodeError),
     Envelope(DurableOperationEnvelopeRefusalV1),
     Identity(RefusalV1),
     Service(ServiceSaveAsErrorV1),
@@ -78,9 +85,12 @@ impl DurableServiceSaveAsBeginErrorV1 {
     pub const fn retained_operation(&self) -> Option<&ServiceSaveAsIdV1> {
         match self {
             Self::JournalFenced { operation, .. } => Some(operation),
-            Self::Envelope(_) | Self::Identity(_) | Self::Service(_) | Self::JournalClosed(_) => {
-                None
-            }
+            Self::IntentMismatch
+            | Self::Wire(_)
+            | Self::Envelope(_)
+            | Self::Identity(_)
+            | Self::Service(_)
+            | Self::JournalClosed(_) => None,
         }
     }
 }
@@ -110,8 +120,7 @@ impl Service {
         J: RequestJournalPortV1 + ?Sized,
     >(
         &mut self,
-        document: WorkspaceDocumentIdV1,
-        expected_revision: u64,
+        intent: &DurableSaveAsIntentV1,
         authority: &mut A,
         persist: AuthorityRequestV1,
         rebind: AuthorityRequestV1,
@@ -119,14 +128,29 @@ impl Service {
         journal: &mut J,
         journal_directory: &Path,
         journal_limits: RequestJournalLimitsV1,
+        wire_limits: WireLimits,
         identity_limits: WorkspaceIdentityLimitsV1,
         durable_operation: DurableOperationRefV1,
         authenticated_subject: [u8; 16],
-        frozen_request: &[u8],
     ) -> Result<DurableServiceSaveAsV1, DurableServiceSaveAsBeginErrorV1> {
+        let effect = match destination.effect {
+            HostDestinationEffectV1::OverwriteExisting => {
+                DurableSaveAsDestinationEffectV1::OverwriteExisting
+            }
+            HostDestinationEffectV1::CreateExclusive => {
+                DurableSaveAsDestinationEffectV1::CreateExclusive
+            }
+        };
+        if destination.destination().to_str() != Some(intent.destination())
+            || effect != intent.effect()
+        {
+            return Err(DurableServiceSaveAsBeginErrorV1::IntentMismatch);
+        }
+        let frozen_request = encode_durable_save_as_intent_v1(intent, wire_limits)
+            .map_err(DurableServiceSaveAsBeginErrorV1::Wire)?;
         let frozen_request = encode_durable_operation_envelope_v1(
             DurableOperationSortV1::SaveAs,
-            frozen_request,
+            &frozen_request,
             journal_limits.max_request_bytes,
         )
         .map_err(DurableServiceSaveAsBeginErrorV1::Envelope)?;
@@ -138,8 +162,8 @@ impl Service {
         )?;
         let operation = self
             .begin_save_as(
-                document,
-                expected_revision,
+                intent.document(),
+                intent.expected_revision(),
                 authority,
                 persist,
                 rebind,
@@ -154,11 +178,11 @@ impl Service {
             durable_operation,
             authenticated_subject,
             &frozen_request,
-            document.get(),
+            intent.document().get(),
             &identity,
         ) {
             Ok(durable) => Ok(DurableServiceSaveAsV1 {
-                document,
+                document: intent.document(),
                 operation,
                 durable,
             }),

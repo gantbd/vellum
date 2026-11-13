@@ -10,9 +10,10 @@ use vellum_protocol::{
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
-    DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
-    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
+    DurableSaveAsFailureV1, DurableSaveAsFenceSetV1, DurableSaveAsIntentV1,
+    DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
     EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
     MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_EDIT_DOCUMENTS_V1,
@@ -204,6 +205,50 @@ pub fn decode_durable_outcome_v1(
     let outcome = decode_durable_execute_outcome_fields(&mut decoder)?;
     finish_decode(&decoder)?;
     Ok(outcome)
+}
+
+/// Canonical restart-stable Save As arguments. This value is suitable for the
+/// private durable-operation envelope but carries no authority or destination
+/// object and therefore cannot execute an effect by itself.
+pub fn encode_durable_save_as_intent_v1(
+    intent: &DurableSaveAsIntentV1,
+    limits: WireLimits,
+) -> Result<Vec<u8>, WireEncodeError> {
+    check_field_limit(6, limits)?;
+    check_text_limit(intent.destination().len(), limits)?;
+    check_wire_text_length(intent.destination().len())?;
+    let length = checked_add(30, intent.destination().len())?;
+    let mut encoder = Encoder::new(length, limits)?;
+    encoder.u8(VERSION_V1)?;
+    encoder.u64(intent.document().workspace().get())?;
+    encoder.u64(intent.document().get())?;
+    encoder.u64(intent.expected_revision())?;
+    encoder.u8(match intent.effect() {
+        DurableSaveAsDestinationEffectV1::OverwriteExisting => 1,
+        DurableSaveAsDestinationEffectV1::CreateExclusive => 2,
+    })?;
+    encoder.text(intent.destination())?;
+    encoder.finish(length)
+}
+
+pub fn decode_durable_save_as_intent_v1(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<DurableSaveAsIntentV1, WireDecodeError> {
+    let mut decoder = decoder(input, limits)?;
+    read_version(&mut decoder)?;
+    let workspace = workspace_id(read_u64(&mut decoder)?)?;
+    let document = workspace_document_id(workspace, read_u64(&mut decoder)?)?;
+    let expected_revision = read_u64(&mut decoder)?;
+    let effect = match read_u8(&mut decoder)? {
+        1 => DurableSaveAsDestinationEffectV1::OverwriteExisting,
+        2 => DurableSaveAsDestinationEffectV1::CreateExclusive,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let destination = read_text(&mut decoder)?;
+    finish_decode(&decoder)?;
+    DurableSaveAsIntentV1::try_new(document, expected_revision, destination, effect)
+        .ok_or(WireDecodeError::Malformed)
 }
 
 /// Canonical locator-free encoding for one durable Save As receipt. This is a

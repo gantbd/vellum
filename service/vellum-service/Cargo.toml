@@ -14,6 +14,7 @@ vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
 vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
 vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
 vellum-protocol = { version = "=0.1.0", path = "../../protocol/vellum-protocol" }
+vellum-wire = { version = "=0.1.0", path = "../../protocol/vellum-wire" }
 
 [dev-dependencies]
 vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }

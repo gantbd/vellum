@@ -1052,6 +1052,7 @@ dependencies = [
  "vellum-engine",
  "vellum-host",
  "vellum-protocol",
+ "vellum-wire",
 ]
 
 [[package]]

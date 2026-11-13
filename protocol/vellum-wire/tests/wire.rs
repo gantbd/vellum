@@ -6,10 +6,10 @@ use vellum_protocol::{
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
-    DurableSaveAsFenceReasonV1, DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1,
-    DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
-    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
+    DurableSaveAsFailureV1, DurableSaveAsFenceReasonV1, DurableSaveAsFenceSetV1,
+    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
+    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
     EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1, MembershipRemovalStatusV1,
     OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1,
@@ -23,8 +23,9 @@ use vellum_protocol::{
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1,
-    decode_durable_intent_v1, decode_durable_outcome_v1, decode_durable_save_as_receipt_v1,
-    decode_reply_v1, decode_request_v1, encode_durable_intent_v1, encode_durable_outcome_v1,
+    decode_durable_intent_v1, decode_durable_outcome_v1, decode_durable_save_as_intent_v1,
+    decode_durable_save_as_receipt_v1, decode_reply_v1, decode_request_v1,
+    encode_durable_intent_v1, encode_durable_outcome_v1, encode_durable_save_as_intent_v1,
     encode_durable_save_as_receipt_v1, encode_reply_v1, encode_request_v1,
 };
 
@@ -242,6 +243,63 @@ fn durable_exclusive_export_receipt_is_locator_free_and_algebraically_closed() {
     impossible_failure[failure] = 5;
     assert_eq!(
         decode_durable_outcome_v1(&impossible_failure, limits()),
+        Err(WireDecodeError::Malformed)
+    );
+}
+
+#[test]
+fn durable_save_as_intent_is_canonical_redacted_and_effect_explicit() {
+    let document = WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(3).unwrap(), 5).unwrap();
+    let overwrite = DurableSaveAsIntentV1::try_new(
+        document,
+        8,
+        "/work/new.rs".into(),
+        DurableSaveAsDestinationEffectV1::OverwriteExisting,
+    )
+    .unwrap();
+    let encoded = encode_durable_save_as_intent_v1(&overwrite, limits()).unwrap();
+    assert_eq!(
+        encoded,
+        fixture(
+            "01 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 05 \
+             00 00 00 00 00 00 00 08 01 00 00 00 0c 2f 77 6f 72 \
+             6b 2f 6e 65 77 2e 72 73"
+        )
+    );
+    assert_eq!(
+        decode_durable_save_as_intent_v1(&encoded, limits()).unwrap(),
+        overwrite
+    );
+    assert!(!format!("{overwrite:?}").contains("/work/new.rs"));
+
+    let exclusive = DurableSaveAsIntentV1::try_new(
+        document,
+        8,
+        "/work/new.rs".into(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive,
+    )
+    .unwrap();
+    let exclusive = encode_durable_save_as_intent_v1(&exclusive, limits()).unwrap();
+    assert_eq!(exclusive[25], 2);
+    assert_eq!(
+        decode_durable_save_as_intent_v1(&exclusive, limits())
+            .unwrap()
+            .effect(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive
+    );
+
+    let mut unknown_effect = encoded.clone();
+    unknown_effect[25] = 3;
+    assert_eq!(
+        decode_durable_save_as_intent_v1(&unknown_effect, limits()),
+        Err(WireDecodeError::UnknownTag)
+    );
+    let empty = fixture(
+        "01 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 05 \
+         00 00 00 00 00 00 00 08 01 00 00 00 00",
+    );
+    assert_eq!(
+        decode_durable_save_as_intent_v1(&empty, limits()),
         Err(WireDecodeError::Malformed)
     );
 }

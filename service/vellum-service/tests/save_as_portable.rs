@@ -42,11 +42,15 @@ use vellum_host::{
     },
 };
 use vellum_protocol::{
-    CommandV1, DurableSaveAsBindingV1, DurableSaveAsFenceReasonV1, DurableSaveAsLifecycleV1,
+    CommandV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
+    DurableSaveAsFenceReasonV1, DurableSaveAsIntentV1, DurableSaveAsLifecycleV1,
     DurableSaveAsPersistenceV1, OutcomeV1, ReplyV1, RequestId, RequestV1, WorkspaceChangeKindV1,
     WorkspaceChangesV1, WorkspaceDocumentIdV1,
 };
-use vellum_service::{Service, ServiceLimits, ServiceSaveAsStageV1};
+use vellum_service::{
+    DurableServiceSaveAsBeginErrorV1, Service, ServiceLimits, ServiceSaveAsStageV1,
+};
+use vellum_wire::{WireLimits, decode_durable_save_as_intent_v1};
 
 type Resources = Arc<Mutex<BTreeMap<PathBuf, (Vec<u8>, u64)>>>;
 
@@ -168,9 +172,17 @@ fn journal_limits() -> RequestJournalLimitsV1 {
     RequestJournalLimitsV1 {
         max_entries: 4,
         max_retired_operations: 4,
-        max_request_bytes: 128,
+        max_request_bytes: 256,
         max_reply_bytes: 128,
         max_encoded_bytes: 1024,
+    }
+}
+
+fn wire_limits() -> WireLimits {
+    WireLimits {
+        max_frame_bytes: 256,
+        max_text_bytes: 128,
+        max_fields: 16,
     }
 }
 
@@ -443,6 +455,13 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         destination.clone(),
         SaveAsDestinationEffectV1::OverwriteExisting,
     );
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        version.revision,
+        destination.to_str().unwrap().into(),
+        DurableSaveAsDestinationEffectV1::OverwriteExisting,
+    )
+    .unwrap();
     let mut failed_authority = FixedSaveAsAuthorityV1::install(
         SaveAsAuthorityRequestV1::new(
             persist,
@@ -458,9 +477,38 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         fail_intent: true,
         ..DurablePorts::default()
     };
-    let failed = service.begin_durable_save_as(
+    let mismatched = DurableSaveAsIntentV1::try_new(
         document,
         version.revision,
+        destination
+            .with_extension("foreign")
+            .to_str()
+            .unwrap()
+            .into(),
+        DurableSaveAsDestinationEffectV1::OverwriteExisting,
+    )
+    .unwrap();
+    assert!(matches!(
+        service.begin_durable_save_as(
+            &mismatched,
+            &mut failed_authority,
+            persist,
+            rebind,
+            destination_request.clone(),
+            &mut failed_ports,
+            Path::new("journal"),
+            journal_limits(),
+            wire_limits(),
+            limits,
+            DurableOperationRefV1::new([2; 16]).unwrap(),
+            [5; 16],
+        ),
+        Err(DurableServiceSaveAsBeginErrorV1::IntentMismatch)
+    ));
+    assert!(failed_ports.events.is_empty());
+
+    let failed = service.begin_durable_save_as(
+        &intent,
         &mut failed_authority,
         persist,
         rebind,
@@ -468,10 +516,10 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         &mut failed_ports,
         Path::new("journal"),
         journal_limits(),
+        wire_limits(),
         limits,
         DurableOperationRefV1::new([3; 16]).unwrap(),
         [5; 16],
-        b"canonical refused save as request",
     );
     let error = failed.unwrap_err();
     assert!(error.retained_operation().is_none());
@@ -492,8 +540,7 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     let mut durable_ports = DurablePorts::default();
     let mut operation = service
         .begin_durable_save_as(
-            document,
-            version.revision,
+            &intent,
             &mut authority,
             persist,
             rebind,
@@ -501,10 +548,10 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
             &mut durable_ports,
             Path::new("journal"),
             journal_limits(),
+            wire_limits(),
             limits,
             DurableOperationRefV1::new([4; 16]).unwrap(),
             [5; 16],
-            b"canonical save as request",
         )
         .unwrap();
     assert_eq!(operation.stage(), DurableSaveAsStageV1::IntentDurable);
@@ -513,7 +560,10 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     let envelope =
         decode_durable_operation_envelope_v1(frozen, journal_limits().max_request_bytes).unwrap();
     assert_eq!(envelope.sort(), DurableOperationSortV1::SaveAs);
-    assert_eq!(envelope.payload(), b"canonical save as request");
+    assert_eq!(
+        decode_durable_save_as_intent_v1(envelope.payload(), wire_limits()).unwrap(),
+        intent
+    );
     service
         .admit_durable_save_as(
             &operation,

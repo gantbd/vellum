@@ -599,6 +599,70 @@ pub struct RequestV1 {
     pub command: CommandV1,
 }
 
+/// The destination publication effect requested by a durable Save As. The
+/// adapter interpreting the locator remains responsible for proving the
+/// selected effect against its own pinned destination object.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsDestinationEffectV1 {
+    OverwriteExisting,
+    CreateExclusive,
+}
+
+/// Restart-stable Save As arguments. Transport correlation, authority
+/// evidence, destination capabilities, and source bytes are deliberately
+/// absent; those remain owned by the authenticated service composition.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DurableSaveAsIntentV1 {
+    document: WorkspaceDocumentIdV1,
+    expected_revision: u64,
+    destination: String,
+    effect: DurableSaveAsDestinationEffectV1,
+}
+
+impl DurableSaveAsIntentV1 {
+    pub fn try_new(
+        document: WorkspaceDocumentIdV1,
+        expected_revision: u64,
+        destination: String,
+        effect: DurableSaveAsDestinationEffectV1,
+    ) -> Option<Self> {
+        (!destination.is_empty()).then_some(Self {
+            document,
+            expected_revision,
+            destination,
+            effect,
+        })
+    }
+
+    pub const fn document(&self) -> WorkspaceDocumentIdV1 {
+        self.document
+    }
+
+    pub const fn expected_revision(&self) -> u64 {
+        self.expected_revision
+    }
+
+    pub fn destination(&self) -> &str {
+        &self.destination
+    }
+
+    pub const fn effect(&self) -> DurableSaveAsDestinationEffectV1 {
+        self.effect
+    }
+}
+
+impl fmt::Debug for DurableSaveAsIntentV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DurableSaveAsIntentV1")
+            .field("document", &self.document)
+            .field("expected_revision", &self.expected_revision)
+            .field("destination", &"<redacted>")
+            .field("effect", &self.effect)
+            .finish()
+    }
+}
+
 /// Restart-stable, explicit target and arguments for the closed durable-effect
 /// profile. Session witnesses and implicit selected documents are deliberately
 /// absent.
