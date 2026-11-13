@@ -108,8 +108,12 @@ The following gaps are release-blocking for that public surface:
    now owns this product directly: durable begin joins authority/capture to intent,
    activation joins the private binding commit to the exact metadata checkpoint,
    and completion reads the retained terminal receipt. Journal refusal proves the
-   preparation closed or returns its opaque retained operation. Daemon restart
-   recovery is not yet installed, so no public command is admitted.
+   preparation closed or returns its opaque retained operation. Recovery now has a
+   total, non-effecting validator: exact owner, canonical request/reply, source
+   revision, issued document, recovered destination binding, and terminal receipt
+   produce Complete; a synchronized intent without a reply is always absorbing
+   OutcomeUnknown. Daemon codec/installation is not yet connected, so no public
+   command is admitted.
 
 Until all five laws are implemented together, no command tag, client convenience
 method, wire fixture, daemon flag, or MCP tool is advertised. In particular,

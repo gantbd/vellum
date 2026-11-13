@@ -25,11 +25,12 @@ use vellum_host::{
         SaveAsDestinationRequestV1,
     },
     request_journal::{
-        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecoveryV1,
-        DurableOperationRetirementRecoveryV1, DurableOperationRetirementResultV1,
-        DurableOperationRetirementV1, RequestJournalCompletionV1, RequestJournalIntentV1,
-        RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalRecoveryV1,
-        RequestJournalRefusalV1, RequestJournalScopeV1,
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationOwnerV1,
+        DurableOperationRecordV1, DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
+        DurableOperationRetirementResultV1, DurableOperationRetirementV1,
+        RequestJournalCompletionV1, RequestJournalIntentV1, RequestJournalLimitsV1,
+        RequestJournalPortV1, RequestJournalRecoveryV1, RequestJournalRefusalV1,
+        RequestJournalScopeV1,
     },
     resource::{
         AdapterFailure, AnnotationReadCompletion as HostAnnotationReadCompletion,
@@ -41,8 +42,9 @@ use vellum_host::{
         SaveAsPhysicalUnknownReasonV1, SaveAsReceiptV1,
     },
     save_as_journal::{
-        DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
-        DurableSaveAsTransactionV1,
+        CanonicalDurableSaveAsOutcomeV1, CanonicalDurableSaveAsV1, DurableOperationRefV1,
+        DurableSaveAsErrorV1, DurableSaveAsRecoveryRefusalV1, DurableSaveAsRecoveryStateV1,
+        DurableSaveAsStageV1, DurableSaveAsTransactionV1, validate_recovered_durable_save_as_v1,
     },
     workspace::{
         WorkspaceDocumentBindingV1, WorkspaceIdentityAllocationV1, WorkspaceIdentityLimitsV1,
@@ -720,6 +722,117 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         failed_ports.events,
         vec![DurableEvent::Intent, DurableEvent::Completion]
     );
+    let recovered_owner = DurableOperationOwnerV1 {
+        scope: RequestJournalScopeV1::new(1, 2).unwrap(),
+        authenticated_subject: [5; 16],
+    };
+    let recovered_identity = identity(2, &destination, &source);
+    let recovered = DurableOperationRecordV1 {
+        scope: RequestJournalScopeV1::new(1, 1).unwrap(),
+        operation: DurableOperationRefV1::new([4; 16]).unwrap(),
+        authenticated_subject: [5; 16],
+        frozen_request: b"canonical save as request".to_vec(),
+        frozen_reply: Some(b"canonical save as receipt".to_vec()),
+    };
+    assert_eq!(
+        validate_recovered_durable_save_as_v1(
+            &recovered,
+            recovered_owner,
+            CanonicalDurableSaveAsV1 {
+                document: 1,
+                expected_source_revision: complete.evidence().source_revision(),
+                expected_destination: &destination,
+                canonical_request: b"canonical save as request",
+                outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
+                    receipt: &complete,
+                    canonical_reply: b"canonical save as receipt",
+                },
+            },
+            &recovered_identity,
+        ),
+        Ok(DurableSaveAsRecoveryStateV1::Complete)
+    );
+    let pending = DurableOperationRecordV1 {
+        frozen_reply: None,
+        ..recovered.clone()
+    };
+    assert_eq!(
+        validate_recovered_durable_save_as_v1(
+            &pending,
+            recovered_owner,
+            CanonicalDurableSaveAsV1 {
+                document: 1,
+                expected_source_revision: complete.evidence().source_revision(),
+                expected_destination: &destination,
+                canonical_request: b"canonical save as request",
+                outcome: CanonicalDurableSaveAsOutcomeV1::Pending,
+            },
+            &recovered_identity,
+        ),
+        Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
+    );
+    assert_eq!(
+        validate_recovered_durable_save_as_v1(
+            &recovered,
+            recovered_owner,
+            CanonicalDurableSaveAsV1 {
+                document: 1,
+                expected_source_revision: complete.evidence().source_revision(),
+                expected_destination: &destination,
+                canonical_request: b"changed request",
+                outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
+                    receipt: &complete,
+                    canonical_reply: b"canonical save as receipt",
+                },
+            },
+            &recovered_identity,
+        ),
+        Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict)
+    );
+    for canonical in [
+        CanonicalDurableSaveAsV1 {
+            document: 1,
+            expected_source_revision: complete.evidence().source_revision() + 1,
+            expected_destination: &destination,
+            canonical_request: b"canonical save as request",
+            outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
+                receipt: &complete,
+                canonical_reply: b"canonical save as receipt",
+            },
+        },
+        CanonicalDurableSaveAsV1 {
+            document: 1,
+            expected_source_revision: complete.evidence().source_revision(),
+            expected_destination: &source,
+            canonical_request: b"canonical save as request",
+            outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
+                receipt: &complete,
+                canonical_reply: b"canonical save as receipt",
+            },
+        },
+    ] {
+        assert_eq!(
+            validate_recovered_durable_save_as_v1(
+                &recovered,
+                recovered_owner,
+                canonical,
+                &recovered_identity,
+            ),
+            Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict)
+        );
+    }
+    let debug = format!(
+        "{:?}",
+        CanonicalDurableSaveAsV1 {
+            document: 1,
+            expected_source_revision: complete.evidence().source_revision(),
+            expected_destination: &destination,
+            canonical_request: b"canonical save as request",
+            outcome: CanonicalDurableSaveAsOutcomeV1::Pending,
+        }
+    );
+    assert!(!debug.contains(destination.to_string_lossy().as_ref()));
+    assert!(!debug.contains("canonical save as request"));
     let usage = workspace.save_as_usage();
     assert_eq!(usage.issued_lifetime, 1);
     assert_eq!(usage.retained, 1);

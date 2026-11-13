@@ -8,8 +8,9 @@
 
 use crate::{
     request_journal::{
-        DurableOperationCompletionV1, DurableOperationIntentV1, RequestJournalLimitsV1,
-        RequestJournalPortV1, RequestJournalRefusalV1, RequestJournalScopeV1,
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationOwnerV1,
+        DurableOperationRecordV1, RequestJournalLimitsV1, RequestJournalPortV1,
+        RequestJournalRefusalV1, RequestJournalScopeV1,
     },
     save_as::{SaveAsLifecycleV1, SaveAsReceiptV1},
     workspace::{
@@ -37,6 +38,112 @@ pub enum DurableSaveAsErrorV1 {
     ReceiptDoesNotCommitBinding,
     Journal(RequestJournalRefusalV1),
     Checkpoint(WorkspaceIdentityRecoveryRefusalV1),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DurableSaveAsRecoveryStateV1 {
+    Complete,
+    OutcomeUnknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DurableSaveAsRecoveryRefusalV1 {
+    OwnerConflict,
+    CanonicalConflict,
+    IdentityConflict,
+    ReceiptConflict,
+}
+
+pub enum CanonicalDurableSaveAsOutcomeV1<'a> {
+    Pending,
+    Complete {
+        receipt: &'a SaveAsReceiptV1,
+        canonical_reply: &'a [u8],
+    },
+}
+
+pub struct CanonicalDurableSaveAsV1<'a> {
+    pub document: u64,
+    pub expected_source_revision: u64,
+    pub expected_destination: &'a Path,
+    pub canonical_request: &'a [u8],
+    pub outcome: CanonicalDurableSaveAsOutcomeV1<'a>,
+}
+
+impl std::fmt::Debug for CanonicalDurableSaveAsV1<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CanonicalDurableSaveAsV1")
+            .field("document", &"<opaque>")
+            .field("expected_source_revision", &"<opaque>")
+            .field("expected_destination", &"<redacted>")
+            .field("canonical_request", &"<redacted>")
+            .field("outcome", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Validates one recovered Save As record without granting effect authority.
+/// Pending intent is absorbing outcome-unknown; this function exposes no
+/// admission, write, activation, or retry operation.
+pub fn validate_recovered_durable_save_as_v1(
+    record: &DurableOperationRecordV1,
+    owner: DurableOperationOwnerV1,
+    canonical: CanonicalDurableSaveAsV1<'_>,
+    identity: &WorkspaceIdentityMetadataV1,
+) -> Result<DurableSaveAsRecoveryStateV1, DurableSaveAsRecoveryRefusalV1> {
+    if record.scope.workspace() != owner.scope.workspace()
+        || record.scope.generation() > owner.scope.generation()
+        || record.authenticated_subject != owner.authenticated_subject
+    {
+        return Err(DurableSaveAsRecoveryRefusalV1::OwnerConflict);
+    }
+    if owner.scope.workspace() != identity.workspace()
+        || owner.scope.generation() != identity.generation()
+        || canonical.document == 0
+    {
+        return Err(DurableSaveAsRecoveryRefusalV1::IdentityConflict);
+    }
+    let Some(current_document) = identity
+        .document_bindings()
+        .iter()
+        .find(|binding| binding.ordinal() == canonical.document)
+    else {
+        return Err(DurableSaveAsRecoveryRefusalV1::IdentityConflict);
+    };
+    let binding_checkpoint_matches = current_document.locator() == canonical.expected_destination;
+    if canonical.canonical_request.is_empty()
+        || record.frozen_request != canonical.canonical_request
+    {
+        return Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict);
+    }
+    match (record.frozen_reply.as_deref(), canonical.outcome) {
+        (None, CanonicalDurableSaveAsOutcomeV1::Pending) => {
+            Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
+        }
+        (
+            Some(stored),
+            CanonicalDurableSaveAsOutcomeV1::Complete {
+                receipt,
+                canonical_reply,
+            },
+        ) if !canonical_reply.is_empty() && stored == canonical_reply => {
+            if receipt.lifecycle() != SaveAsLifecycleV1::TerminalReplayable
+                || receipt.evidence().source_revision() != canonical.expected_source_revision
+                || receipt.changes_stable_binding() != binding_checkpoint_matches
+                || (receipt.changes_stable_binding()
+                    && record.scope.generation() >= owner.scope.generation())
+            {
+                Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict)
+            } else {
+                Ok(DurableSaveAsRecoveryStateV1::Complete)
+            }
+        }
+        (Some(_), CanonicalDurableSaveAsOutcomeV1::Complete { .. }) => {
+            Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict)
+        }
+        _ => Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict),
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
