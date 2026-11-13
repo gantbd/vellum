@@ -23,12 +23,12 @@ use vellum_host::{
         SaveAsDestinationRequestV1,
     },
     request_journal::{
-        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecoveryV1,
-        DurableOperationRetirementRecoveryV1, DurableOperationRetirementResultV1,
-        DurableOperationRetirementV1, DurableOperationSortV1, RequestJournalCompletionV1,
-        RequestJournalIntentV1, RequestJournalLimitsV1, RequestJournalPortV1,
-        RequestJournalRecoveryV1, RequestJournalRefusalV1, RequestJournalScopeV1,
-        decode_durable_operation_envelope_v1,
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecordV1,
+        DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
+        DurableOperationRetirementResultV1, DurableOperationRetirementV1, DurableOperationSortV1,
+        RequestJournalCompletionV1, RequestJournalIntentV1, RequestJournalLimitsV1,
+        RequestJournalPortV1, RequestJournalRecoveryV1, RequestJournalRefusalV1,
+        RequestJournalScopeV1, decode_durable_operation_envelope_v1,
     },
     resource::{
         AdapterFailure, AnnotationReadCompletion, ErasedPathResourceAdapterFactory,
@@ -44,13 +44,17 @@ use vellum_host::{
 use vellum_protocol::{
     CommandV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
     DurableSaveAsFenceReasonV1, DurableSaveAsIntentV1, DurableSaveAsLifecycleV1,
-    DurableSaveAsPersistenceV1, OutcomeV1, ReplyV1, RequestId, RequestV1, WorkspaceChangeKindV1,
-    WorkspaceChangesV1, WorkspaceDocumentIdV1,
+    DurableSaveAsPersistenceV1, DurableSaveAsReceiptV1, OutcomeV1, ReplyV1, RequestId, RequestV1,
+    WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1,
 };
 use vellum_service::{
+    DecodeDurableServiceSaveAsErrorV1, DecodedDurableServiceSaveAsV1,
     DurableServiceSaveAsBeginErrorV1, Service, ServiceLimits, ServiceSaveAsStageV1,
+    decode_durable_service_save_as_record_v1,
 };
-use vellum_wire::{WireLimits, decode_durable_save_as_intent_v1};
+use vellum_wire::{
+    WireLimits, decode_durable_save_as_intent_v1, encode_durable_save_as_receipt_v1,
+};
 
 type Resources = Arc<Mutex<BTreeMap<PathBuf, (Vec<u8>, u64)>>>;
 
@@ -563,6 +567,61 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     assert_eq!(
         decode_durable_save_as_intent_v1(envelope.payload(), wire_limits()).unwrap(),
         intent
+    );
+    let pending_record = DurableOperationRecordV1 {
+        scope: RequestJournalScopeV1::new(1, 1).unwrap(),
+        operation: DurableOperationRefV1::new([4; 16]).unwrap(),
+        authenticated_subject: [5; 16],
+        frozen_request: frozen.to_vec(),
+        frozen_reply: None,
+    };
+    assert_eq!(
+        decode_durable_service_save_as_record_v1(&pending_record, journal_limits(), wire_limits(),),
+        Ok(DecodedDurableServiceSaveAsV1::OutcomeUnknown {
+            intent: intent.clone(),
+        })
+    );
+    let terminal = DurableSaveAsReceiptV1::try_new(
+        document,
+        version.revision,
+        DurableSaveAsPersistenceV1::Durable,
+        DurableSaveAsBindingV1::Activated,
+        None,
+        DurableSaveAsLifecycleV1::TerminalReplayable,
+    )
+    .unwrap();
+    let complete_record = DurableOperationRecordV1 {
+        frozen_reply: Some(encode_durable_save_as_receipt_v1(terminal, wire_limits()).unwrap()),
+        ..pending_record
+    };
+    assert_eq!(
+        decode_durable_service_save_as_record_v1(&complete_record, journal_limits(), wire_limits(),),
+        Ok(DecodedDurableServiceSaveAsV1::Complete {
+            intent: intent.clone(),
+            receipt: terminal,
+        })
+    );
+    let fenced = DurableSaveAsReceiptV1::try_new(
+        document,
+        version.revision,
+        DurableSaveAsPersistenceV1::Durable,
+        DurableSaveAsBindingV1::Activated,
+        None,
+        DurableSaveAsLifecycleV1::Fenced(
+            vellum_protocol::DurableSaveAsFenceSetV1::try_from_bits(
+                1 << DurableSaveAsFenceReasonV1::RetainedTask as u8,
+            )
+            .unwrap(),
+        ),
+    )
+    .unwrap();
+    let fenced_record = DurableOperationRecordV1 {
+        frozen_reply: Some(encode_durable_save_as_receipt_v1(fenced, wire_limits()).unwrap()),
+        ..complete_record
+    };
+    assert_eq!(
+        decode_durable_service_save_as_record_v1(&fenced_record, journal_limits(), wire_limits(),),
+        Err(DecodeDurableServiceSaveAsErrorV1::ReceiptNotTerminal)
     );
     service
         .admit_durable_save_as(

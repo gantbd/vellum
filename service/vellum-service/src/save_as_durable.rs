@@ -14,8 +14,9 @@ use vellum_host::{
         SaveAsDestinationRequestV1,
     },
     request_journal::{
-        DurableOperationEnvelopeRefusalV1, DurableOperationSortV1, RequestJournalLimitsV1,
-        RequestJournalPortV1, RequestJournalScopeV1, encode_durable_operation_envelope_v1,
+        DurableOperationEnvelopeRefusalV1, DurableOperationRecordV1, DurableOperationSortV1,
+        RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalScopeV1,
+        decode_durable_operation_envelope_v1, encode_durable_operation_envelope_v1,
     },
     save_as::{
         SaveAsAuthorityPortV1, SaveAsBindingUnknownReasonV1 as HostBindingUnknownReasonV1,
@@ -41,7 +42,8 @@ use vellum_protocol::{
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, RefusalV1, WorkspaceDocumentIdV1,
 };
 use vellum_wire::{
-    WireEncodeError, WireLimits, encode_durable_save_as_intent_v1,
+    WireDecodeError, WireEncodeError, WireLimits, decode_durable_save_as_intent_v1,
+    decode_durable_save_as_receipt_v1, encode_durable_save_as_intent_v1,
     encode_durable_save_as_receipt_v1,
 };
 
@@ -106,6 +108,61 @@ pub enum DurableServiceSaveAsErrorV1 {
     Wire(WireEncodeError),
     MissingReceipt,
     InvalidReceipt,
+}
+
+/// Canonically decoded journal state. This projection proves only payload
+/// shape and intent/receipt congruence; owner, workspace generation, and
+/// binding-checkpoint recovery remain the host recovery algebra's authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DecodedDurableServiceSaveAsV1 {
+    OutcomeUnknown {
+        intent: DurableSaveAsIntentV1,
+    },
+    Complete {
+        intent: DurableSaveAsIntentV1,
+        receipt: DurableSaveAsReceiptV1,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecodeDurableServiceSaveAsErrorV1 {
+    Envelope(DurableOperationEnvelopeRefusalV1),
+    WrongSort,
+    Intent(WireDecodeError),
+    Reply(WireDecodeError),
+    ReceiptConflict,
+    ReceiptNotTerminal,
+}
+
+pub fn decode_durable_service_save_as_record_v1(
+    record: &DurableOperationRecordV1,
+    journal_limits: RequestJournalLimitsV1,
+    wire_limits: WireLimits,
+) -> Result<DecodedDurableServiceSaveAsV1, DecodeDurableServiceSaveAsErrorV1> {
+    let envelope = decode_durable_operation_envelope_v1(
+        &record.frozen_request,
+        journal_limits.max_request_bytes,
+    )
+    .map_err(DecodeDurableServiceSaveAsErrorV1::Envelope)?;
+    if envelope.sort() != DurableOperationSortV1::SaveAs {
+        return Err(DecodeDurableServiceSaveAsErrorV1::WrongSort);
+    }
+    let intent = decode_durable_save_as_intent_v1(envelope.payload(), wire_limits)
+        .map_err(DecodeDurableServiceSaveAsErrorV1::Intent)?;
+    let Some(frozen_reply) = record.frozen_reply.as_deref() else {
+        return Ok(DecodedDurableServiceSaveAsV1::OutcomeUnknown { intent });
+    };
+    let receipt = decode_durable_save_as_receipt_v1(frozen_reply, wire_limits)
+        .map_err(DecodeDurableServiceSaveAsErrorV1::Reply)?;
+    if receipt.document() != intent.document()
+        || receipt.source_revision() != intent.expected_revision()
+    {
+        return Err(DecodeDurableServiceSaveAsErrorV1::ReceiptConflict);
+    }
+    if receipt.lifecycle() != DurableSaveAsLifecycleV1::TerminalReplayable {
+        return Err(DecodeDurableServiceSaveAsErrorV1::ReceiptNotTerminal);
+    }
+    Ok(DecodedDurableServiceSaveAsV1::Complete { intent, receipt })
 }
 
 impl From<ServiceSaveAsErrorV1> for DurableServiceSaveAsErrorV1 {
