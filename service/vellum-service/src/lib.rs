@@ -5,7 +5,7 @@ mod save_as_durable;
 pub use save_as_durable::{
     DecodeDurableServiceSaveAsErrorV1, DecodedDurableServiceSaveAsV1,
     DurableServiceSaveAsBeginErrorV1, DurableServiceSaveAsErrorV1, DurableServiceSaveAsV1,
-    decode_durable_service_save_as_record_v1,
+    decode_durable_service_save_as_record_v1, validate_decoded_durable_service_save_as_record_v1,
 };
 
 use keystone_replay::{ReplayDecision, ReplayRegister};

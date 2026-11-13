@@ -21,6 +21,10 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 pub use vellum_protocol::DurableOperationRefV1;
+use vellum_protocol::{
+    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1 as PortableSaveAsLifecycleV1,
+    DurableSaveAsReceiptV1,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DurableSaveAsStageV1 {
@@ -69,6 +73,29 @@ pub struct CanonicalDurableSaveAsV1<'a> {
     pub expected_destination: &'a Path,
     pub canonical_request: &'a [u8],
     pub outcome: CanonicalDurableSaveAsOutcomeV1<'a>,
+}
+
+pub enum DecodedCanonicalDurableSaveAsOutcomeV1<'a> {
+    Pending,
+    Complete(&'a DurableSaveAsReceiptV1),
+}
+
+/// Canonically decoded portable Save As facts. Byte-level canonicality and
+/// intent/receipt congruence are established by the protocol service before
+/// this host-owned identity and checkpoint validation.
+pub struct DecodedCanonicalDurableSaveAsV1<'a> {
+    pub intent: &'a DurableSaveAsIntentV1,
+    pub outcome: DecodedCanonicalDurableSaveAsOutcomeV1<'a>,
+}
+
+impl std::fmt::Debug for DecodedCanonicalDurableSaveAsV1<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DecodedCanonicalDurableSaveAsV1")
+            .field("intent", self.intent)
+            .field("outcome", &"<redacted>")
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for CanonicalDurableSaveAsV1<'_> {
@@ -150,6 +177,57 @@ pub fn validate_recovered_durable_save_as_v1(
         }
         (Some(_), CanonicalDurableSaveAsOutcomeV1::Complete { .. }) => {
             Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict)
+        }
+        _ => Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict),
+    }
+}
+
+/// Joins canonically decoded protocol facts to authenticated journal ownership
+/// and the current durable workspace identity. This function has no admission,
+/// write, binding, retry, or cleanup authority.
+pub fn validate_decoded_recovered_durable_save_as_v1(
+    record: &DurableOperationRecordV1,
+    owner: DurableOperationOwnerV1,
+    decoded: DecodedCanonicalDurableSaveAsV1<'_>,
+    identity: &WorkspaceIdentityMetadataV1,
+) -> Result<DurableSaveAsRecoveryStateV1, DurableSaveAsRecoveryRefusalV1> {
+    if record.scope.workspace() != owner.scope.workspace()
+        || record.scope.generation() > owner.scope.generation()
+        || record.authenticated_subject != owner.authenticated_subject
+    {
+        return Err(DurableSaveAsRecoveryRefusalV1::OwnerConflict);
+    }
+    let intent = decoded.intent;
+    if owner.scope.workspace() != identity.workspace()
+        || owner.scope.generation() != identity.generation()
+        || intent.document().workspace().get() != identity.workspace()
+    {
+        return Err(DurableSaveAsRecoveryRefusalV1::IdentityConflict);
+    }
+    let Some(current_document) = identity
+        .document_bindings()
+        .iter()
+        .find(|binding| binding.ordinal() == intent.document().get())
+    else {
+        return Err(DurableSaveAsRecoveryRefusalV1::IdentityConflict);
+    };
+    let binding_checkpoint_matches = current_document.locator() == Path::new(intent.destination());
+    match (record.frozen_reply.is_some(), decoded.outcome) {
+        (false, DecodedCanonicalDurableSaveAsOutcomeV1::Pending) => {
+            Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
+        }
+        (true, DecodedCanonicalDurableSaveAsOutcomeV1::Complete(receipt)) => {
+            if receipt.document() != intent.document()
+                || receipt.source_revision() != intent.expected_revision()
+                || receipt.lifecycle() != PortableSaveAsLifecycleV1::TerminalReplayable
+                || receipt.changes_stable_binding() != binding_checkpoint_matches
+                || (receipt.changes_stable_binding()
+                    && record.scope.generation() >= owner.scope.generation())
+            {
+                Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict)
+            } else {
+                Ok(DurableSaveAsRecoveryStateV1::Complete)
+            }
         }
         _ => Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict),
     }

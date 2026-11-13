@@ -14,9 +14,10 @@ use vellum_host::{
         SaveAsDestinationRequestV1,
     },
     request_journal::{
-        DurableOperationEnvelopeRefusalV1, DurableOperationRecordV1, DurableOperationSortV1,
-        RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalScopeV1,
-        decode_durable_operation_envelope_v1, encode_durable_operation_envelope_v1,
+        DurableOperationEnvelopeRefusalV1, DurableOperationOwnerV1, DurableOperationRecordV1,
+        DurableOperationSortV1, RequestJournalLimitsV1, RequestJournalPortV1,
+        RequestJournalScopeV1, decode_durable_operation_envelope_v1,
+        encode_durable_operation_envelope_v1,
     },
     save_as::{
         SaveAsAuthorityPortV1, SaveAsBindingUnknownReasonV1 as HostBindingUnknownReasonV1,
@@ -29,10 +30,14 @@ use vellum_host::{
         SaveAsPhysicalUnknownReasonV1 as HostPhysicalUnknownReasonV1, SaveAsReceiptV1,
     },
     save_as_journal::{
-        DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
-        DurableSaveAsTransactionV1,
+        DecodedCanonicalDurableSaveAsOutcomeV1, DecodedCanonicalDurableSaveAsV1,
+        DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsRecoveryRefusalV1,
+        DurableSaveAsRecoveryStateV1, DurableSaveAsStageV1, DurableSaveAsTransactionV1,
+        validate_decoded_recovered_durable_save_as_v1,
     },
-    workspace::{WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1},
+    workspace::{
+        WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1, WorkspaceIdentityMetadataV1,
+    },
 };
 use vellum_protocol::{
     DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
@@ -163,6 +168,29 @@ pub fn decode_durable_service_save_as_record_v1(
         return Err(DecodeDurableServiceSaveAsErrorV1::ReceiptNotTerminal);
     }
     Ok(DecodedDurableServiceSaveAsV1::Complete { intent, receipt })
+}
+
+pub fn validate_decoded_durable_service_save_as_record_v1(
+    record: &DurableOperationRecordV1,
+    owner: DurableOperationOwnerV1,
+    decoded: &DecodedDurableServiceSaveAsV1,
+    identity: &WorkspaceIdentityMetadataV1,
+) -> Result<DurableSaveAsRecoveryStateV1, DurableSaveAsRecoveryRefusalV1> {
+    let decoded = match decoded {
+        DecodedDurableServiceSaveAsV1::OutcomeUnknown { intent } => {
+            DecodedCanonicalDurableSaveAsV1 {
+                intent,
+                outcome: DecodedCanonicalDurableSaveAsOutcomeV1::Pending,
+            }
+        }
+        DecodedDurableServiceSaveAsV1::Complete { intent, receipt } => {
+            DecodedCanonicalDurableSaveAsV1 {
+                intent,
+                outcome: DecodedCanonicalDurableSaveAsOutcomeV1::Complete(receipt),
+            }
+        }
+    };
+    validate_decoded_recovered_durable_save_as_v1(record, owner, decoded, identity)
 }
 
 impl From<ServiceSaveAsErrorV1> for DurableServiceSaveAsErrorV1 {

@@ -23,8 +23,8 @@ use vellum_host::{
         SaveAsDestinationRequestV1,
     },
     request_journal::{
-        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecordV1,
-        DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationOwnerV1,
+        DurableOperationRecordV1, DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
         DurableOperationRetirementResultV1, DurableOperationRetirementV1, DurableOperationSortV1,
         RequestJournalCompletionV1, RequestJournalIntentV1, RequestJournalLimitsV1,
         RequestJournalPortV1, RequestJournalRecoveryV1, RequestJournalRefusalV1,
@@ -35,7 +35,10 @@ use vellum_host::{
         ResourceAdapter, ResourceAdapterFactory, WriteCompletion,
     },
     save_as::{FixedSaveAsAuthorityV1, SaveAsAuthorityRequestV1, SaveAsLifecycleV1},
-    save_as_journal::{DurableOperationRefV1, DurableSaveAsStageV1},
+    save_as_journal::{
+        DurableOperationRefV1, DurableSaveAsRecoveryRefusalV1, DurableSaveAsRecoveryStateV1,
+        DurableSaveAsStageV1,
+    },
     workspace::{
         WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1, WorkspaceIdentityMetadataV1,
         WorkspaceIdentityRecoveryRefusalV1, WorkspaceIdentityRecoveryV1,
@@ -50,7 +53,7 @@ use vellum_protocol::{
 use vellum_service::{
     DecodeDurableServiceSaveAsErrorV1, DecodedDurableServiceSaveAsV1,
     DurableServiceSaveAsBeginErrorV1, Service, ServiceLimits, ServiceSaveAsStageV1,
-    decode_durable_service_save_as_record_v1,
+    decode_durable_service_save_as_record_v1, validate_decoded_durable_service_save_as_record_v1,
 };
 use vellum_wire::{
     WireLimits, decode_durable_save_as_intent_v1, encode_durable_save_as_receipt_v1,
@@ -568,18 +571,37 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         decode_durable_save_as_intent_v1(envelope.payload(), wire_limits()).unwrap(),
         intent
     );
+    let initial_scope =
+        RequestJournalScopeV1::new(service.workspace_id().get(), before_metadata.generation())
+            .unwrap();
+    let initial_owner = DurableOperationOwnerV1 {
+        scope: initial_scope,
+        authenticated_subject: [5; 16],
+    };
     let pending_record = DurableOperationRecordV1 {
-        scope: RequestJournalScopeV1::new(1, 1).unwrap(),
+        scope: initial_scope,
         operation: DurableOperationRefV1::new([4; 16]).unwrap(),
         authenticated_subject: [5; 16],
         frozen_request: frozen.to_vec(),
         frozen_reply: None,
     };
+    let decoded_pending =
+        decode_durable_service_save_as_record_v1(&pending_record, journal_limits(), wire_limits())
+            .unwrap();
     assert_eq!(
-        decode_durable_service_save_as_record_v1(&pending_record, journal_limits(), wire_limits(),),
-        Ok(DecodedDurableServiceSaveAsV1::OutcomeUnknown {
+        decoded_pending,
+        DecodedDurableServiceSaveAsV1::OutcomeUnknown {
             intent: intent.clone(),
-        })
+        }
+    );
+    assert_eq!(
+        validate_decoded_durable_service_save_as_record_v1(
+            &pending_record,
+            initial_owner,
+            &decoded_pending,
+            &before_metadata,
+        ),
+        Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
     );
     let terminal = DurableSaveAsReceiptV1::try_new(
         document,
@@ -592,14 +614,26 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     .unwrap();
     let complete_record = DurableOperationRecordV1 {
         frozen_reply: Some(encode_durable_save_as_receipt_v1(terminal, wire_limits()).unwrap()),
-        ..pending_record
+        ..pending_record.clone()
     };
+    let decoded_complete =
+        decode_durable_service_save_as_record_v1(&complete_record, journal_limits(), wire_limits())
+            .unwrap();
     assert_eq!(
-        decode_durable_service_save_as_record_v1(&complete_record, journal_limits(), wire_limits(),),
-        Ok(DecodedDurableServiceSaveAsV1::Complete {
+        decoded_complete,
+        DecodedDurableServiceSaveAsV1::Complete {
             intent: intent.clone(),
             receipt: terminal,
-        })
+        }
+    );
+    assert_eq!(
+        validate_decoded_durable_service_save_as_record_v1(
+            &complete_record,
+            initial_owner,
+            &decoded_complete,
+            &before_metadata,
+        ),
+        Err(DurableSaveAsRecoveryRefusalV1::ReceiptConflict)
     );
     let fenced = DurableSaveAsReceiptV1::try_new(
         document,
@@ -617,7 +651,7 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     .unwrap();
     let fenced_record = DurableOperationRecordV1 {
         frozen_reply: Some(encode_durable_save_as_receipt_v1(fenced, wire_limits()).unwrap()),
-        ..complete_record
+        ..complete_record.clone()
     };
     assert_eq!(
         decode_durable_service_save_as_record_v1(&fenced_record, journal_limits(), wire_limits(),),
@@ -674,6 +708,20 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
     ));
     let checkpoint = service.identity_metadata(limits).unwrap();
     assert_eq!(checkpoint.document_bindings()[0].locator(), destination);
+    let recovered_owner = DurableOperationOwnerV1 {
+        scope: RequestJournalScopeV1::new(service.workspace_id().get(), checkpoint.generation())
+            .unwrap(),
+        authenticated_subject: [5; 16],
+    };
+    assert_eq!(
+        validate_decoded_durable_service_save_as_record_v1(
+            &complete_record,
+            recovered_owner,
+            &decoded_complete,
+            &checkpoint,
+        ),
+        Ok(DurableSaveAsRecoveryStateV1::Complete)
+    );
     let in_flight = service
         .durable_save_as_receipt(&operation)
         .unwrap()
