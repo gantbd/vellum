@@ -24,6 +24,9 @@ const DURABLE_TOOLS = [
   'vellum.durable_receipt',
   'vellum.durable_retire',
   'vellum.durable_status',
+  'vellum.durable_save_as_submit',
+  'vellum.durable_save_as_lookup',
+  'vellum.durable_save_as_retire',
 ];
 const daemonBinary = process.env.VELLUM_DAEMON_BIN;
 const mcpBinary = process.env.VELLUM_MCP_BIN;

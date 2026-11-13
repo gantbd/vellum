@@ -22,10 +22,11 @@ a local-user boundary. The optional private credential establishes a stable
 receipt subject and enables the authenticated durable-tool catalog; it grants
 no action and does not replace the daemon's independent authority ceiling.
 
-The library also implements four additive restart-stable tools for trusted
+The library also implements seven additive restart-stable tools for trusted
 compositions: `vellum.durable_execute`, the structurally separate read-only
 `vellum.durable_receipt`, the content-free read-only
-`vellum.durable_status`, and `vellum.durable_retire`. They are neither
+`vellum.durable_status`, `vellum.durable_retire`, and distinct durable Save As
+submit, read-only lookup, and exact receipt-retirement operations. They are neither
 advertised nor accepted by `McpServer::new`; enabling them requires
 `McpServer<RemoteTransport<AuthenticatedUnixConnector>>::new_authenticated`.
 The shipped CLI selects this constructor only when given `--credential`; the
@@ -46,7 +47,7 @@ authority-mediated membership, plus exact private locator-to-identity resolution
 `vellum.save` lets a harness persist each revision returned by
 `vellum.workspace_edit`; each document save has its own persistence receipt and
 no atomic multi-document durability is implied. An authenticated
-composition adds exactly the four restart-stable
+composition adds exactly the seven restart-stable
 tools named above. Prompts, tasks, HTTP transport, subscriptions,
 semantic-provider queries, and server-to-client requests are not implemented.
 Membership admission results are operation-scoped: file results identify only

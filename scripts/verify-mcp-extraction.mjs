@@ -30,13 +30,16 @@ const expectedAuthenticatedAdditions = [
   'vellum.durable_receipt',
   'vellum.durable_retire',
   'vellum.durable_status',
+  'vellum.durable_save_as_submit',
+  'vellum.durable_save_as_lookup',
+  'vellum.durable_save_as_retire',
 ];
 if (
   JSON.stringify(contract.protocol?.ordinaryTools) !== JSON.stringify(expectedOrdinaryTools)
   || JSON.stringify(contract.protocol?.authenticatedAdditions)
     !== JSON.stringify(expectedAuthenticatedAdditions)
 ) {
-  throw new Error('MCP extraction catalog drifted from the qualified eight-plus-four surface');
+  throw new Error('MCP extraction catalog drifted from the qualified eight-plus-seven surface');
 }
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {

@@ -13,19 +13,35 @@ use std::{
 use vellum_adapter_local_authentication::{
     LocalCredentialClaimProviderV1, LocalCredentialStoreV1, LocalCredentialVerifierV1,
 };
-use vellum_adapter_local_fs::{FilesystemLimits, LocalFilesystemFactory};
+use vellum_adapter_local_fs::{
+    FilesystemLimits, LocalFilesystemFactory, LocalRequestJournalV1,
+    LocalWorkspaceIdentityMetadataV1,
+};
 use vellum_daemon::{AuthenticatedUnixConnector, DaemonExportPolicyV1, DaemonLimits, LocalDaemon};
 use vellum_editor::Workspace;
-use vellum_host::authority::{AuthorityActionSetV1, AuthorityActionV1};
+use vellum_host::{
+    authority::{AuthorityActionSetV1, AuthorityActionV1},
+    request_journal::{
+        DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationSortV1,
+        RequestJournalPortV1, RequestJournalScopeV1, encode_durable_operation_envelope_v1,
+    },
+    workspace::{WorkspaceIdentityMetadataPortV1, WorkspaceIdentityRecoveryV1},
+};
 use vellum_mcp::{
     CHANGES_TOOL, DURABLE_EXECUTE_TOOL, DURABLE_RECEIPT_TOOL, DURABLE_RETIRE_TOOL,
+    DURABLE_SAVE_AS_LOOKUP_TOOL, DURABLE_SAVE_AS_RETIRE_TOOL, DURABLE_SAVE_AS_SUBMIT_TOOL,
     DURABLE_STATUS_TOOL, MEMBERSHIP_TOOL, McpLimits, McpServer, PROTOCOL_VERSION,
     REPLACE_AND_SAVE_TOOL, REPLACE_TOOL, RESOLVE_LOCATOR_TOOL, SAVE_TOOL, SNAPSHOT_TOOL,
     WORKSPACE_EDIT_TOOL,
 };
 use vellum_sdk_client::{
     client::Client,
-    protocol::DurableOperationRefV1,
+    protocol::{
+        DurableOperationRefV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
+        DurableSaveAsFailureV1, DurableSaveAsIntentV1, DurableSaveAsLifecycleV1,
+        DurableSaveAsNotAttemptedReasonV1, DurableSaveAsPersistenceV1, DurableSaveAsReceiptV1,
+        WorkspaceDocumentIdV1, WorkspaceIdV1,
+    },
     transport::{RemoteTransport, TransportLimits},
 };
 use vellum_service::ServiceLimits;
@@ -58,6 +74,81 @@ fn built_daemon_binary() -> PathBuf {
         "build both product binaries before process qualification"
     );
     daemon
+}
+
+fn recovered_document(
+    directory: &std::path::Path,
+) -> (RequestJournalScopeV1, WorkspaceDocumentIdV1) {
+    let limits = DaemonLimits::reference();
+    let mut metadata = LocalWorkspaceIdentityMetadataV1::default();
+    let WorkspaceIdentityRecoveryV1::Recovered(identity) =
+        metadata.load(directory, limits.workspace_identity)
+    else {
+        panic!("expected committed workspace identity")
+    };
+    let scope = RequestJournalScopeV1::new(identity.workspace(), identity.generation()).unwrap();
+    let document = WorkspaceDocumentIdV1::new(
+        WorkspaceIdV1::new(identity.workspace()).unwrap(),
+        identity.document_bindings()[0].ordinal(),
+    )
+    .unwrap();
+    (scope, document)
+}
+
+fn credential_subject(path: &std::path::Path) -> [u8; 16] {
+    let encoded = fs::read(path).unwrap();
+    encoded[20..36]
+        .try_into()
+        .expect("credential v1 has a fixed subject field")
+}
+
+fn inject_save_as_record(
+    directory: &std::path::Path,
+    scope: RequestJournalScopeV1,
+    operation: DurableOperationRefV1,
+    subject: [u8; 16],
+    intent: &DurableSaveAsIntentV1,
+    receipt: Option<DurableSaveAsReceiptV1>,
+) {
+    let limits = DaemonLimits::reference().request_journal;
+    let payload = vellum_sdk_client::wire::encode_durable_save_as_intent_v1(
+        intent,
+        vellum_sdk_client::wire::WireLimits::reference(),
+    )
+    .unwrap();
+    let frozen_request = encode_durable_operation_envelope_v1(
+        DurableOperationSortV1::SaveAs,
+        &payload,
+        limits.max_request_bytes,
+    )
+    .unwrap();
+    let durable_intent = DurableOperationIntentV1 {
+        scope,
+        operation,
+        authenticated_subject: subject,
+        frozen_request: &frozen_request,
+    };
+    let mut journal = LocalRequestJournalV1::default();
+    journal
+        .begin_operation(directory, durable_intent, limits)
+        .unwrap();
+    if let Some(receipt) = receipt {
+        let frozen_reply = vellum_sdk_client::wire::encode_durable_save_as_receipt_v1(
+            receipt,
+            vellum_sdk_client::wire::WireLimits::reference(),
+        )
+        .unwrap();
+        journal
+            .complete_operation(
+                directory,
+                DurableOperationCompletionV1 {
+                    intent: durable_intent,
+                    frozen_reply: &frozen_reply,
+                },
+                limits,
+            )
+            .unwrap();
+    }
 }
 
 fn extraction_catalog() -> (Vec<String>, Vec<String>) {
@@ -234,6 +325,9 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         DURABLE_RECEIPT_TOOL,
         DURABLE_RETIRE_TOOL,
         DURABLE_STATUS_TOOL,
+        DURABLE_SAVE_AS_SUBMIT_TOOL,
+        DURABLE_SAVE_AS_LOOKUP_TOOL,
+        DURABLE_SAVE_AS_RETIRE_TOOL,
     ];
     assert_eq!(
         ordinary_contract,
@@ -506,6 +600,225 @@ fn shipped_processes_recover_a_lost_durable_reply_after_both_restart() {
     let _ = fs::remove_dir_all(directory.join(".vellum-durable-operation-v1"));
     let _ = fs::remove_dir_all(directory.join(".vellum-durable-operation-v2"));
     let _ = fs::remove_dir(&directory);
+}
+
+#[test]
+fn shipped_mcp_projects_recovered_save_as_and_absorbing_retirement() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::path::PathBuf::from("/private/tmp").join(format!(
+        "vellum-mcp-save-as-restart-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir(&directory).unwrap();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+    let source = directory.join("source.txt");
+    let destination = directory.join("destination.txt");
+    let socket = directory.join("service.sock");
+    let control = directory.join("control.sock");
+    let credential = directory.join("credential");
+    fs::write(&source, "alpha").unwrap();
+
+    let daemon_binary = built_daemon_binary();
+    assert!(
+        Command::new(&daemon_binary)
+            .arg("--provision-credential")
+            .arg(&credential)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let spawn_daemon = || {
+        let mut daemon = Command::new(&daemon_binary)
+            .arg("--socket")
+            .arg(&socket)
+            .arg("--control")
+            .arg(&control)
+            .arg("--credential")
+            .arg(&credential)
+            .arg("--allow-retire-receipt")
+            .arg("--")
+            .arg(&source)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdout = BufReader::new(daemon.stdout.take().unwrap());
+        let mut ready = String::new();
+        stdout.read_line(&mut ready).unwrap();
+        if ready != "vellum-daemon ready\n" {
+            let mut stderr = String::new();
+            daemon
+                .stderr
+                .take()
+                .unwrap()
+                .read_to_string(&mut stderr)
+                .unwrap();
+            let status = daemon.wait().unwrap();
+            panic!("daemon startup failed ({status}): {stderr}");
+        }
+        (daemon, stdout)
+    };
+    let shutdown_daemon = |daemon: &mut std::process::Child| {
+        let shutdown = Command::new(&daemon_binary)
+            .arg("--shutdown")
+            .arg(&control)
+            .output()
+            .unwrap();
+        assert!(shutdown.status.success());
+        assert!(daemon.wait().unwrap().success());
+    };
+    let spawn_mcp = || {
+        Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+            .arg("--socket")
+            .arg(&socket)
+            .arg("--credential")
+            .arg(&credential)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+
+    let (mut initializer, _initializer_stdout) = spawn_daemon();
+    shutdown_daemon(&mut initializer);
+    let (scope, document) = recovered_document(&directory);
+    let subject = credential_subject(&credential);
+    let complete_operation = DurableOperationRefV1::new([0x61; 16]).unwrap();
+    let pending_operation = DurableOperationRefV1::new([0x62; 16]).unwrap();
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        0,
+        destination.to_str().unwrap().to_owned(),
+        DurableSaveAsDestinationEffectV1::OverwriteExisting,
+    )
+    .unwrap();
+    let receipt = DurableSaveAsReceiptV1::try_new(
+        document,
+        0,
+        DurableSaveAsPersistenceV1::NotAttempted,
+        DurableSaveAsBindingV1::NotActivated,
+        Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::AuthorityDenied,
+        )),
+        DurableSaveAsLifecycleV1::TerminalReplayable,
+    )
+    .unwrap();
+    inject_save_as_record(
+        &directory,
+        scope,
+        complete_operation,
+        subject,
+        &intent,
+        Some(receipt),
+    );
+    inject_save_as_record(&directory, scope, pending_operation, subject, &intent, None);
+
+    let arguments = |operation: &str, destination: &std::path::Path| {
+        json!({
+            "operation_ref": operation,
+            "workspace": document.workspace().get(),
+            "document": document.get(),
+            "expected_revision": 0,
+            "destination": destination.to_str().unwrap(),
+            "effect": "overwrite_existing"
+        })
+    };
+    let complete_ref = "vdo1.61616161616161616161616161616161";
+    let pending_ref = "vdo1.62626262626262626262626262626262";
+    let (mut daemon, _daemon_stdout) = spawn_daemon();
+    let mut mcp = spawn_mcp();
+    let mut stdin = mcp.stdin.take().unwrap();
+    let mut stdout = BufReader::new(mcp.stdout.take().unwrap());
+    for request in [
+        durable_call(
+            DURABLE_SAVE_AS_LOOKUP_TOOL,
+            arguments(complete_ref, &destination),
+        ),
+        durable_call(
+            DURABLE_SAVE_AS_LOOKUP_TOOL,
+            arguments(complete_ref, &directory.join("changed.txt")),
+        ),
+        durable_call(
+            DURABLE_SAVE_AS_RETIRE_TOOL,
+            arguments(complete_ref, &destination),
+        ),
+        durable_call(
+            DURABLE_SAVE_AS_LOOKUP_TOOL,
+            arguments(complete_ref, &destination),
+        ),
+        durable_call(
+            DURABLE_SAVE_AS_LOOKUP_TOOL,
+            arguments(pending_ref, &destination),
+        ),
+    ] {
+        stdin.write_all(&request).unwrap();
+        stdin.write_all(b"\n").unwrap();
+    }
+    stdin.flush().unwrap();
+    let mut replies = Vec::new();
+    for _ in 0..5 {
+        let mut reply = String::new();
+        stdout.read_line(&mut reply).unwrap();
+        replies.push(serde_json::from_str::<Value>(&reply).unwrap());
+    }
+    drop(stdin);
+    assert!(mcp.wait().unwrap().success());
+    assert_eq!(
+        replies[0]["result"]["structuredContent"]["kind"],
+        "save_as_complete"
+    );
+    assert_eq!(
+        replies[0]["result"]["structuredContent"]["failure"],
+        "not_attempted.authority_denied"
+    );
+    assert!(
+        !replies[0]
+            .to_string()
+            .contains(destination.to_str().unwrap())
+    );
+    assert_eq!(
+        replies[1]["result"]["structuredContent"]["code"],
+        "request_conflict"
+    );
+    assert_eq!(replies[2]["result"]["structuredContent"]["kind"], "retired");
+    assert_eq!(
+        replies[3]["result"]["structuredContent"]["kind"],
+        "save_as_retired"
+    );
+    assert_eq!(
+        replies[4]["result"]["structuredContent"]["kind"],
+        "save_as_outcome_unknown"
+    );
+    shutdown_daemon(&mut daemon);
+
+    let (mut restarted, _restarted_daemon_stdout) = spawn_daemon();
+    let mut restarted_mcp = spawn_mcp();
+    let mut restarted_stdin = restarted_mcp.stdin.take().unwrap();
+    let mut restarted_stdout = BufReader::new(restarted_mcp.stdout.take().unwrap());
+    let replay = durable_call(
+        DURABLE_SAVE_AS_LOOKUP_TOOL,
+        arguments(complete_ref, &destination),
+    );
+    restarted_stdin.write_all(&replay).unwrap();
+    restarted_stdin.write_all(b"\n").unwrap();
+    restarted_stdin.flush().unwrap();
+    let mut reply = String::new();
+    restarted_stdout.read_line(&mut reply).unwrap();
+    drop(restarted_stdin);
+    assert!(restarted_mcp.wait().unwrap().success());
+    let reply: Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(
+        reply["result"]["structuredContent"]["kind"],
+        "save_as_retired"
+    );
+    shutdown_daemon(&mut restarted);
+
+    let _ = fs::remove_dir_all(&directory);
 }
 
 #[test]

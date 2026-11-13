@@ -387,6 +387,9 @@ if (mcpExtraction !== undefined) {
     'vellum.durable_receipt',
     'vellum.durable_retire',
     'vellum.durable_status',
+    'vellum.durable_save_as_submit',
+    'vellum.durable_save_as_lookup',
+    'vellum.durable_save_as_retire',
   ];
   if (
     JSON.stringify(mcpExtraction.protocol?.ordinaryTools)
@@ -394,7 +397,7 @@ if (mcpExtraction !== undefined) {
     || JSON.stringify(mcpExtraction.protocol?.authenticatedAdditions)
       !== JSON.stringify(expectedAuthenticatedMcpAdditions)
   ) {
-    fail('MCP extraction catalog must retain eight ordinary tools plus four authenticated additions');
+    fail('MCP extraction catalog must retain eight ordinary tools plus seven authenticated additions');
   }
   const blockers = mcpExtraction.immutableDependencyBlockers ?? [];
   const immutableDependencies = mcpExtraction.qualifiedImmutableDependencies ?? [];

@@ -53,7 +53,7 @@ published client and core tarball identities and integrity values are frozen in
 
 The reviewed lock and SBOM now retain 13 exact registry components. The
 qualification passes automatic and pinned modern negotiation, eight ordinary
-and twelve authenticated tools, locator resolution without path disclosure,
+and fifteen authenticated tools, locator resolution without path disclosure,
 resource read, snapshot, atomic workspace edit, exact-revision durable save and
 clean EOF/disconnect.
 `make qualify-mcp-official-client` remains the sole interoperability gate and

@@ -3,10 +3,11 @@
 ## Unreleased
 
 - Closed the peer extraction and official-client catalog contract over the
-  exact eight ordinary tools plus four authenticated durable additions. The
+  exact eight ordinary tools plus seven authenticated durable additions. The
   ordinary catalog now includes bounded atomic `vellum.workspace_edit`,
   exact-revision `vellum.save`, and private exact `vellum.resolve_locator`; the
-  authenticated catalog also includes content-free `vellum.durable_status`.
+  authenticated catalog also includes content-free `vellum.durable_status`
+  plus distinct durable Save As submit, lookup, and receipt-retirement tools.
 - Added an authenticated-transport-only projection of native durable execute,
   pure receipt lookup, and exact receipt retirement. Harnesses supply and
   persist canonical nonzero

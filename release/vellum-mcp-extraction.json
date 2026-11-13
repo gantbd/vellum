@@ -64,7 +64,10 @@
       "vellum.durable_execute",
       "vellum.durable_receipt",
       "vellum.durable_retire",
-      "vellum.durable_status"
+      "vellum.durable_status",
+      "vellum.durable_save_as_submit",
+      "vellum.durable_save_as_lookup",
+      "vellum.durable_save_as_retire"
     ]
   },
   "publication": "none"

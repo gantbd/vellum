@@ -96,7 +96,8 @@ The implemented surface is deliberately closed:
 The MCP library and credential-enabled CLI have an authenticated-only catalog
 with `vellum.durable_execute`, the structurally separate read-only
 `vellum.durable_receipt`, the content-free read-only `vellum.durable_status`,
-and `vellum.durable_retire`. The ordinary constructor
+`vellum.durable_retire`, and the distinct durable Save As submit, lookup, and
+receipt-retirement tools. The ordinary constructor
 and owner-only CLI invocation neither advertise nor accept these tools. A trusted embedding must
 construct the server over `RemoteTransport<AuthenticatedUnixConnector>` and
 call `McpServer::new_authenticated`; this is a type-level composition
