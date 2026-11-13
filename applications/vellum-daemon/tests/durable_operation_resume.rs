@@ -27,10 +27,10 @@ use vellum_host::{
     request_journal::{
         DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecordV1,
         DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
-        DurableOperationRetirementResultV1, DurableOperationRetirementV1,
+        DurableOperationRetirementResultV1, DurableOperationRetirementV1, DurableOperationSortV1,
         RequestJournalCompletionV1, RequestJournalIntentV1, RequestJournalLimitsV1,
         RequestJournalPortV1, RequestJournalRecoveryV1, RequestJournalRefusalV1,
-        RequestJournalScopeV1,
+        RequestJournalScopeV1, encode_durable_operation_envelope_v1,
     },
     workspace::{
         WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1, WorkspaceIdentityRecoveryV1,
@@ -40,6 +40,10 @@ use vellum_protocol::{
     ClientId, CommandV1, DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
     DurableExecuteRequestV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
+    DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1, DurableSaveAsFailureV1,
+    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsNotAttemptedReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsReceiptV1, DurableSaveAsRetirementV1, DurableSaveAsStateV1,
     FileAdmissionReceiptV1, FileAdmissionStatusV1, RefusalV1, ReplyV1, RequestId, RequestV1,
     ServicePort, VersionWitness, WorkspaceDocumentIdV1, WorkspaceIdV1,
 };
@@ -307,6 +311,52 @@ fn inject_operation(
     if let Some(completion) = completion {
         let frozen_reply = vellum_wire::encode_durable_outcome_v1(
             completion,
+            vellum_wire::WireLimits::reference(),
+        )
+        .unwrap();
+        journal
+            .complete_operation(
+                &fixture.directory,
+                DurableOperationCompletionV1 {
+                    intent: durable_intent,
+                    frozen_reply: &frozen_reply,
+                },
+                limits().request_journal,
+            )
+            .unwrap();
+    }
+}
+
+fn inject_save_as_operation(
+    fixture: &Fixture,
+    operation: DurableOperationRefV1,
+    subject: [u8; 16],
+    intent: &DurableSaveAsIntentV1,
+    completion: Option<DurableSaveAsReceiptV1>,
+) {
+    let (scope, _) = recovered_scope_and_document(fixture);
+    let payload =
+        vellum_wire::encode_durable_save_as_intent_v1(intent, vellum_wire::WireLimits::reference())
+            .unwrap();
+    let frozen_request = encode_durable_operation_envelope_v1(
+        DurableOperationSortV1::SaveAs,
+        &payload,
+        limits().request_journal.max_request_bytes,
+    )
+    .unwrap();
+    let durable_intent = DurableOperationIntentV1 {
+        scope,
+        operation,
+        authenticated_subject: subject,
+        frozen_request: &frozen_request,
+    };
+    let mut journal = LocalRequestJournalV1::default();
+    journal
+        .begin_operation(&fixture.directory, durable_intent, limits().request_journal)
+        .unwrap();
+    if let Some(receipt) = completion {
+        let frozen_reply = vellum_wire::encode_durable_save_as_receipt_v1(
+            receipt,
             vellum_wire::WireLimits::reference(),
         )
         .unwrap();
@@ -721,6 +771,237 @@ fn pending_export_is_outcome_unknown_after_restart_and_never_publishes() {
     assert_eq!(fs::read_to_string(&fixture.source).unwrap(), "alpha");
     assert_eq!(restarted.service_usage().durable_effect_requests, 0);
     assert_eq!(restarted.usage().durable_lookup_pending, 1);
+}
+
+#[test]
+fn recovered_save_as_pending_is_unknown_and_changed_input_conflicts() {
+    let fixture = Fixture::new();
+    let claim = [0x31; 16];
+    let subject = [0x32; 16];
+    let operation = DurableOperationRefV1::new([0x33; 16]).unwrap();
+    let initial = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        AuthorityActionSetV1::read_only(),
+    )
+    .unwrap();
+    drop(initial);
+    let (_, document) = recovered_scope_and_document(&fixture);
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        0,
+        fixture
+            .directory
+            .join("save-as-pending.txt")
+            .to_str()
+            .unwrap()
+            .to_owned(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive,
+    )
+    .unwrap();
+    inject_save_as_operation(&fixture, operation, subject, &intent, None);
+    inject_operation(
+        &fixture,
+        DurableOperationRefV1::new([0x34; 16]).unwrap(),
+        subject,
+        &DurableEffectIntentV1::SaveDocument {
+            document,
+            expected_revision: 0,
+        },
+        None,
+    );
+
+    let mut restarted = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        AuthorityActionSetV1::read_only(),
+    )
+    .unwrap()
+    .require_authentication(SubjectAuthentication, (claim, subject), 4);
+    let socket = fixture.socket.clone();
+    let exact = intent.clone();
+    let changed = DurableSaveAsIntentV1::try_new(
+        document,
+        0,
+        fixture
+            .directory
+            .join("changed-destination.txt")
+            .to_str()
+            .unwrap()
+            .to_owned(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive,
+    )
+    .unwrap();
+    let lookup = std::thread::spawn(move || {
+        let mut transport = authenticated_transport(socket, claim);
+        let client = transport.connect().unwrap();
+        let pending = transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client,
+                request: RequestId::new(1).unwrap(),
+                intent: exact,
+            })
+            .unwrap();
+        let conflict = transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client,
+                request: RequestId::new(2).unwrap(),
+                intent: changed,
+            })
+            .unwrap();
+        (pending, conflict)
+    });
+    for _ in 0..3 {
+        restarted.serve_next().unwrap();
+    }
+    assert_eq!(
+        lookup.join().unwrap(),
+        (
+            DurableSaveAsLookupOutcomeV1::OutcomeUnknown,
+            DurableSaveAsLookupOutcomeV1::RequestConflict,
+        )
+    );
+    assert_eq!(restarted.usage().durable_lookup_pending, 1);
+    assert_eq!(restarted.usage().durable_lookup_conflict, 1);
+}
+
+#[test]
+fn completed_save_as_receipt_retires_once_and_tombstone_survives_restart() {
+    let fixture = Fixture::new();
+    let claim = [0x41; 16];
+    let subject = [0x42; 16];
+    let operation = DurableOperationRefV1::new([0x43; 16]).unwrap();
+    let authority = AuthorityActionSetV1::read_only().join(AuthorityActionSetV1::singleton(
+        AuthorityActionV1::RetireReceipt,
+    ));
+    let initial = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        authority,
+    )
+    .unwrap();
+    drop(initial);
+    let (_, document) = recovered_scope_and_document(&fixture);
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        0,
+        fixture
+            .directory
+            .join("denied-save-as.txt")
+            .to_str()
+            .unwrap()
+            .to_owned(),
+        DurableSaveAsDestinationEffectV1::OverwriteExisting,
+    )
+    .unwrap();
+    let receipt = DurableSaveAsReceiptV1::try_new(
+        document,
+        0,
+        DurableSaveAsPersistenceV1::NotAttempted,
+        DurableSaveAsBindingV1::NotActivated,
+        Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::AuthorityDenied,
+        )),
+        DurableSaveAsLifecycleV1::TerminalReplayable,
+    )
+    .unwrap();
+    inject_save_as_operation(&fixture, operation, subject, &intent, Some(receipt));
+
+    let mut first = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        authority,
+    )
+    .unwrap()
+    .require_authentication(SubjectAuthentication, (claim, subject), 8);
+    let socket = fixture.socket.clone();
+    let first_intent = intent.clone();
+    let exercise = std::thread::spawn(move || {
+        let mut transport = authenticated_transport(socket, claim);
+        let client = transport.connect().unwrap();
+        let before = transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client,
+                request: RequestId::new(1).unwrap(),
+                intent: first_intent.clone(),
+            })
+            .unwrap();
+        let retired = transport
+            .retire_durable_save_as(DurableSaveAsRetirementV1 {
+                operation,
+                client,
+                request: RequestId::new(2).unwrap(),
+                intent: first_intent.clone(),
+            })
+            .unwrap();
+        let after = transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client,
+                request: RequestId::new(3).unwrap(),
+                intent: first_intent.clone(),
+            })
+            .unwrap();
+        let repeated = transport
+            .retire_durable_save_as(DurableSaveAsRetirementV1 {
+                operation,
+                client,
+                request: RequestId::new(4).unwrap(),
+                intent: first_intent,
+            })
+            .unwrap();
+        (before, retired, after, repeated)
+    });
+    for _ in 0..5 {
+        first.serve_next().unwrap();
+    }
+    assert_eq!(
+        exercise.join().unwrap(),
+        (
+            DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Complete(receipt)),
+            DurableReceiptRetirementOutcomeV1::Retired,
+            DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Retired),
+            DurableReceiptRetirementOutcomeV1::AbsentOrForeign,
+        )
+    );
+    assert_eq!(first.usage().durable_retirement_retired, 1);
+    drop(first);
+
+    let mut restarted = LocalDaemon::bind_with_persistent_identity_and_action_ceiling(
+        &fixture.socket,
+        workspace(&fixture.source),
+        limits(),
+        authority,
+    )
+    .unwrap()
+    .require_authentication(SubjectAuthentication, (claim, subject), 4);
+    let socket = fixture.socket.clone();
+    let replay = std::thread::spawn(move || {
+        let mut transport = authenticated_transport(socket, claim);
+        let client = transport.connect().unwrap();
+        transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client,
+                request: RequestId::new(1).unwrap(),
+                intent,
+            })
+            .unwrap()
+    });
+    for _ in 0..2 {
+        restarted.serve_next().unwrap();
+    }
+    assert_eq!(
+        replay.join().unwrap(),
+        DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Retired)
+    );
 }
 
 struct DuplicateOperationJournal {

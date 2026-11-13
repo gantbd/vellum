@@ -55,9 +55,10 @@ use vellum_host::request_journal::{
     DurableOperationIntentV1, DurableOperationLookupV1, DurableOperationOwnerV1,
     DurableOperationRecordV1, DurableOperationRecoveryV1, DurableOperationRetirementRecordV1,
     DurableOperationRetirementRecoveryV1, DurableOperationRetirementResultV1,
-    DurableOperationRetirementV1, RequestJournalCompletionV1, RequestJournalIntentV1,
-    RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalRecordV1, RequestJournalRecoveryV1,
-    RequestJournalRefusalV1, RequestJournalScopeV1, lookup_recovered_operation_v1,
+    DurableOperationRetirementV1, DurableOperationSortV1, RequestJournalCompletionV1,
+    RequestJournalIntentV1, RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalRecordV1,
+    RequestJournalRecoveryV1, RequestJournalRefusalV1, RequestJournalScopeV1,
+    encode_durable_operation_envelope_v1, lookup_recovered_operation_v1,
     validate_recovered_durable_effect_v1,
 };
 #[cfg(unix)]
@@ -80,13 +81,16 @@ use vellum_protocol::DurableEffectReceiptV1;
 use vellum_protocol::{
     CommandV1, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
     DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1,
-    DurableReceiptRetirementV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1, OutcomeV1,
-    ReplyV1, RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
+    DurableReceiptRetirementV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1,
+    DurableSaveAsIntentV1, DurableSaveAsLookupOutcomeV1, DurableSaveAsLookupV1,
+    DurableSaveAsRetirementV1, DurableSaveAsStateV1, OutcomeV1, ReplyV1, RequestV1,
+    ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
 };
 #[cfg(unix)]
 use vellum_service::{
-    AuthenticatedExportExecutionV1, RequestRetentionOutcome, Service, ServiceBuildError,
-    ServiceLimits, ServiceUsage,
+    AuthenticatedExportExecutionV1, DecodedDurableServiceSaveAsV1, RequestRetentionOutcome,
+    Service, ServiceBuildError, ServiceLimits, ServiceUsage,
+    decode_durable_service_save_as_record_v1, validate_decoded_durable_service_save_as_record_v1,
 };
 #[cfg(unix)]
 pub use vellum_transport::{AuthenticatedUnixConnector, LocalAuthenticationClaimV1};
@@ -1112,6 +1116,23 @@ impl CheckpointingService<'_> {
         recovered_durable_reply(self.durable_receipts, request, frozen, subject)
     }
 
+    fn encode_durable_save_as_intent(
+        &self,
+        intent: &DurableSaveAsIntentV1,
+    ) -> Result<Vec<u8>, ServiceAccessErrorV1> {
+        let payload = vellum_wire::encode_durable_save_as_intent_v1(
+            intent,
+            vellum_wire::WireLimits::reference(),
+        )
+        .map_err(|_| ServiceAccessErrorV1::Malformed)?;
+        encode_durable_operation_envelope_v1(
+            DurableOperationSortV1::SaveAs,
+            &payload,
+            self.journal_limits.max_request_bytes,
+        )
+        .map_err(|_| ServiceAccessErrorV1::Malformed)
+    }
+
     fn checkpoint_fresh_acceptance(
         &mut self,
         reply: &ReplyV1,
@@ -1928,6 +1949,130 @@ impl ServicePort for CheckpointingService<'_> {
         Ok(outcome)
     }
 
+    fn lookup_durable_save_as(
+        &mut self,
+        lookup: DurableSaveAsLookupV1,
+    ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+        bump(
+            &mut self.daemon_usage.durable_operation_lookups,
+            &mut self.daemon_usage.counter_saturated,
+        );
+        let Some(subject) = self.authenticated_subject else {
+            bump(
+                &mut self.daemon_usage.durable_lookup_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableSaveAsLookupOutcomeV1::Unavailable);
+        };
+        if !self.service.is_client_active(lookup.client) {
+            bump(
+                &mut self.daemon_usage.durable_lookup_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableSaveAsLookupOutcomeV1::Unavailable);
+        }
+        let frozen_request = match self.encode_durable_save_as_intent(&lookup.intent) {
+            Ok(request) => request,
+            Err(_) => {
+                bump(
+                    &mut self.daemon_usage.durable_lookup_unavailable,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableSaveAsLookupOutcomeV1::Unavailable);
+            }
+        };
+        let mut retired = self.retired_durable_operations.iter().filter(|record| {
+            record.scope.workspace() == self.journal_scope.workspace()
+                && record.authenticated_subject == subject
+                && record.operation == lookup.operation
+        });
+        if let Some(record) = retired.next() {
+            let outcome = if retired.next().is_some() {
+                DurableSaveAsLookupOutcomeV1::Unavailable
+            } else if record.frozen_request == frozen_request {
+                DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Retired)
+            } else {
+                DurableSaveAsLookupOutcomeV1::RequestConflict
+            };
+            let counter = match outcome {
+                DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Retired) => {
+                    &mut self.daemon_usage.durable_operation_retired_replays
+                }
+                DurableSaveAsLookupOutcomeV1::RequestConflict => {
+                    &mut self.daemon_usage.durable_lookup_conflict
+                }
+                _ => &mut self.daemon_usage.durable_lookup_unavailable,
+            };
+            bump(counter, &mut self.daemon_usage.counter_saturated);
+            return Ok(outcome);
+        }
+        let lookup_state = lookup_recovered_operation_v1(
+            self.durable_operations,
+            self.journal_scope,
+            subject,
+            lookup.operation,
+            &frozen_request,
+        );
+        let outcome = match lookup_state {
+            DurableOperationLookupV1::RequestConflict => {
+                DurableSaveAsLookupOutcomeV1::RequestConflict
+            }
+            DurableOperationLookupV1::AbsentOrForeign => {
+                DurableSaveAsLookupOutcomeV1::AbsentOrForeign
+            }
+            DurableOperationLookupV1::Unavailable => DurableSaveAsLookupOutcomeV1::Unavailable,
+            DurableOperationLookupV1::OutcomeUnknown | DurableOperationLookupV1::Complete(_) => {
+                let Some(record) = self
+                    .durable_operations
+                    .iter()
+                    .find(|record| {
+                        record.scope.workspace() == self.journal_scope.workspace()
+                            && record.authenticated_subject == subject
+                            && record.operation == lookup.operation
+                            && record.frozen_request == frozen_request
+                    })
+                    .cloned()
+                else {
+                    return Ok(DurableSaveAsLookupOutcomeV1::Unavailable);
+                };
+                match decode_durable_service_save_as_record_v1(
+                    &record,
+                    self.journal_limits,
+                    vellum_wire::WireLimits::reference(),
+                ) {
+                    Ok(DecodedDurableServiceSaveAsV1::OutcomeUnknown { .. }) => {
+                        DurableSaveAsLookupOutcomeV1::OutcomeUnknown
+                    }
+                    Ok(DecodedDurableServiceSaveAsV1::Complete { receipt, .. }) => {
+                        DurableSaveAsLookupOutcomeV1::Observed(DurableSaveAsStateV1::Complete(
+                            receipt,
+                        ))
+                    }
+                    Err(_) => DurableSaveAsLookupOutcomeV1::Unavailable,
+                }
+            }
+        };
+        let counter = match &outcome {
+            DurableSaveAsLookupOutcomeV1::Observed(_) => {
+                &mut self.daemon_usage.durable_lookup_complete
+            }
+            DurableSaveAsLookupOutcomeV1::RequestConflict => {
+                &mut self.daemon_usage.durable_lookup_conflict
+            }
+            DurableSaveAsLookupOutcomeV1::OutcomeUnknown => {
+                &mut self.daemon_usage.durable_lookup_pending
+            }
+            DurableSaveAsLookupOutcomeV1::AbsentOrForeign => {
+                &mut self.daemon_usage.durable_lookup_absent_or_foreign
+            }
+            DurableSaveAsLookupOutcomeV1::Unavailable => {
+                &mut self.daemon_usage.durable_lookup_unavailable
+            }
+        };
+        bump(counter, &mut self.daemon_usage.counter_saturated);
+        Ok(outcome)
+    }
+
     fn durable_receipt_status(
         &mut self,
         request: DurableReceiptStatusRequestV1,
@@ -2028,6 +2173,214 @@ impl ServicePort for CheckpointingService<'_> {
         // Passive owner-scoped classification and aggregate capacity checks do
         // not consume the bounded one-shot authority budget. The distinct
         // action gates the complete, memory-reserved mutation candidate.
+        if self
+            .service
+            .authorize_durable_receipt_retirement(retirement.client)
+            .is_err()
+        {
+            bump(
+                &mut self.daemon_usage.durable_retirement_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+        }
+        let result = self.journal.retire_operation(
+            self.directory,
+            DurableOperationRetirementV1 {
+                scope: self.journal_scope,
+                operation: retirement.operation,
+                authenticated_subject: subject,
+                frozen_request: &frozen_request,
+            },
+            self.journal_limits,
+        );
+        match result {
+            Ok(DurableOperationRetirementResultV1::Retired) => {
+                let record = self.durable_operations.remove(index);
+                self.retired_durable_operations
+                    .push(DurableOperationRetirementRecordV1 {
+                        scope: record.scope,
+                        operation: record.operation,
+                        authenticated_subject: record.authenticated_subject,
+                        frozen_request: record.frozen_request,
+                    });
+                bump(
+                    &mut self.daemon_usage.durable_retirement_retired,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                Ok(DurableReceiptRetirementOutcomeV1::Retired)
+            }
+            Ok(DurableOperationRetirementResultV1::AbsentOrForeign) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_absent_or_foreign,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                Ok(DurableReceiptRetirementOutcomeV1::AbsentOrForeign)
+            }
+            Ok(DurableOperationRetirementResultV1::RequestConflict) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_conflicts,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                Ok(DurableReceiptRetirementOutcomeV1::RequestConflict)
+            }
+            Ok(DurableOperationRetirementResultV1::Pending) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_pending,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                Ok(DurableReceiptRetirementOutcomeV1::OutcomeUnknown)
+            }
+            Err(RequestJournalRefusalV1::Full) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_unavailable,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                Ok(DurableReceiptRetirementOutcomeV1::Unavailable)
+            }
+            Err(_) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_outcome_unknown,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                *self.checkpoint_failed = true;
+                Err(ServiceAccessErrorV1::OutcomeUnknown)
+            }
+        }
+    }
+
+    fn retire_durable_save_as(
+        &mut self,
+        retirement: DurableSaveAsRetirementV1,
+    ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+        bump(
+            &mut self.daemon_usage.durable_retirement_requests,
+            &mut self.daemon_usage.counter_saturated,
+        );
+        let Some(subject) = self.authenticated_subject else {
+            bump(
+                &mut self.daemon_usage.durable_retirement_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+        };
+        if !self.service.is_client_active(retirement.client) {
+            bump(
+                &mut self.daemon_usage.durable_retirement_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+        }
+        let frozen_request = self.encode_durable_save_as_intent(&retirement.intent)?;
+        let mut retired = self.retired_durable_operations.iter().filter(|record| {
+            record.scope.workspace() == self.journal_scope.workspace()
+                && record.authenticated_subject == subject
+                && record.operation == retirement.operation
+        });
+        if let Some(record) = retired.next() {
+            let outcome = if retired.next().is_some() {
+                DurableReceiptRetirementOutcomeV1::Unavailable
+            } else if record.frozen_request == frozen_request {
+                DurableReceiptRetirementOutcomeV1::AbsentOrForeign
+            } else {
+                DurableReceiptRetirementOutcomeV1::RequestConflict
+            };
+            let counter = match outcome {
+                DurableReceiptRetirementOutcomeV1::RequestConflict => {
+                    &mut self.daemon_usage.durable_retirement_conflicts
+                }
+                DurableReceiptRetirementOutcomeV1::AbsentOrForeign => {
+                    &mut self.daemon_usage.durable_retirement_absent_or_foreign
+                }
+                _ => &mut self.daemon_usage.durable_retirement_unavailable,
+            };
+            bump(counter, &mut self.daemon_usage.counter_saturated);
+            return Ok(outcome);
+        }
+        let lookup_state = lookup_recovered_operation_v1(
+            self.durable_operations,
+            self.journal_scope,
+            subject,
+            retirement.operation,
+            &frozen_request,
+        );
+        match lookup_state {
+            DurableOperationLookupV1::AbsentOrForeign => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_absent_or_foreign,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::AbsentOrForeign);
+            }
+            DurableOperationLookupV1::RequestConflict => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_conflicts,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::RequestConflict);
+            }
+            DurableOperationLookupV1::OutcomeUnknown => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_pending,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::OutcomeUnknown);
+            }
+            DurableOperationLookupV1::Unavailable => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_unavailable,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+            }
+            DurableOperationLookupV1::Complete(_) => {}
+        }
+        let Some(index) = self.durable_operations.iter().position(|record| {
+            record.scope.workspace() == self.journal_scope.workspace()
+                && record.authenticated_subject == subject
+                && record.operation == retirement.operation
+                && record.frozen_request == frozen_request
+        }) else {
+            bump(
+                &mut self.daemon_usage.durable_retirement_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+        };
+        let record = self.durable_operations[index].clone();
+        match decode_durable_service_save_as_record_v1(
+            &record,
+            self.journal_limits,
+            vellum_wire::WireLimits::reference(),
+        ) {
+            Ok(DecodedDurableServiceSaveAsV1::Complete { .. }) => {}
+            Ok(DecodedDurableServiceSaveAsV1::OutcomeUnknown { .. }) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_pending,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::OutcomeUnknown);
+            }
+            Err(_) => {
+                bump(
+                    &mut self.daemon_usage.durable_retirement_unavailable,
+                    &mut self.daemon_usage.counter_saturated,
+                );
+                return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+            }
+        }
+        if self.retired_durable_operations.len() >= self.journal_limits.max_retired_operations
+            || self
+                .retired_durable_operations
+                .try_reserve_exact(1)
+                .is_err()
+        {
+            bump(
+                &mut self.daemon_usage.durable_retirement_unavailable,
+                &mut self.daemon_usage.counter_saturated,
+            );
+            return Ok(DurableReceiptRetirementOutcomeV1::Unavailable);
+        }
         if self
             .service
             .authorize_durable_receipt_retirement(retirement.client)
@@ -2631,65 +2984,76 @@ impl LocalDaemon {
                             RequestJournalRefusalV1::Conflict,
                         ));
                     }
-                    let intent = vellum_wire::decode_durable_intent_v1(
-                        &record.frozen_request,
-                        vellum_wire::WireLimits::reference(),
-                    )
-                    .map_err(|_| {
-                        DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Malformed)
-                    })?;
-                    let canonical_intent = vellum_wire::encode_durable_intent_v1(
-                        &intent,
-                        vellum_wire::WireLimits::reference(),
-                    )
-                    .map_err(|_| {
-                        DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Malformed)
-                    })?;
                     let owner = DurableOperationOwnerV1 {
                         scope,
                         authenticated_subject: record.authenticated_subject,
                     };
-                    let validation = if let Some(reply) = &record.frozen_reply {
-                        let outcome = vellum_wire::decode_durable_outcome_v1(
-                            reply,
-                            vellum_wire::WireLimits::reference(),
-                        )
-                        .map_err(|_| {
-                            DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Malformed)
-                        })?;
-                        let canonical_outcome = vellum_wire::encode_durable_outcome_v1(
-                            &outcome,
-                            vellum_wire::WireLimits::reference(),
-                        )
-                        .map_err(|_| {
-                            DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Malformed)
-                        })?;
-                        validate_recovered_durable_effect_v1(
-                            record,
-                            owner,
-                            CanonicalDurableEffectV1 {
-                                intent: &intent,
-                                canonical_intent: &canonical_intent,
-                                outcome: CanonicalDurableOutcomeV1::Complete {
-                                    outcome: &outcome,
-                                    canonical: &canonical_outcome,
-                                },
-                            },
-                            identity,
-                        )
-                    } else {
-                        validate_recovered_durable_effect_v1(
-                            record,
-                            owner,
-                            CanonicalDurableEffectV1 {
-                                intent: &intent,
-                                canonical_intent: &canonical_intent,
-                                outcome: CanonicalDurableOutcomeV1::Pending,
-                            },
-                            identity,
-                        )
-                    };
-                    validation.map_err(|_| {
+                    let validation: Result<(), ()> = (|| match vellum_wire::decode_durable_intent_v1(
+                        &record.frozen_request,
+                        vellum_wire::WireLimits::reference(),
+                    ) {
+                        Ok(intent) => {
+                            let canonical_intent = vellum_wire::encode_durable_intent_v1(
+                                &intent,
+                                vellum_wire::WireLimits::reference(),
+                            )
+                            .map_err(|_| ())?;
+                            if let Some(reply) = &record.frozen_reply {
+                                let outcome = vellum_wire::decode_durable_outcome_v1(
+                                    reply,
+                                    vellum_wire::WireLimits::reference(),
+                                )
+                                .map_err(|_| ())?;
+                                let canonical_outcome = vellum_wire::encode_durable_outcome_v1(
+                                    &outcome,
+                                    vellum_wire::WireLimits::reference(),
+                                )
+                                .map_err(|_| ())?;
+                                validate_recovered_durable_effect_v1(
+                                    record,
+                                    owner,
+                                    CanonicalDurableEffectV1 {
+                                        intent: &intent,
+                                        canonical_intent: &canonical_intent,
+                                        outcome: CanonicalDurableOutcomeV1::Complete {
+                                            outcome: &outcome,
+                                            canonical: &canonical_outcome,
+                                        },
+                                    },
+                                    identity,
+                                )
+                                .map(|_| ())
+                                .map_err(|_| ())
+                            } else {
+                                validate_recovered_durable_effect_v1(
+                                    record,
+                                    owner,
+                                    CanonicalDurableEffectV1 {
+                                        intent: &intent,
+                                        canonical_intent: &canonical_intent,
+                                        outcome: CanonicalDurableOutcomeV1::Pending,
+                                    },
+                                    identity,
+                                )
+                                .map(|_| ())
+                                .map_err(|_| ())
+                            }
+                        }
+                        Err(_) => {
+                            let decoded = decode_durable_service_save_as_record_v1(
+                                record,
+                                limits.request_journal,
+                                vellum_wire::WireLimits::reference(),
+                            )
+                            .map_err(|_| ())?;
+                            validate_decoded_durable_service_save_as_record_v1(
+                                record, owner, &decoded, identity,
+                            )
+                            .map(|_| ())
+                            .map_err(|_| ())
+                        }
+                    })();
+                    validation.map_err(|()| {
                         DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Conflict)
                     })?;
                 }
@@ -2715,18 +3079,45 @@ impl LocalDaemon {
                 };
                 let mut retired_keys = HashSet::with_capacity(retired.len());
                 for record in &retired {
-                    let retired_intent = vellum_wire::decode_durable_intent_v1(
+                    let identity_matches = match vellum_wire::decode_durable_intent_v1(
                         &record.frozen_request,
                         vellum_wire::WireLimits::reference(),
-                    )
-                    .map_err(|_| {
-                        DaemonBuildError::RequestJournal(RequestJournalRefusalV1::Malformed)
-                    })?;
+                    ) {
+                        Ok(intent) => durable_intent_matches_identity(&intent, identity),
+                        Err(_) => {
+                            let pending = DurableOperationRecordV1 {
+                                scope: record.scope,
+                                operation: record.operation,
+                                authenticated_subject: record.authenticated_subject,
+                                frozen_request: record.frozen_request.clone(),
+                                frozen_reply: None,
+                            };
+                            decode_durable_service_save_as_record_v1(
+                                &pending,
+                                limits.request_journal,
+                                vellum_wire::WireLimits::reference(),
+                            )
+                            .ok()
+                            .and_then(|decoded| {
+                                validate_decoded_durable_service_save_as_record_v1(
+                                    &pending,
+                                    DurableOperationOwnerV1 {
+                                        scope,
+                                        authenticated_subject: record.authenticated_subject,
+                                    },
+                                    &decoded,
+                                    identity,
+                                )
+                                .ok()
+                            })
+                            .is_some()
+                        }
+                    };
                     if !retired_keys
                         .insert((record.authenticated_subject, record.operation.to_bytes()))
                         || operation_keys
                             .contains(&(record.authenticated_subject, record.operation.to_bytes()))
-                        || !durable_intent_matches_identity(&retired_intent, identity)
+                        || !identity_matches
                     {
                         return Err(DaemonBuildError::RequestJournal(
                             RequestJournalRefusalV1::Conflict,
