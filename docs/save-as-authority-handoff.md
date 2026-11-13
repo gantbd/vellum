@@ -112,8 +112,11 @@ The following gaps are release-blocking for that public surface:
    total, non-effecting validator: exact owner, canonical request/reply, source
    revision, issued document, recovered destination binding, and terminal receipt
    produce Complete; a synchronized intent without a reply is always absorbing
-   OutcomeUnknown. Daemon codec/installation is not yet connected, so no public
-   command is admitted.
+   OutcomeUnknown. Durable records now carry a bounded canonical envelope with a
+   closed `Effect | SaveAs` sort and opaque payload; Save As rejects raw and
+   cross-sort bytes. The envelope owns no locator codec, so native path encoding
+   remains an adapter concern. Daemon payload-codec installation is not yet
+   connected, so no public command is admitted.
 
 Until all five laws are implemented together, no command tag, client convenience
 method, wire fixture, daemon flag, or MCP tool is advertised. In particular,

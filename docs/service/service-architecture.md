@@ -30,6 +30,13 @@ private Unix socket and the qualified local-filesystem adapter.
 remote transport but not editor, service, engine, session, or host crates. Its
 binary is a separate adapter composition root selecting that remote client.
 
+The durable-operation journal has a smaller, protocol-independent catalog
+envelope. It identifies the closed operation sort (`Effect` or `SaveAs`) while
+retaining the sort-specific canonical payload as opaque bounded bytes. It does
+not serialize `Path`, choose a filesystem representation, or grant destination
+authority; those remain responsibilities of the installed payload codec and
+host adapter.
+
 The service is the sole serialized owner of its workspace. Every registered
 client receives an independent view, request namespace, and witness namespace.
 The client assigns monotone request identities and does not reinterpret

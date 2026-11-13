@@ -25,9 +25,10 @@ use vellum_host::{
     request_journal::{
         DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationRecoveryV1,
         DurableOperationRetirementRecoveryV1, DurableOperationRetirementResultV1,
-        DurableOperationRetirementV1, RequestJournalCompletionV1, RequestJournalIntentV1,
-        RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalRecoveryV1,
-        RequestJournalRefusalV1, RequestJournalScopeV1,
+        DurableOperationRetirementV1, DurableOperationSortV1, RequestJournalCompletionV1,
+        RequestJournalIntentV1, RequestJournalLimitsV1, RequestJournalPortV1,
+        RequestJournalRecoveryV1, RequestJournalRefusalV1, RequestJournalScopeV1,
+        decode_durable_operation_envelope_v1,
     },
     resource::{
         AdapterFailure, AnnotationReadCompletion, ErasedPathResourceAdapterFactory,
@@ -56,6 +57,7 @@ enum DurableEvent {
 struct DurablePorts {
     events: Vec<DurableEvent>,
     fail_intent: bool,
+    frozen_request: Option<Vec<u8>>,
 }
 
 impl RequestJournalPortV1 for DurablePorts {
@@ -98,12 +100,13 @@ impl RequestJournalPortV1 for DurablePorts {
     fn begin_operation(
         &mut self,
         _directory: &Path,
-        _intent: DurableOperationIntentV1<'_>,
+        intent: DurableOperationIntentV1<'_>,
         _limits: RequestJournalLimitsV1,
     ) -> Result<(), RequestJournalRefusalV1> {
         if self.fail_intent {
             return Err(RequestJournalRefusalV1::Io);
         }
+        self.frozen_request = Some(intent.frozen_request.to_vec());
         self.events.push(DurableEvent::Intent);
         Ok(())
     }
@@ -501,6 +504,11 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         .unwrap();
     assert_eq!(operation.stage(), DurableSaveAsStageV1::IntentDurable);
     assert_eq!(durable_ports.events, vec![DurableEvent::Intent]);
+    let frozen = durable_ports.frozen_request.as_deref().unwrap();
+    let envelope =
+        decode_durable_operation_envelope_v1(frozen, journal_limits().max_request_bytes).unwrap();
+    assert_eq!(envelope.sort(), DurableOperationSortV1::SaveAs);
+    assert_eq!(envelope.payload(), b"canonical save as request");
     service
         .admit_durable_save_as(
             &operation,

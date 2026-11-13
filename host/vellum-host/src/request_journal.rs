@@ -12,6 +12,116 @@ use vellum_protocol::{
     WorkspaceDocumentIdV1, WorkspaceRootIdV1,
 };
 
+const DURABLE_OPERATION_ENVELOPE_MAGIC_V1: &[u8; 4] = b"VOP1";
+const DURABLE_OPERATION_ENVELOPE_HEADER_V1: usize = 9;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum DurableOperationSortV1 {
+    Effect = 1,
+    SaveAs = 2,
+}
+
+impl DurableOperationSortV1 {
+    const fn from_tag(tag: u8) -> Option<Self> {
+        match tag {
+            1 => Some(Self::Effect),
+            2 => Some(Self::SaveAs),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DurableOperationEnvelopeRefusalV1 {
+    Empty,
+    Limit,
+    Capacity,
+    Malformed,
+    UnsupportedSort,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct DurableOperationEnvelopeV1<'a> {
+    sort: DurableOperationSortV1,
+    payload: &'a [u8],
+}
+
+impl std::fmt::Debug for DurableOperationEnvelopeV1<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DurableOperationEnvelopeV1")
+            .field("sort", &self.sort)
+            .field("payload", &"<redacted>")
+            .finish()
+    }
+}
+
+impl<'a> DurableOperationEnvelopeV1<'a> {
+    pub const fn sort(self) -> DurableOperationSortV1 {
+        self.sort
+    }
+
+    pub const fn payload(self) -> &'a [u8] {
+        self.payload
+    }
+}
+
+/// Adds a stable operation-sort discriminator around opaque canonical bytes.
+/// The payload codec remains owned by the corresponding adapter or protocol.
+pub fn encode_durable_operation_envelope_v1(
+    sort: DurableOperationSortV1,
+    payload: &[u8],
+    max_encoded_bytes: usize,
+) -> Result<Vec<u8>, DurableOperationEnvelopeRefusalV1> {
+    if payload.is_empty() {
+        return Err(DurableOperationEnvelopeRefusalV1::Empty);
+    }
+    let payload_len =
+        u32::try_from(payload.len()).map_err(|_| DurableOperationEnvelopeRefusalV1::Limit)?;
+    let encoded_len = DURABLE_OPERATION_ENVELOPE_HEADER_V1
+        .checked_add(payload.len())
+        .ok_or(DurableOperationEnvelopeRefusalV1::Limit)?;
+    if encoded_len > max_encoded_bytes {
+        return Err(DurableOperationEnvelopeRefusalV1::Limit);
+    }
+    let mut encoded = Vec::new();
+    encoded
+        .try_reserve_exact(encoded_len)
+        .map_err(|_| DurableOperationEnvelopeRefusalV1::Capacity)?;
+    encoded.extend_from_slice(DURABLE_OPERATION_ENVELOPE_MAGIC_V1);
+    encoded.push(sort as u8);
+    encoded.extend_from_slice(&payload_len.to_be_bytes());
+    encoded.extend_from_slice(payload);
+    Ok(encoded)
+}
+
+pub fn decode_durable_operation_envelope_v1(
+    encoded: &[u8],
+    max_encoded_bytes: usize,
+) -> Result<DurableOperationEnvelopeV1<'_>, DurableOperationEnvelopeRefusalV1> {
+    if encoded.len() > max_encoded_bytes {
+        return Err(DurableOperationEnvelopeRefusalV1::Limit);
+    }
+    if encoded.len() < DURABLE_OPERATION_ENVELOPE_HEADER_V1
+        || &encoded[..4] != DURABLE_OPERATION_ENVELOPE_MAGIC_V1
+    {
+        return Err(DurableOperationEnvelopeRefusalV1::Malformed);
+    }
+    let sort = DurableOperationSortV1::from_tag(encoded[4])
+        .ok_or(DurableOperationEnvelopeRefusalV1::UnsupportedSort)?;
+    let payload_len = u32::from_be_bytes(encoded[5..9].try_into().expect("fixed header")) as usize;
+    if payload_len == 0
+        || DURABLE_OPERATION_ENVELOPE_HEADER_V1.checked_add(payload_len) != Some(encoded.len())
+    {
+        return Err(DurableOperationEnvelopeRefusalV1::Malformed);
+    }
+    Ok(DurableOperationEnvelopeV1 {
+        sort,
+        payload: &encoded[DURABLE_OPERATION_ENVELOPE_HEADER_V1..],
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RequestJournalLimitsV1 {
     pub max_entries: usize,
@@ -994,5 +1104,35 @@ mod tests {
         assert!(!projection_debug.contains("/private/destination"));
         assert!(!projection_debug.contains("canonical-export-intent"));
         assert!(!format!("{:?}", export_owner()).contains(&format!("{:?}", [3_u8; 16])));
+    }
+
+    #[test]
+    fn durable_operation_envelope_is_bounded_canonical_and_content_safe() {
+        let payload = b"private destination and canonical request";
+        let encoded =
+            encode_durable_operation_envelope_v1(DurableOperationSortV1::SaveAs, payload, 128)
+                .unwrap();
+        let decoded = decode_durable_operation_envelope_v1(&encoded, 128).unwrap();
+        assert_eq!(decoded.sort(), DurableOperationSortV1::SaveAs);
+        assert_eq!(decoded.payload(), payload);
+        assert!(!format!("{decoded:?}").contains(std::str::from_utf8(payload).unwrap()));
+        assert_eq!(
+            encode_durable_operation_envelope_v1(
+                DurableOperationSortV1::SaveAs,
+                payload,
+                encoded.len() - 1,
+            ),
+            Err(DurableOperationEnvelopeRefusalV1::Limit)
+        );
+
+        for mutant in [
+            Vec::new(),
+            b"VOP1\x02\0\0\0\0".to_vec(),
+            b"VOP1\x7f\0\0\0\x01x".to_vec(),
+            b"VOP1\x02\0\0\0\x02x".to_vec(),
+            b"VOP1\x02\0\0\0\x01xy".to_vec(),
+        ] {
+            assert!(decode_durable_operation_envelope_v1(&mutant, 128).is_err());
+        }
     }
 }

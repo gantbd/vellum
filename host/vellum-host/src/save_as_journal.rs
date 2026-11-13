@@ -9,8 +9,9 @@
 use crate::{
     request_journal::{
         DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationOwnerV1,
-        DurableOperationRecordV1, RequestJournalLimitsV1, RequestJournalPortV1,
-        RequestJournalRefusalV1, RequestJournalScopeV1,
+        DurableOperationRecordV1, DurableOperationSortV1, RequestJournalLimitsV1,
+        RequestJournalPortV1, RequestJournalRefusalV1, RequestJournalScopeV1,
+        decode_durable_operation_envelope_v1,
     },
     save_as::{SaveAsLifecycleV1, SaveAsReceiptV1},
     workspace::{
@@ -117,6 +118,14 @@ pub fn validate_recovered_durable_save_as_v1(
     {
         return Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict);
     }
+    let envelope = decode_durable_operation_envelope_v1(
+        canonical.canonical_request,
+        canonical.canonical_request.len(),
+    )
+    .map_err(|_| DurableSaveAsRecoveryRefusalV1::CanonicalConflict)?;
+    if envelope.sort() != DurableOperationSortV1::SaveAs {
+        return Err(DurableSaveAsRecoveryRefusalV1::CanonicalConflict);
+    }
     match (record.frozen_reply.as_deref(), canonical.outcome) {
         (None, CanonicalDurableSaveAsOutcomeV1::Pending) => {
             Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
@@ -206,7 +215,10 @@ impl DurableSaveAsTransactionV1 {
         document: u64,
         identity: &WorkspaceIdentityMetadataV1,
     ) -> Result<Self, DurableSaveAsErrorV1> {
-        if frozen_request.is_empty()
+        let envelope =
+            decode_durable_operation_envelope_v1(frozen_request, journal_limits.max_request_bytes)
+                .map_err(|_| DurableSaveAsErrorV1::InvalidRequest)?;
+        if envelope.sort() != DurableOperationSortV1::SaveAs
             || document == 0
             || scope.workspace() != identity.workspace()
             || scope.generation() != identity.generation()

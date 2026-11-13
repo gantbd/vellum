@@ -10,7 +10,10 @@ use vellum_engine::{
 };
 use vellum_host::{
     authority::{AuthorityRequestV1, SaveAsDestinationRequestV1},
-    request_journal::{RequestJournalLimitsV1, RequestJournalPortV1, RequestJournalScopeV1},
+    request_journal::{
+        DurableOperationEnvelopeRefusalV1, DurableOperationSortV1, RequestJournalLimitsV1,
+        RequestJournalPortV1, RequestJournalScopeV1, encode_durable_operation_envelope_v1,
+    },
     save_as::{SaveAsAuthorityPortV1, SaveAsReceiptV1},
     save_as_journal::{
         DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
@@ -44,6 +47,7 @@ impl DurableServiceSaveAsV1 {
 
 #[derive(Debug)]
 pub enum DurableServiceSaveAsBeginErrorV1 {
+    Envelope(DurableOperationEnvelopeRefusalV1),
     Identity(RefusalV1),
     Service(ServiceSaveAsErrorV1),
     JournalClosed(DurableSaveAsErrorV1),
@@ -58,7 +62,9 @@ impl DurableServiceSaveAsBeginErrorV1 {
     pub const fn retained_operation(&self) -> Option<&ServiceSaveAsIdV1> {
         match self {
             Self::JournalFenced { operation, .. } => Some(operation),
-            Self::Identity(_) | Self::Service(_) | Self::JournalClosed(_) => None,
+            Self::Envelope(_) | Self::Identity(_) | Self::Service(_) | Self::JournalClosed(_) => {
+                None
+            }
         }
     }
 }
@@ -101,6 +107,12 @@ impl Service {
         authenticated_subject: [u8; 16],
         frozen_request: &[u8],
     ) -> Result<DurableServiceSaveAsV1, DurableServiceSaveAsBeginErrorV1> {
+        let frozen_request = encode_durable_operation_envelope_v1(
+            DurableOperationSortV1::SaveAs,
+            frozen_request,
+            journal_limits.max_request_bytes,
+        )
+        .map_err(DurableServiceSaveAsBeginErrorV1::Envelope)?;
         let identity = self
             .identity_metadata(identity_limits)
             .map_err(DurableServiceSaveAsBeginErrorV1::Identity)?;
@@ -124,7 +136,7 @@ impl Service {
             scope,
             durable_operation,
             authenticated_subject,
-            frozen_request,
+            &frozen_request,
             document.get(),
             &identity,
         ) {

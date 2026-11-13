@@ -27,10 +27,10 @@ use vellum_host::{
     request_journal::{
         DurableOperationCompletionV1, DurableOperationIntentV1, DurableOperationOwnerV1,
         DurableOperationRecordV1, DurableOperationRecoveryV1, DurableOperationRetirementRecoveryV1,
-        DurableOperationRetirementResultV1, DurableOperationRetirementV1,
+        DurableOperationRetirementResultV1, DurableOperationRetirementV1, DurableOperationSortV1,
         RequestJournalCompletionV1, RequestJournalIntentV1, RequestJournalLimitsV1,
         RequestJournalPortV1, RequestJournalRecoveryV1, RequestJournalRefusalV1,
-        RequestJournalScopeV1,
+        RequestJournalScopeV1, encode_durable_operation_envelope_v1,
     },
     resource::{
         AdapterFailure, AnnotationReadCompletion as HostAnnotationReadCompletion,
@@ -525,6 +525,12 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
     let before_generation = workspace.inventory_generation();
     let source_version = workspace.document_version(&document).unwrap();
     let mut durable_ports = DurablePorts::default();
+    let canonical_request = encode_durable_operation_envelope_v1(
+        DurableOperationSortV1::SaveAs,
+        b"canonical save as request",
+        journal_limits().max_request_bytes,
+    )
+    .unwrap();
     let mut durable = DurableSaveAsTransactionV1::begin(
         &mut durable_ports,
         Path::new("journal"),
@@ -532,7 +538,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         RequestJournalScopeV1::new(1, 1).unwrap(),
         DurableOperationRefV1::new([4; 16]).unwrap(),
         [5; 16],
-        b"canonical save as request",
+        &canonical_request,
         1,
         &identity(1, &source, &source),
     )
@@ -691,6 +697,12 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         ]
     );
     let mut failed_ports = DurablePorts::default();
+    let failed_request = encode_durable_operation_envelope_v1(
+        DurableOperationSortV1::SaveAs,
+        b"canonical failed save as request",
+        journal_limits().max_request_bytes,
+    )
+    .unwrap();
     let mut failed = DurableSaveAsTransactionV1::begin(
         &mut failed_ports,
         Path::new("journal"),
@@ -698,7 +710,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         RequestJournalScopeV1::new(1, 1).unwrap(),
         DurableOperationRefV1::new([6; 16]).unwrap(),
         [5; 16],
-        b"canonical failed save as request",
+        &failed_request,
         1,
         &identity(1, &source, &source),
     )
@@ -731,7 +743,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
         scope: RequestJournalScopeV1::new(1, 1).unwrap(),
         operation: DurableOperationRefV1::new([4; 16]).unwrap(),
         authenticated_subject: [5; 16],
-        frozen_request: b"canonical save as request".to_vec(),
+        frozen_request: canonical_request.clone(),
         frozen_reply: Some(b"canonical save as receipt".to_vec()),
     };
     assert_eq!(
@@ -742,7 +754,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
                 document: 1,
                 expected_source_revision: complete.evidence().source_revision(),
                 expected_destination: &destination,
-                canonical_request: b"canonical save as request",
+                canonical_request: &canonical_request,
                 outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
                     receipt: &complete,
                     canonical_reply: b"canonical save as receipt",
@@ -764,13 +776,19 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
                 document: 1,
                 expected_source_revision: complete.evidence().source_revision(),
                 expected_destination: &destination,
-                canonical_request: b"canonical save as request",
+                canonical_request: &canonical_request,
                 outcome: CanonicalDurableSaveAsOutcomeV1::Pending,
             },
             &recovered_identity,
         ),
         Ok(DurableSaveAsRecoveryStateV1::OutcomeUnknown)
     );
+    let changed_request = encode_durable_operation_envelope_v1(
+        DurableOperationSortV1::SaveAs,
+        b"changed request",
+        journal_limits().max_request_bytes,
+    )
+    .unwrap();
     assert_eq!(
         validate_recovered_durable_save_as_v1(
             &recovered,
@@ -779,7 +797,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
                 document: 1,
                 expected_source_revision: complete.evidence().source_revision(),
                 expected_destination: &destination,
-                canonical_request: b"changed request",
+                canonical_request: &changed_request,
                 outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
                     receipt: &complete,
                     canonical_reply: b"canonical save as receipt",
@@ -794,7 +812,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
             document: 1,
             expected_source_revision: complete.evidence().source_revision() + 1,
             expected_destination: &destination,
-            canonical_request: b"canonical save as request",
+            canonical_request: &canonical_request,
             outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
                 receipt: &complete,
                 canonical_reply: b"canonical save as receipt",
@@ -804,7 +822,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
             document: 1,
             expected_source_revision: complete.evidence().source_revision(),
             expected_destination: &source,
-            canonical_request: b"canonical save as request",
+            canonical_request: &canonical_request,
             outcome: CanonicalDurableSaveAsOutcomeV1::Complete {
                 receipt: &complete,
                 canonical_reply: b"canonical save as receipt",
@@ -827,7 +845,7 @@ fn save_as_preserves_workspace_identity_and_routes_later_saves_to_the_new_bindin
             document: 1,
             expected_source_revision: complete.evidence().source_revision(),
             expected_destination: &destination,
-            canonical_request: b"canonical save as request",
+            canonical_request: &canonical_request,
             outcome: CanonicalDurableSaveAsOutcomeV1::Pending,
         }
     );
