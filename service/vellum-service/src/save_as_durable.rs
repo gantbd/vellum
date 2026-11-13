@@ -14,17 +14,32 @@ use vellum_host::{
         DurableOperationEnvelopeRefusalV1, DurableOperationSortV1, RequestJournalLimitsV1,
         RequestJournalPortV1, RequestJournalScopeV1, encode_durable_operation_envelope_v1,
     },
-    save_as::{SaveAsAuthorityPortV1, SaveAsReceiptV1},
+    save_as::{
+        SaveAsAuthorityPortV1, SaveAsBindingUnknownReasonV1 as HostBindingUnknownReasonV1,
+        SaveAsBindingV1 as HostBindingV1, SaveAsFailureV1 as HostFailureV1,
+        SaveAsLifecycleV1 as HostLifecycleV1,
+        SaveAsNotActivatedReasonV1 as HostNotActivatedReasonV1,
+        SaveAsNotAttemptedReasonV1 as HostNotAttemptedReasonV1,
+        SaveAsNotDurableReasonV1 as HostNotDurableReasonV1,
+        SaveAsPersistenceV1 as HostPersistenceV1,
+        SaveAsPhysicalUnknownReasonV1 as HostPhysicalUnknownReasonV1, SaveAsReceiptV1,
+    },
     save_as_journal::{
         DurableOperationRefV1, DurableSaveAsErrorV1, DurableSaveAsStageV1,
         DurableSaveAsTransactionV1,
     },
     workspace::{WorkspaceIdentityLimitsV1, WorkspaceIdentityMetadataPortV1},
 };
-use vellum_protocol::{RefusalV1, WorkspaceDocumentIdV1};
+use vellum_protocol::{
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
+    DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
+    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, RefusalV1, WorkspaceDocumentIdV1,
+};
 
 #[must_use = "a durable service Save As may own journal, metadata, or native cleanup obligations"]
 pub struct DurableServiceSaveAsV1 {
+    document: WorkspaceDocumentIdV1,
     operation: ServiceSaveAsIdV1,
     durable: DurableSaveAsTransactionV1,
 }
@@ -33,6 +48,7 @@ impl std::fmt::Debug for DurableServiceSaveAsV1 {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("DurableServiceSaveAsV1")
+            .field("document", &self.document)
             .field("operation", &self.operation)
             .field("durable", &self.durable)
             .finish()
@@ -75,6 +91,7 @@ pub enum DurableServiceSaveAsErrorV1 {
     Identity(RefusalV1),
     Durable(DurableSaveAsErrorV1),
     MissingReceipt,
+    InvalidReceipt,
 }
 
 impl From<ServiceSaveAsErrorV1> for DurableServiceSaveAsErrorV1 {
@@ -140,7 +157,11 @@ impl Service {
             document.get(),
             &identity,
         ) {
-            Ok(durable) => Ok(DurableServiceSaveAsV1 { operation, durable }),
+            Ok(durable) => Ok(DurableServiceSaveAsV1 {
+                document,
+                operation,
+                durable,
+            }),
             Err(journal_error) => match self.discard_save_as_preparation(&operation) {
                 Ok(true) => Err(DurableServiceSaveAsBeginErrorV1::JournalClosed(
                     journal_error,
@@ -313,4 +334,105 @@ impl Service {
         self.save_as_receipt(&operation.operation)
             .map_err(Into::into)
     }
+
+    pub fn durable_save_as_protocol_receipt(
+        &self,
+        operation: &DurableServiceSaveAsV1,
+    ) -> Result<Option<DurableSaveAsReceiptV1>, DurableServiceSaveAsErrorV1> {
+        self.durable_save_as_receipt(operation)?
+            .as_ref()
+            .map(|receipt| project_save_as_receipt(operation.document, receipt))
+            .transpose()
+    }
+}
+
+fn project_save_as_receipt(
+    document: WorkspaceDocumentIdV1,
+    receipt: &SaveAsReceiptV1,
+) -> Result<DurableSaveAsReceiptV1, DurableServiceSaveAsErrorV1> {
+    let persistence = match receipt.persistence() {
+        HostPersistenceV1::Durable => DurableSaveAsPersistenceV1::Durable,
+        HostPersistenceV1::NotDurable => DurableSaveAsPersistenceV1::NotDurable,
+        HostPersistenceV1::Unknown => DurableSaveAsPersistenceV1::Unknown,
+        HostPersistenceV1::NotAttempted => DurableSaveAsPersistenceV1::NotAttempted,
+    };
+    let binding = match receipt.binding() {
+        HostBindingV1::Activated => DurableSaveAsBindingV1::Activated,
+        HostBindingV1::NotActivated => DurableSaveAsBindingV1::NotActivated,
+        HostBindingV1::Unknown => DurableSaveAsBindingV1::Unknown,
+    };
+    let failure = receipt.failure().map(|failure| match failure {
+        HostFailureV1::NotAttempted(reason) => DurableSaveAsFailureV1::NotAttempted(match reason {
+            HostNotAttemptedReasonV1::AuthorityDenied => {
+                DurableSaveAsNotAttemptedReasonV1::AuthorityDenied
+            }
+            HostNotAttemptedReasonV1::AuthorityUnavailable => {
+                DurableSaveAsNotAttemptedReasonV1::AuthorityUnavailable
+            }
+            HostNotAttemptedReasonV1::StaleSource => DurableSaveAsNotAttemptedReasonV1::StaleSource,
+            HostNotAttemptedReasonV1::DestinationRefused => {
+                DurableSaveAsNotAttemptedReasonV1::DestinationRefused
+            }
+            HostNotAttemptedReasonV1::Capacity => DurableSaveAsNotAttemptedReasonV1::Capacity,
+            HostNotAttemptedReasonV1::Unsupported => DurableSaveAsNotAttemptedReasonV1::Unsupported,
+        }),
+        HostFailureV1::NotDurable(reason) => DurableSaveAsFailureV1::NotDurable(match reason {
+            HostNotDurableReasonV1::Conflict => DurableSaveAsNotDurableReasonV1::Conflict,
+            HostNotDurableReasonV1::Unsupported => DurableSaveAsNotDurableReasonV1::Unsupported,
+            HostNotDurableReasonV1::Limit => DurableSaveAsNotDurableReasonV1::Limit,
+            HostNotDurableReasonV1::Capacity => DurableSaveAsNotDurableReasonV1::Capacity,
+            HostNotDurableReasonV1::Io => DurableSaveAsNotDurableReasonV1::Io,
+        }),
+        HostFailureV1::PhysicalUnknown(reason) => {
+            DurableSaveAsFailureV1::PhysicalUnknown(match reason {
+                HostPhysicalUnknownReasonV1::Io => DurableSaveAsPhysicalUnknownReasonV1::Io,
+                HostPhysicalUnknownReasonV1::Cleanup => {
+                    DurableSaveAsPhysicalUnknownReasonV1::Cleanup
+                }
+                HostPhysicalUnknownReasonV1::EvidenceIncomplete => {
+                    DurableSaveAsPhysicalUnknownReasonV1::EvidenceIncomplete
+                }
+                HostPhysicalUnknownReasonV1::TaskStateUnavailable => {
+                    DurableSaveAsPhysicalUnknownReasonV1::TaskStateUnavailable
+                }
+            })
+        }
+        HostFailureV1::NotActivated(reason) => DurableSaveAsFailureV1::NotActivated(match reason {
+            HostNotActivatedReasonV1::NotAttempted => {
+                DurableSaveAsNotActivatedReasonV1::NotAttempted
+            }
+            HostNotActivatedReasonV1::ObservedNotApplied => {
+                DurableSaveAsNotActivatedReasonV1::ObservedNotApplied
+            }
+            HostNotActivatedReasonV1::Refused => DurableSaveAsNotActivatedReasonV1::Refused,
+            HostNotActivatedReasonV1::Unavailable => DurableSaveAsNotActivatedReasonV1::Unavailable,
+            HostNotActivatedReasonV1::DestinationChanged => {
+                DurableSaveAsNotActivatedReasonV1::DestinationChanged
+            }
+        }),
+        HostFailureV1::BindingUnknown(reason) => {
+            DurableSaveAsFailureV1::BindingUnknown(match reason {
+                HostBindingUnknownReasonV1::Faulted => DurableSaveAsBindingUnknownReasonV1::Faulted,
+                HostBindingUnknownReasonV1::TaskStateUnavailable => {
+                    DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable
+                }
+            })
+        }
+    });
+    let lifecycle = match receipt.lifecycle() {
+        HostLifecycleV1::TerminalReplayable => DurableSaveAsLifecycleV1::TerminalReplayable,
+        HostLifecycleV1::Fenced(fence) => DurableSaveAsLifecycleV1::Fenced(
+            DurableSaveAsFenceSetV1::try_from_bits(fence.bits())
+                .ok_or(DurableServiceSaveAsErrorV1::InvalidReceipt)?,
+        ),
+    };
+    DurableSaveAsReceiptV1::try_new(
+        document,
+        receipt.evidence().source_revision(),
+        persistence,
+        binding,
+        failure,
+        lifecycle,
+    )
+    .ok_or(DurableServiceSaveAsErrorV1::InvalidReceipt)
 }

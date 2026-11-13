@@ -844,6 +844,226 @@ impl DurableExportCopyReceiptV1 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsPersistenceV1 {
+    Durable,
+    NotDurable,
+    Unknown,
+    NotAttempted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsBindingV1 {
+    Activated,
+    NotActivated,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DurableSaveAsFenceReasonV1 {
+    PhysicalUncertainty = 0,
+    BindingUncertainty = 1,
+    RetainedTask = 2,
+    ReleaseUncertainty = 3,
+    Fault = 4,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DurableSaveAsFenceSetV1(u8);
+
+impl DurableSaveAsFenceSetV1 {
+    const KNOWN: u8 = (1 << 5) - 1;
+
+    pub const fn try_from_bits(bits: u8) -> Option<Self> {
+        if bits == 0 || bits & !Self::KNOWN != 0 {
+            None
+        } else {
+            Some(Self(bits))
+        }
+    }
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    pub const fn contains(self, reason: DurableSaveAsFenceReasonV1) -> bool {
+        self.0 & (1 << reason as u8) != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsLifecycleV1 {
+    TerminalReplayable,
+    Fenced(DurableSaveAsFenceSetV1),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsNotAttemptedReasonV1 {
+    AuthorityDenied,
+    AuthorityUnavailable,
+    StaleSource,
+    DestinationRefused,
+    Capacity,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsNotDurableReasonV1 {
+    Conflict,
+    Unsupported,
+    Limit,
+    Capacity,
+    Io,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsPhysicalUnknownReasonV1 {
+    Io,
+    Cleanup,
+    EvidenceIncomplete,
+    TaskStateUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsNotActivatedReasonV1 {
+    NotAttempted,
+    ObservedNotApplied,
+    Refused,
+    Unavailable,
+    DestinationChanged,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsBindingUnknownReasonV1 {
+    Faulted,
+    TaskStateUnavailable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsFailureV1 {
+    NotAttempted(DurableSaveAsNotAttemptedReasonV1),
+    NotDurable(DurableSaveAsNotDurableReasonV1),
+    PhysicalUnknown(DurableSaveAsPhysicalUnknownReasonV1),
+    NotActivated(DurableSaveAsNotActivatedReasonV1),
+    BindingUnknown(DurableSaveAsBindingUnknownReasonV1),
+}
+
+/// Restart-stable, locator-free Save As evidence. Construction admits only
+/// the same closed physical × binding × lifecycle products as the host
+/// receipt; unknown components always carry the corresponding explicit fence.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct DurableSaveAsReceiptV1 {
+    document: WorkspaceDocumentIdV1,
+    source_revision: u64,
+    persistence: DurableSaveAsPersistenceV1,
+    binding: DurableSaveAsBindingV1,
+    failure: Option<DurableSaveAsFailureV1>,
+    lifecycle: DurableSaveAsLifecycleV1,
+}
+
+impl DurableSaveAsReceiptV1 {
+    pub fn try_new(
+        document: WorkspaceDocumentIdV1,
+        source_revision: u64,
+        persistence: DurableSaveAsPersistenceV1,
+        binding: DurableSaveAsBindingV1,
+        failure: Option<DurableSaveAsFailureV1>,
+        lifecycle: DurableSaveAsLifecycleV1,
+    ) -> Option<Self> {
+        let valid = match (persistence, binding, failure, lifecycle) {
+            (DurableSaveAsPersistenceV1::Durable, DurableSaveAsBindingV1::Activated, None, _)
+            | (
+                DurableSaveAsPersistenceV1::Durable,
+                DurableSaveAsBindingV1::NotActivated,
+                Some(DurableSaveAsFailureV1::NotActivated(_)),
+                _,
+            )
+            | (
+                DurableSaveAsPersistenceV1::NotDurable,
+                DurableSaveAsBindingV1::NotActivated,
+                Some(DurableSaveAsFailureV1::NotDurable(_)),
+                _,
+            )
+            | (
+                DurableSaveAsPersistenceV1::NotAttempted,
+                DurableSaveAsBindingV1::NotActivated,
+                Some(DurableSaveAsFailureV1::NotAttempted(_)),
+                _,
+            ) => true,
+            (
+                DurableSaveAsPersistenceV1::Durable,
+                DurableSaveAsBindingV1::Unknown,
+                Some(DurableSaveAsFailureV1::BindingUnknown(_)),
+                DurableSaveAsLifecycleV1::Fenced(fence),
+            ) => fence.contains(DurableSaveAsFenceReasonV1::BindingUncertainty),
+            (
+                DurableSaveAsPersistenceV1::Unknown,
+                DurableSaveAsBindingV1::NotActivated,
+                Some(DurableSaveAsFailureV1::PhysicalUnknown(_)),
+                DurableSaveAsLifecycleV1::Fenced(fence),
+            ) => fence.contains(DurableSaveAsFenceReasonV1::PhysicalUncertainty),
+            _ => false,
+        };
+        valid.then_some(Self {
+            document,
+            source_revision,
+            persistence,
+            binding,
+            failure,
+            lifecycle,
+        })
+    }
+
+    pub const fn document(self) -> WorkspaceDocumentIdV1 {
+        self.document
+    }
+
+    pub const fn source_revision(self) -> u64 {
+        self.source_revision
+    }
+
+    pub const fn persistence(self) -> DurableSaveAsPersistenceV1 {
+        self.persistence
+    }
+
+    pub const fn binding(self) -> DurableSaveAsBindingV1 {
+        self.binding
+    }
+
+    pub const fn failure(self) -> Option<DurableSaveAsFailureV1> {
+        self.failure
+    }
+
+    pub const fn lifecycle(self) -> DurableSaveAsLifecycleV1 {
+        self.lifecycle
+    }
+
+    pub const fn changes_stable_binding(self) -> bool {
+        matches!(
+            (self.persistence, self.binding),
+            (
+                DurableSaveAsPersistenceV1::Durable,
+                DurableSaveAsBindingV1::Activated
+            )
+        )
+    }
+}
+
+impl fmt::Debug for DurableSaveAsReceiptV1 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DurableSaveAsReceiptV1")
+            .field("document", &self.document)
+            .field("source_revision", &"<opaque>")
+            .field("persistence", &self.persistence)
+            .field("binding", &self.binding)
+            .field("failure", &self.failure)
+            .field("lifecycle", &self.lifecycle)
+            .finish()
+    }
+}
+
 impl fmt::Debug for DurableReplaceAndSaveReceiptV1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DurableReplaceAndSaveReceiptV1")
@@ -1114,6 +1334,131 @@ pub trait ServicePort {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn durable_save_as_receipt_admits_exactly_the_ten_closed_products() {
+        let workspace = WorkspaceIdV1::new(1).unwrap();
+        let document = WorkspaceDocumentIdV1::new(workspace, 2).unwrap();
+        let persistence = [
+            DurableSaveAsPersistenceV1::Durable,
+            DurableSaveAsPersistenceV1::NotDurable,
+            DurableSaveAsPersistenceV1::Unknown,
+            DurableSaveAsPersistenceV1::NotAttempted,
+        ];
+        let bindings = [
+            DurableSaveAsBindingV1::Activated,
+            DurableSaveAsBindingV1::NotActivated,
+            DurableSaveAsBindingV1::Unknown,
+        ];
+        let retained = DurableSaveAsFenceSetV1::try_from_bits(
+            1 << DurableSaveAsFenceReasonV1::RetainedTask as u8,
+        )
+        .unwrap();
+        let physical = DurableSaveAsFenceSetV1::try_from_bits(
+            1 << DurableSaveAsFenceReasonV1::PhysicalUncertainty as u8,
+        )
+        .unwrap();
+        let binding = DurableSaveAsFenceSetV1::try_from_bits(
+            1 << DurableSaveAsFenceReasonV1::BindingUncertainty as u8,
+        )
+        .unwrap();
+        let mut admitted = 0;
+
+        for persistence in persistence {
+            for binding_state in bindings {
+                for terminal in [true, false] {
+                    let lifecycle = if terminal {
+                        DurableSaveAsLifecycleV1::TerminalReplayable
+                    } else {
+                        DurableSaveAsLifecycleV1::Fenced(match persistence {
+                            DurableSaveAsPersistenceV1::Unknown => physical,
+                            DurableSaveAsPersistenceV1::Durable
+                                if binding_state == DurableSaveAsBindingV1::Unknown =>
+                            {
+                                binding
+                            }
+                            _ => retained,
+                        })
+                    };
+                    let failure = match (persistence, binding_state) {
+                        (
+                            DurableSaveAsPersistenceV1::Durable,
+                            DurableSaveAsBindingV1::Activated,
+                        ) => None,
+                        (
+                            DurableSaveAsPersistenceV1::Durable,
+                            DurableSaveAsBindingV1::NotActivated,
+                        ) => Some(DurableSaveAsFailureV1::NotActivated(
+                            DurableSaveAsNotActivatedReasonV1::ObservedNotApplied,
+                        )),
+                        (DurableSaveAsPersistenceV1::Durable, DurableSaveAsBindingV1::Unknown) => {
+                            Some(DurableSaveAsFailureV1::BindingUnknown(
+                                DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable,
+                            ))
+                        }
+                        (DurableSaveAsPersistenceV1::NotDurable, _) => Some(
+                            DurableSaveAsFailureV1::NotDurable(DurableSaveAsNotDurableReasonV1::Io),
+                        ),
+                        (DurableSaveAsPersistenceV1::Unknown, _) => {
+                            Some(DurableSaveAsFailureV1::PhysicalUnknown(
+                                DurableSaveAsPhysicalUnknownReasonV1::Io,
+                            ))
+                        }
+                        (DurableSaveAsPersistenceV1::NotAttempted, _) => {
+                            Some(DurableSaveAsFailureV1::NotAttempted(
+                                DurableSaveAsNotAttemptedReasonV1::AuthorityDenied,
+                            ))
+                        }
+                    };
+                    let receipt = DurableSaveAsReceiptV1::try_new(
+                        document,
+                        41,
+                        persistence,
+                        binding_state,
+                        failure,
+                        lifecycle,
+                    );
+                    let expected = matches!(
+                        (persistence, binding_state, terminal),
+                        (
+                            DurableSaveAsPersistenceV1::Durable,
+                            DurableSaveAsBindingV1::Activated
+                                | DurableSaveAsBindingV1::NotActivated,
+                            _
+                        ) | (
+                            DurableSaveAsPersistenceV1::Durable,
+                            DurableSaveAsBindingV1::Unknown,
+                            false
+                        ) | (
+                            DurableSaveAsPersistenceV1::NotDurable
+                                | DurableSaveAsPersistenceV1::NotAttempted,
+                            DurableSaveAsBindingV1::NotActivated,
+                            _
+                        ) | (
+                            DurableSaveAsPersistenceV1::Unknown,
+                            DurableSaveAsBindingV1::NotActivated,
+                            false
+                        )
+                    );
+                    assert_eq!(receipt.is_some(), expected);
+                    admitted += usize::from(receipt.is_some());
+                }
+            }
+        }
+        assert_eq!(admitted, 10);
+
+        let receipt = DurableSaveAsReceiptV1::try_new(
+            document,
+            41,
+            DurableSaveAsPersistenceV1::Durable,
+            DurableSaveAsBindingV1::Activated,
+            None,
+            DurableSaveAsLifecycleV1::TerminalReplayable,
+        )
+        .unwrap();
+        assert!(receipt.changes_stable_binding());
+        assert!(!format!("{receipt:?}").contains("41"));
+    }
 
     #[test]
     fn debug_evidence_redacts_content_and_opaque_ids() {

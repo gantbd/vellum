@@ -974,6 +974,7 @@ fn clients_share_authority_without_sharing_requests_witnesses_or_views() {
             authority_checks: 7,
             authority_granted: 7,
             change_feed_events_published: 2,
+            save_as_capacity: 128,
             active_clients: 2,
             client_capacity: 2,
             issued_clients: 2,

@@ -10,7 +10,11 @@ use vellum_protocol::{
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
+    DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
+    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
+    EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
     MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_EDIT_DOCUMENTS_V1,
     MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1, MAX_WORKSPACE_EDIT_REPLACEMENTS_V1,
     MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
@@ -200,6 +204,220 @@ pub fn decode_durable_outcome_v1(
     let outcome = decode_durable_execute_outcome_fields(&mut decoder)?;
     finish_decode(&decoder)?;
     Ok(outcome)
+}
+
+/// Canonical locator-free encoding for one durable Save As receipt. This is a
+/// journal/projection value, not an execution request and carries no transport
+/// correlation or destination locator.
+pub fn encode_durable_save_as_receipt_v1(
+    receipt: DurableSaveAsReceiptV1,
+    limits: WireLimits,
+) -> Result<Vec<u8>, WireEncodeError> {
+    const LENGTH: usize = 31;
+    check_field_limit(10, limits)?;
+    let mut encoder = Encoder::new(LENGTH, limits)?;
+    encoder.u8(VERSION_V1)?;
+    encoder.u64(receipt.document().workspace().get())?;
+    encoder.u64(receipt.document().get())?;
+    encoder.u64(receipt.source_revision())?;
+    encoder.u8(match receipt.persistence() {
+        DurableSaveAsPersistenceV1::Durable => 1,
+        DurableSaveAsPersistenceV1::NotDurable => 2,
+        DurableSaveAsPersistenceV1::Unknown => 3,
+        DurableSaveAsPersistenceV1::NotAttempted => 4,
+    })?;
+    encoder.u8(match receipt.binding() {
+        DurableSaveAsBindingV1::Activated => 1,
+        DurableSaveAsBindingV1::NotActivated => 2,
+        DurableSaveAsBindingV1::Unknown => 3,
+    })?;
+    let (failure, reason) = encode_durable_save_as_failure(receipt.failure());
+    encoder.u8(failure)?;
+    encoder.u8(reason)?;
+    match receipt.lifecycle() {
+        DurableSaveAsLifecycleV1::TerminalReplayable => {
+            encoder.u8(1)?;
+            encoder.u8(0)?;
+        }
+        DurableSaveAsLifecycleV1::Fenced(fence) => {
+            encoder.u8(2)?;
+            encoder.u8(fence.bits())?;
+        }
+    }
+    encoder.finish(LENGTH)
+}
+
+pub fn decode_durable_save_as_receipt_v1(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<DurableSaveAsReceiptV1, WireDecodeError> {
+    let mut decoder = decoder(input, limits)?;
+    read_version(&mut decoder)?;
+    let workspace = workspace_id(read_u64(&mut decoder)?)?;
+    let document = workspace_document_id(workspace, read_u64(&mut decoder)?)?;
+    let source_revision = read_u64(&mut decoder)?;
+    let persistence = match read_u8(&mut decoder)? {
+        1 => DurableSaveAsPersistenceV1::Durable,
+        2 => DurableSaveAsPersistenceV1::NotDurable,
+        3 => DurableSaveAsPersistenceV1::Unknown,
+        4 => DurableSaveAsPersistenceV1::NotAttempted,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let binding = match read_u8(&mut decoder)? {
+        1 => DurableSaveAsBindingV1::Activated,
+        2 => DurableSaveAsBindingV1::NotActivated,
+        3 => DurableSaveAsBindingV1::Unknown,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    let failure = decode_durable_save_as_failure(read_u8(&mut decoder)?, read_u8(&mut decoder)?)?;
+    let lifecycle_tag = read_u8(&mut decoder)?;
+    let fence_bits = read_u8(&mut decoder)?;
+    let lifecycle = match (lifecycle_tag, fence_bits) {
+        (1, 0) => DurableSaveAsLifecycleV1::TerminalReplayable,
+        (2, bits) => DurableSaveAsLifecycleV1::Fenced(
+            DurableSaveAsFenceSetV1::try_from_bits(bits).ok_or(WireDecodeError::Malformed)?,
+        ),
+        _ => return Err(WireDecodeError::Malformed),
+    };
+    finish_decode(&decoder)?;
+    DurableSaveAsReceiptV1::try_new(
+        document,
+        source_revision,
+        persistence,
+        binding,
+        failure,
+        lifecycle,
+    )
+    .ok_or(WireDecodeError::Malformed)
+}
+
+fn encode_durable_save_as_failure(failure: Option<DurableSaveAsFailureV1>) -> (u8, u8) {
+    match failure {
+        None => (0, 0),
+        Some(DurableSaveAsFailureV1::NotAttempted(reason)) => (
+            1,
+            match reason {
+                DurableSaveAsNotAttemptedReasonV1::AuthorityDenied => 1,
+                DurableSaveAsNotAttemptedReasonV1::AuthorityUnavailable => 2,
+                DurableSaveAsNotAttemptedReasonV1::StaleSource => 3,
+                DurableSaveAsNotAttemptedReasonV1::DestinationRefused => 4,
+                DurableSaveAsNotAttemptedReasonV1::Capacity => 5,
+                DurableSaveAsNotAttemptedReasonV1::Unsupported => 6,
+            },
+        ),
+        Some(DurableSaveAsFailureV1::NotDurable(reason)) => (
+            2,
+            match reason {
+                DurableSaveAsNotDurableReasonV1::Conflict => 1,
+                DurableSaveAsNotDurableReasonV1::Unsupported => 2,
+                DurableSaveAsNotDurableReasonV1::Limit => 3,
+                DurableSaveAsNotDurableReasonV1::Capacity => 4,
+                DurableSaveAsNotDurableReasonV1::Io => 5,
+            },
+        ),
+        Some(DurableSaveAsFailureV1::PhysicalUnknown(reason)) => (
+            3,
+            match reason {
+                DurableSaveAsPhysicalUnknownReasonV1::Io => 1,
+                DurableSaveAsPhysicalUnknownReasonV1::Cleanup => 2,
+                DurableSaveAsPhysicalUnknownReasonV1::EvidenceIncomplete => 3,
+                DurableSaveAsPhysicalUnknownReasonV1::TaskStateUnavailable => 4,
+            },
+        ),
+        Some(DurableSaveAsFailureV1::NotActivated(reason)) => (
+            4,
+            match reason {
+                DurableSaveAsNotActivatedReasonV1::NotAttempted => 1,
+                DurableSaveAsNotActivatedReasonV1::ObservedNotApplied => 2,
+                DurableSaveAsNotActivatedReasonV1::Refused => 3,
+                DurableSaveAsNotActivatedReasonV1::Unavailable => 4,
+                DurableSaveAsNotActivatedReasonV1::DestinationChanged => 5,
+            },
+        ),
+        Some(DurableSaveAsFailureV1::BindingUnknown(reason)) => (
+            5,
+            match reason {
+                DurableSaveAsBindingUnknownReasonV1::Faulted => 1,
+                DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable => 2,
+            },
+        ),
+    }
+}
+
+fn decode_durable_save_as_failure(
+    failure: u8,
+    reason: u8,
+) -> Result<Option<DurableSaveAsFailureV1>, WireDecodeError> {
+    Ok(match (failure, reason) {
+        (0, 0) => None,
+        (1, 1) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::AuthorityDenied,
+        )),
+        (1, 2) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::AuthorityUnavailable,
+        )),
+        (1, 3) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::StaleSource,
+        )),
+        (1, 4) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::DestinationRefused,
+        )),
+        (1, 5) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::Capacity,
+        )),
+        (1, 6) => Some(DurableSaveAsFailureV1::NotAttempted(
+            DurableSaveAsNotAttemptedReasonV1::Unsupported,
+        )),
+        (2, 1) => Some(DurableSaveAsFailureV1::NotDurable(
+            DurableSaveAsNotDurableReasonV1::Conflict,
+        )),
+        (2, 2) => Some(DurableSaveAsFailureV1::NotDurable(
+            DurableSaveAsNotDurableReasonV1::Unsupported,
+        )),
+        (2, 3) => Some(DurableSaveAsFailureV1::NotDurable(
+            DurableSaveAsNotDurableReasonV1::Limit,
+        )),
+        (2, 4) => Some(DurableSaveAsFailureV1::NotDurable(
+            DurableSaveAsNotDurableReasonV1::Capacity,
+        )),
+        (2, 5) => Some(DurableSaveAsFailureV1::NotDurable(
+            DurableSaveAsNotDurableReasonV1::Io,
+        )),
+        (3, 1) => Some(DurableSaveAsFailureV1::PhysicalUnknown(
+            DurableSaveAsPhysicalUnknownReasonV1::Io,
+        )),
+        (3, 2) => Some(DurableSaveAsFailureV1::PhysicalUnknown(
+            DurableSaveAsPhysicalUnknownReasonV1::Cleanup,
+        )),
+        (3, 3) => Some(DurableSaveAsFailureV1::PhysicalUnknown(
+            DurableSaveAsPhysicalUnknownReasonV1::EvidenceIncomplete,
+        )),
+        (3, 4) => Some(DurableSaveAsFailureV1::PhysicalUnknown(
+            DurableSaveAsPhysicalUnknownReasonV1::TaskStateUnavailable,
+        )),
+        (4, 1) => Some(DurableSaveAsFailureV1::NotActivated(
+            DurableSaveAsNotActivatedReasonV1::NotAttempted,
+        )),
+        (4, 2) => Some(DurableSaveAsFailureV1::NotActivated(
+            DurableSaveAsNotActivatedReasonV1::ObservedNotApplied,
+        )),
+        (4, 3) => Some(DurableSaveAsFailureV1::NotActivated(
+            DurableSaveAsNotActivatedReasonV1::Refused,
+        )),
+        (4, 4) => Some(DurableSaveAsFailureV1::NotActivated(
+            DurableSaveAsNotActivatedReasonV1::Unavailable,
+        )),
+        (4, 5) => Some(DurableSaveAsFailureV1::NotActivated(
+            DurableSaveAsNotActivatedReasonV1::DestinationChanged,
+        )),
+        (5, 1) => Some(DurableSaveAsFailureV1::BindingUnknown(
+            DurableSaveAsBindingUnknownReasonV1::Faulted,
+        )),
+        (5, 2) => Some(DurableSaveAsFailureV1::BindingUnknown(
+            DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable,
+        )),
+        _ => return Err(WireDecodeError::UnknownTag),
+    })
 }
 
 fn encode_operation_ref(

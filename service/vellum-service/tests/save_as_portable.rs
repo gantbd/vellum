@@ -42,8 +42,9 @@ use vellum_host::{
     },
 };
 use vellum_protocol::{
-    CommandV1, OutcomeV1, ReplyV1, RequestId, RequestV1, WorkspaceChangeKindV1, WorkspaceChangesV1,
-    WorkspaceDocumentIdV1,
+    CommandV1, DurableSaveAsBindingV1, DurableSaveAsFenceReasonV1, DurableSaveAsLifecycleV1,
+    DurableSaveAsPersistenceV1, OutcomeV1, ReplyV1, RequestId, RequestV1, WorkspaceChangeKindV1,
+    WorkspaceChangesV1, WorkspaceDocumentIdV1,
 };
 use vellum_service::{Service, ServiceLimits, ServiceSaveAsStageV1};
 
@@ -573,6 +574,18 @@ fn service_binding_commit_advances_checkpoint_metadata_before_terminal_receipt()
         in_flight.lifecycle(),
         SaveAsLifecycleV1::Fenced(_)
     ));
+    let projected = service
+        .durable_save_as_protocol_receipt(&operation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(projected.document(), document);
+    assert_eq!(projected.source_revision(), version.revision);
+    assert_eq!(projected.persistence(), DurableSaveAsPersistenceV1::Durable);
+    assert_eq!(projected.binding(), DurableSaveAsBindingV1::Activated);
+    let DurableSaveAsLifecycleV1::Fenced(fence) = projected.lifecycle() else {
+        panic!("retained native task must remain fenced")
+    };
+    assert!(fence.contains(DurableSaveAsFenceReasonV1::RetainedTask));
     assert!(
         service
             .complete_durable_save_as(

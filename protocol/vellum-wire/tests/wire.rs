@@ -6,10 +6,15 @@ use vellum_protocol::{
     DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
-    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
-    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
-    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
+    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsFailureV1,
+    DurableSaveAsFenceReasonV1, DurableSaveAsFenceSetV1, DurableSaveAsLifecycleV1,
+    DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
+    EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1, MembershipRemovalStatusV1,
+    OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1,
+    RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1,
+    VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
     WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
     WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
     WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
@@ -18,8 +23,9 @@ use vellum_protocol::{
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1,
-    decode_durable_intent_v1, decode_durable_outcome_v1, decode_reply_v1, decode_request_v1,
-    encode_durable_intent_v1, encode_durable_outcome_v1, encode_reply_v1, encode_request_v1,
+    decode_durable_intent_v1, decode_durable_outcome_v1, decode_durable_save_as_receipt_v1,
+    decode_reply_v1, decode_request_v1, encode_durable_intent_v1, encode_durable_outcome_v1,
+    encode_durable_save_as_receipt_v1, encode_reply_v1, encode_request_v1,
 };
 
 fn fixture(source: &str) -> Vec<u8> {
@@ -237,6 +243,120 @@ fn durable_exclusive_export_receipt_is_locator_free_and_algebraically_closed() {
     assert_eq!(
         decode_durable_outcome_v1(&impossible_failure, limits()),
         Err(WireDecodeError::Malformed)
+    );
+}
+
+#[test]
+fn durable_save_as_receipt_codec_preserves_the_closed_product() {
+    let document = WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(3).unwrap(), 5).unwrap();
+    let physical = DurableSaveAsFenceSetV1::try_from_bits(
+        1 << DurableSaveAsFenceReasonV1::PhysicalUncertainty as u8,
+    )
+    .unwrap();
+    let binding = DurableSaveAsFenceSetV1::try_from_bits(
+        1 << DurableSaveAsFenceReasonV1::BindingUncertainty as u8,
+    )
+    .unwrap();
+    let retained =
+        DurableSaveAsFenceSetV1::try_from_bits(1 << DurableSaveAsFenceReasonV1::RetainedTask as u8)
+            .unwrap();
+    let receipts = [
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::Durable,
+            DurableSaveAsBindingV1::Activated,
+            None,
+            DurableSaveAsLifecycleV1::TerminalReplayable,
+        )
+        .unwrap(),
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::Durable,
+            DurableSaveAsBindingV1::NotActivated,
+            Some(DurableSaveAsFailureV1::NotActivated(
+                DurableSaveAsNotActivatedReasonV1::DestinationChanged,
+            )),
+            DurableSaveAsLifecycleV1::Fenced(retained),
+        )
+        .unwrap(),
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::Durable,
+            DurableSaveAsBindingV1::Unknown,
+            Some(DurableSaveAsFailureV1::BindingUnknown(
+                DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable,
+            )),
+            DurableSaveAsLifecycleV1::Fenced(binding),
+        )
+        .unwrap(),
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::NotDurable,
+            DurableSaveAsBindingV1::NotActivated,
+            Some(DurableSaveAsFailureV1::NotDurable(
+                DurableSaveAsNotDurableReasonV1::Io,
+            )),
+            DurableSaveAsLifecycleV1::TerminalReplayable,
+        )
+        .unwrap(),
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::Unknown,
+            DurableSaveAsBindingV1::NotActivated,
+            Some(DurableSaveAsFailureV1::PhysicalUnknown(
+                DurableSaveAsPhysicalUnknownReasonV1::Cleanup,
+            )),
+            DurableSaveAsLifecycleV1::Fenced(physical),
+        )
+        .unwrap(),
+        DurableSaveAsReceiptV1::try_new(
+            document,
+            8,
+            DurableSaveAsPersistenceV1::NotAttempted,
+            DurableSaveAsBindingV1::NotActivated,
+            Some(DurableSaveAsFailureV1::NotAttempted(
+                DurableSaveAsNotAttemptedReasonV1::AuthorityDenied,
+            )),
+            DurableSaveAsLifecycleV1::TerminalReplayable,
+        )
+        .unwrap(),
+    ];
+
+    assert_eq!(
+        encode_durable_save_as_receipt_v1(receipts[0], limits()).unwrap(),
+        fixture(
+            "01 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 05 \
+             00 00 00 00 00 00 00 08 01 01 00 00 01 00"
+        )
+    );
+
+    for receipt in receipts {
+        let encoded = encode_durable_save_as_receipt_v1(receipt, limits()).unwrap();
+        assert_eq!(encoded.len(), 31);
+        assert_eq!(
+            decode_durable_save_as_receipt_v1(&encoded, limits()).unwrap(),
+            receipt
+        );
+        assert!(!format!("{receipt:?}").contains('/'));
+    }
+
+    let mut unknown_as_terminal = encode_durable_save_as_receipt_v1(receipts[2], limits()).unwrap();
+    unknown_as_terminal[29] = 1;
+    unknown_as_terminal[30] = 0;
+    assert_eq!(
+        decode_durable_save_as_receipt_v1(&unknown_as_terminal, limits()),
+        Err(WireDecodeError::Malformed)
+    );
+    let mut trailing = encode_durable_save_as_receipt_v1(receipts[0], limits()).unwrap();
+    trailing.push(0);
+    assert_eq!(
+        decode_durable_save_as_receipt_v1(&trailing, limits()),
+        Err(WireDecodeError::TrailingData)
     );
 }
 
