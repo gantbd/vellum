@@ -3,7 +3,10 @@ use vellum_client::Client;
 use vellum_protocol::{
     ClientId, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
     DurableOperationRefV1, DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1,
-    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, RefusalV1, ReplyV1, RequestId,
+    DurableReceiptRetirementOutcomeV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1,
+    DurableSaveAsDestinationEffectV1, DurableSaveAsIntentV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsRetirementV1, DurableSaveAsStateV1,
+    DurableSaveAsSubmitOutcomeV1, DurableSaveAsSubmitRequestV1, RefusalV1, ReplyV1, RequestId,
     RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort, WorkspaceDocumentIdV1,
     WorkspaceIdV1,
 };
@@ -31,6 +34,9 @@ struct StubService {
     durable_executions: u64,
     durable_lookups: u64,
     durable_statuses: u64,
+    save_as_submissions: u64,
+    save_as_lookups: u64,
+    save_as_retirements: u64,
 }
 
 impl StubService {
@@ -42,6 +48,9 @@ impl StubService {
             durable_executions: 0,
             durable_lookups: 0,
             durable_statuses: 0,
+            save_as_submissions: 0,
+            save_as_lookups: 0,
+            save_as_retirements: 0,
         }
     }
 }
@@ -78,6 +87,32 @@ impl ServicePort for StubService {
     ) -> Result<DurableReceiptStatusV1, ServiceAccessErrorV1> {
         self.durable_statuses += 1;
         Ok(DurableReceiptStatusV1::Pending)
+    }
+
+    fn submit_durable_save_as(
+        &mut self,
+        _request: DurableSaveAsSubmitRequestV1,
+    ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+        self.save_as_submissions += 1;
+        Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+            DurableSaveAsStateV1::Pending,
+        ))
+    }
+
+    fn lookup_durable_save_as(
+        &mut self,
+        _lookup: DurableSaveAsLookupV1,
+    ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+        self.save_as_lookups += 1;
+        Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown)
+    }
+
+    fn retire_durable_save_as(
+        &mut self,
+        _retirement: DurableSaveAsRetirementV1,
+    ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+        self.save_as_retirements += 1;
+        Ok(DurableReceiptRetirementOutcomeV1::Retired)
     }
 
     fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1> {
@@ -176,6 +211,64 @@ fn durable_execute_and_read_only_lookup_dispatch_to_distinct_service_methods() {
     assert_eq!(service.durable_lookups, 1);
     assert_eq!(service.durable_statuses, 1);
     assert_eq!(service.ordinary_executions, 0);
+}
+
+#[test]
+fn save_as_submit_lookup_and_retirement_dispatch_without_ordinary_execution() {
+    let mut transport = RemoteTransport::new(
+        Loopback {
+            service: StubService::new(),
+            limits: limits(),
+        },
+        limits(),
+    )
+    .unwrap();
+    let document = WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(3).unwrap(), 5).unwrap();
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        8,
+        "next".into(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive,
+    )
+    .unwrap();
+    let operation = DurableOperationRefV1::new([10; 16]).unwrap();
+    let client = ClientId::new(7).unwrap();
+
+    assert_eq!(
+        transport.submit_durable_save_as(DurableSaveAsSubmitRequestV1 {
+            operation,
+            client,
+            request: RequestId::new(1).unwrap(),
+            intent: intent.clone(),
+        }),
+        Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+            DurableSaveAsStateV1::Pending,
+        ))
+    );
+    assert_eq!(
+        transport.lookup_durable_save_as(DurableSaveAsLookupV1 {
+            operation,
+            client,
+            request: RequestId::new(2).unwrap(),
+            intent: intent.clone(),
+        }),
+        Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown)
+    );
+    assert_eq!(
+        transport.retire_durable_save_as(DurableSaveAsRetirementV1 {
+            operation,
+            client,
+            request: RequestId::new(3).unwrap(),
+            intent,
+        }),
+        Ok(DurableReceiptRetirementOutcomeV1::Retired)
+    );
+    let service = transport.into_exchange().service;
+    assert_eq!(service.save_as_submissions, 1);
+    assert_eq!(service.save_as_lookups, 1);
+    assert_eq!(service.save_as_retirements, 1);
+    assert_eq!(service.ordinary_executions, 0);
+    assert_eq!(service.durable_executions, 0);
 }
 
 struct FailingExchange(TransportError);

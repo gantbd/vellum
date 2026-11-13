@@ -8,13 +8,15 @@ use vellum_protocol::{
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
     DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
     DurableSaveAsFailureV1, DurableSaveAsFenceReasonV1, DurableSaveAsFenceSetV1,
-    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1,
-    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
-    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
-    EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1, MembershipRemovalStatusV1,
-    OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1,
-    RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1,
-    VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
+    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveAsRetirementV1,
+    DurableSaveAsStateV1, DurableSaveAsSubmitOutcomeV1, DurableSaveAsSubmitRequestV1,
+    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
+    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
+    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
     WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
     WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
     WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
@@ -415,6 +417,116 @@ fn durable_save_as_receipt_codec_preserves_the_closed_product() {
     assert_eq!(
         decode_durable_save_as_receipt_v1(&trailing, limits()),
         Err(WireDecodeError::TrailingData)
+    );
+}
+
+#[test]
+fn durable_save_as_operation_surface_is_canonical_closed_and_redacted() {
+    let workspace = WorkspaceIdV1::new(3).unwrap();
+    let document = WorkspaceDocumentIdV1::new(workspace, 5).unwrap();
+    let intent = DurableSaveAsIntentV1::try_new(
+        document,
+        8,
+        "/private/new-binding".into(),
+        DurableSaveAsDestinationEffectV1::CreateExclusive,
+    )
+    .unwrap();
+    let client = ClientId::new(7).unwrap();
+    let request = RequestId::new(9).unwrap();
+    let operation = DurableOperationRefV1::new([11; 16]).unwrap();
+
+    let requests = [
+        WireRequestV1::DurableSaveAsSubmit(DurableSaveAsSubmitRequestV1 {
+            operation,
+            client,
+            request,
+            intent: intent.clone(),
+        }),
+        WireRequestV1::DurableSaveAsLookup(DurableSaveAsLookupV1 {
+            operation,
+            client,
+            request,
+            intent: intent.clone(),
+        }),
+        WireRequestV1::DurableSaveAsRetirement(DurableSaveAsRetirementV1 {
+            operation,
+            client,
+            request,
+            intent: intent.clone(),
+        }),
+    ];
+    for (request, tag) in requests.into_iter().zip([0x08, 0x09, 0x0a]) {
+        assert!(!format!("{request:?}").contains("/private"));
+        let encoded = encode_request_v1(&request, limits()).unwrap();
+        assert_eq!(encoded[1], tag);
+        assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+    }
+
+    let terminal = DurableSaveAsReceiptV1::try_new(
+        document,
+        8,
+        DurableSaveAsPersistenceV1::Durable,
+        DurableSaveAsBindingV1::Activated,
+        None,
+        DurableSaveAsLifecycleV1::TerminalReplayable,
+    )
+    .unwrap();
+    let physical = DurableSaveAsFenceSetV1::try_from_bits(
+        1 << DurableSaveAsFenceReasonV1::PhysicalUncertainty as u8,
+    )
+    .unwrap();
+    let fenced = DurableSaveAsReceiptV1::try_new(
+        document,
+        8,
+        DurableSaveAsPersistenceV1::Unknown,
+        DurableSaveAsBindingV1::NotActivated,
+        Some(DurableSaveAsFailureV1::PhysicalUnknown(
+            DurableSaveAsPhysicalUnknownReasonV1::EvidenceIncomplete,
+        )),
+        DurableSaveAsLifecycleV1::Fenced(physical),
+    )
+    .unwrap();
+    let replies = [
+        WireReplyV1::DurableSaveAsSubmitted(DurableSaveAsSubmitOutcomeV1::Observed(
+            DurableSaveAsStateV1::Pending,
+        )),
+        WireReplyV1::DurableSaveAsSubmitted(DurableSaveAsSubmitOutcomeV1::Refused(
+            RefusalV1::AuthorityDenied,
+        )),
+        WireReplyV1::DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1::Observed(
+            DurableSaveAsStateV1::Fenced(fenced),
+        )),
+        WireReplyV1::DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1::Observed(
+            DurableSaveAsStateV1::Complete(terminal),
+        )),
+        WireReplyV1::DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1::OutcomeUnknown),
+        WireReplyV1::DurableSaveAsRetired(DurableReceiptRetirementOutcomeV1::Retired),
+    ];
+    for reply in replies {
+        let encoded = encode_reply_v1(&reply, limits()).unwrap();
+        assert_eq!(decode_reply_v1(&encoded, limits()).unwrap(), reply);
+    }
+
+    assert_eq!(
+        encode_reply_v1(
+            &WireReplyV1::DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1::Observed(
+                DurableSaveAsStateV1::Fenced(terminal),
+            )),
+            limits(),
+        ),
+        Err(WireEncodeError::IdentityMismatch)
+    );
+    let mut malformed = encode_reply_v1(
+        &WireReplyV1::DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1::Observed(
+            DurableSaveAsStateV1::Complete(terminal),
+        )),
+        limits(),
+    )
+    .unwrap();
+    malformed[3] = 2;
+    assert_eq!(
+        decode_reply_v1(&malformed, limits()),
+        Err(WireDecodeError::Malformed)
     );
 }
 

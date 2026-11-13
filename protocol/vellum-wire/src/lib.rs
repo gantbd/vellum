@@ -12,10 +12,12 @@ use vellum_protocol::{
     DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
     DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
     DurableSaveAsFailureV1, DurableSaveAsFenceSetV1, DurableSaveAsIntentV1,
-    DurableSaveAsLifecycleV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1, DurableSaveAsLookupV1,
+    DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
     DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
-    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveReceiptV1,
-    EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveAsRetirementV1,
+    DurableSaveAsStateV1, DurableSaveAsSubmitOutcomeV1, DurableSaveAsSubmitRequestV1,
+    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
     MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_EDIT_DOCUMENTS_V1,
     MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1, MAX_WORKSPACE_EDIT_REPLACEMENTS_V1,
     MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
@@ -334,6 +336,131 @@ pub fn decode_durable_save_as_receipt_v1(
         lifecycle,
     )
     .ok_or(WireDecodeError::Malformed)
+}
+
+fn encode_durable_save_as_intent_payload(
+    encoder: &mut Encoder,
+    intent: &DurableSaveAsIntentV1,
+    limits: WireLimits,
+) -> Result<(), WireEncodeError> {
+    encoder.bytes(&encode_durable_save_as_intent_v1(intent, limits)?)
+}
+
+fn decode_durable_save_as_intent_payload(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<DurableSaveAsIntentV1, WireDecodeError> {
+    decode_durable_save_as_intent_v1(decoder.read_bytes().map_err(map_decode)?, limits)
+}
+
+fn encode_durable_save_as_state_fields(
+    encoder: &mut Encoder,
+    state: &DurableSaveAsStateV1,
+    limits: WireLimits,
+) -> Result<(), WireEncodeError> {
+    if !state.is_congruent() {
+        return Err(WireEncodeError::IdentityMismatch);
+    }
+    match state {
+        DurableSaveAsStateV1::Pending => encoder.u8(1),
+        DurableSaveAsStateV1::Fenced(receipt) => {
+            encoder.u8(2)?;
+            encoder.bytes(&encode_durable_save_as_receipt_v1(*receipt, limits)?)
+        }
+        DurableSaveAsStateV1::Complete(receipt) => {
+            encoder.u8(3)?;
+            encoder.bytes(&encode_durable_save_as_receipt_v1(*receipt, limits)?)
+        }
+        DurableSaveAsStateV1::Retired => encoder.u8(4),
+    }
+}
+
+fn decode_durable_save_as_state_fields(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<DurableSaveAsStateV1, WireDecodeError> {
+    let state = match read_u8(decoder)? {
+        1 => DurableSaveAsStateV1::Pending,
+        2 => DurableSaveAsStateV1::Fenced(decode_durable_save_as_receipt_v1(
+            decoder.read_bytes().map_err(map_decode)?,
+            limits,
+        )?),
+        3 => DurableSaveAsStateV1::Complete(decode_durable_save_as_receipt_v1(
+            decoder.read_bytes().map_err(map_decode)?,
+            limits,
+        )?),
+        4 => DurableSaveAsStateV1::Retired,
+        _ => return Err(WireDecodeError::UnknownTag),
+    };
+    state
+        .is_congruent()
+        .then_some(state)
+        .ok_or(WireDecodeError::Malformed)
+}
+
+fn encode_durable_save_as_submit_outcome_fields(
+    encoder: &mut Encoder,
+    outcome: &DurableSaveAsSubmitOutcomeV1,
+    limits: WireLimits,
+) -> Result<(), WireEncodeError> {
+    match outcome {
+        DurableSaveAsSubmitOutcomeV1::Observed(state) => {
+            encoder.u8(1)?;
+            encode_durable_save_as_state_fields(encoder, state, limits)
+        }
+        DurableSaveAsSubmitOutcomeV1::Refused(refusal) => {
+            encoder.u8(2)?;
+            encoder.u8(refusal_tag(*refusal))
+        }
+    }
+}
+
+fn decode_durable_save_as_submit_outcome_fields(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<DurableSaveAsSubmitOutcomeV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+            decode_durable_save_as_state_fields(decoder, limits)?,
+        )),
+        2 => Ok(DurableSaveAsSubmitOutcomeV1::Refused(decode_refusal(
+            read_u8(decoder)?,
+        )?)),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
+}
+
+fn encode_durable_save_as_lookup_outcome_fields(
+    encoder: &mut Encoder,
+    outcome: &DurableSaveAsLookupOutcomeV1,
+    limits: WireLimits,
+) -> Result<(), WireEncodeError> {
+    match outcome {
+        DurableSaveAsLookupOutcomeV1::Observed(state) => {
+            encoder.u8(1)?;
+            encode_durable_save_as_state_fields(encoder, state, limits)
+        }
+        DurableSaveAsLookupOutcomeV1::RequestConflict => encoder.u8(2),
+        DurableSaveAsLookupOutcomeV1::OutcomeUnknown => encoder.u8(3),
+        DurableSaveAsLookupOutcomeV1::AbsentOrForeign => encoder.u8(4),
+        DurableSaveAsLookupOutcomeV1::Unavailable => encoder.u8(5),
+    }
+}
+
+fn decode_durable_save_as_lookup_outcome_fields(
+    decoder: &mut Decoder<'_>,
+    limits: WireLimits,
+) -> Result<DurableSaveAsLookupOutcomeV1, WireDecodeError> {
+    match read_u8(decoder)? {
+        1 => Ok(DurableSaveAsLookupOutcomeV1::Observed(
+            decode_durable_save_as_state_fields(decoder, limits)?,
+        )),
+        2 => Ok(DurableSaveAsLookupOutcomeV1::RequestConflict),
+        3 => Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown),
+        4 => Ok(DurableSaveAsLookupOutcomeV1::AbsentOrForeign),
+        5 => Ok(DurableSaveAsLookupOutcomeV1::Unavailable),
+        _ => Err(WireDecodeError::UnknownTag),
+    }
 }
 
 fn encode_durable_save_as_failure(failure: Option<DurableSaveAsFailureV1>) -> (u8, u8) {
@@ -840,6 +967,9 @@ const DURABLE_EXECUTE_REQUEST: u8 = 0x04;
 const DURABLE_RECEIPT_LOOKUP_REQUEST: u8 = 0x05;
 const DURABLE_RECEIPT_RETIRE_REQUEST: u8 = 0x06;
 const DURABLE_RECEIPT_STATUS_REQUEST: u8 = 0x07;
+const DURABLE_SAVE_AS_SUBMIT_REQUEST: u8 = 0x08;
+const DURABLE_SAVE_AS_LOOKUP_REQUEST: u8 = 0x09;
+const DURABLE_SAVE_AS_RETIRE_REQUEST: u8 = 0x0a;
 const CONNECTED_REPLY: u8 = 0x81;
 const CONNECT_REFUSED_REPLY: u8 = 0x82;
 const EXECUTED_REPLY: u8 = 0x83;
@@ -849,6 +979,9 @@ const DURABLE_EXECUTED_REPLY: u8 = 0x86;
 const DURABLE_RECEIPT_LOOKED_UP_REPLY: u8 = 0x87;
 const DURABLE_RECEIPT_RETIRED_REPLY: u8 = 0x88;
 const DURABLE_RECEIPT_STATUS_REPLY: u8 = 0x89;
+const DURABLE_SAVE_AS_SUBMITTED_REPLY: u8 = 0x8a;
+const DURABLE_SAVE_AS_LOOKED_UP_REPLY: u8 = 0x8b;
+const DURABLE_SAVE_AS_RETIRED_REPLY: u8 = 0x8c;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WireLimits {
@@ -896,6 +1029,9 @@ pub enum WireRequestV1 {
     DurableReceiptLookup(DurableReceiptLookupV1),
     DurableReceiptRetirement(DurableReceiptRetirementV1),
     DurableReceiptStatus(DurableReceiptStatusRequestV1),
+    DurableSaveAsSubmit(DurableSaveAsSubmitRequestV1),
+    DurableSaveAsLookup(DurableSaveAsLookupV1),
+    DurableSaveAsRetirement(DurableSaveAsRetirementV1),
 }
 
 impl fmt::Debug for WireRequestV1 {
@@ -918,6 +1054,16 @@ impl fmt::Debug for WireRequestV1 {
                 .debug_tuple("DurableReceiptStatus")
                 .field(request)
                 .finish(),
+            Self::DurableSaveAsSubmit(request) => {
+                f.debug_tuple("DurableSaveAsSubmit").field(request).finish()
+            }
+            Self::DurableSaveAsLookup(lookup) => {
+                f.debug_tuple("DurableSaveAsLookup").field(lookup).finish()
+            }
+            Self::DurableSaveAsRetirement(retirement) => f
+                .debug_tuple("DurableSaveAsRetirement")
+                .field(retirement)
+                .finish(),
         }
     }
 }
@@ -933,6 +1079,9 @@ pub enum WireReplyV1 {
     DurableReceiptLookedUp(DurableReceiptLookupOutcomeV1),
     DurableReceiptRetired(DurableReceiptRetirementOutcomeV1),
     DurableReceiptStatus(DurableReceiptStatusV1),
+    DurableSaveAsSubmitted(DurableSaveAsSubmitOutcomeV1),
+    DurableSaveAsLookedUp(DurableSaveAsLookupOutcomeV1),
+    DurableSaveAsRetired(DurableReceiptRetirementOutcomeV1),
 }
 
 impl fmt::Debug for WireReplyV1 {
@@ -961,6 +1110,18 @@ impl fmt::Debug for WireReplyV1 {
             Self::DurableReceiptStatus(status) => {
                 f.debug_tuple("DurableReceiptStatus").field(status).finish()
             }
+            Self::DurableSaveAsSubmitted(outcome) => f
+                .debug_tuple("DurableSaveAsSubmitted")
+                .field(outcome)
+                .finish(),
+            Self::DurableSaveAsLookedUp(outcome) => f
+                .debug_tuple("DurableSaveAsLookedUp")
+                .field(outcome)
+                .finish(),
+            Self::DurableSaveAsRetired(outcome) => f
+                .debug_tuple("DurableSaveAsRetired")
+                .field(outcome)
+                .finish(),
         }
     }
 }
@@ -1012,6 +1173,27 @@ pub fn encode_request_v1(
             encoder.u64(request.client.get())?;
             encoder.u64(request.request.get())?;
         }
+        WireRequestV1::DurableSaveAsSubmit(request) => {
+            encoder.u8(DURABLE_SAVE_AS_SUBMIT_REQUEST)?;
+            encode_operation_ref(&mut encoder, request.operation)?;
+            encoder.u64(request.client.get())?;
+            encoder.u64(request.request.get())?;
+            encode_durable_save_as_intent_payload(&mut encoder, &request.intent, limits)?;
+        }
+        WireRequestV1::DurableSaveAsLookup(lookup) => {
+            encoder.u8(DURABLE_SAVE_AS_LOOKUP_REQUEST)?;
+            encode_operation_ref(&mut encoder, lookup.operation)?;
+            encoder.u64(lookup.client.get())?;
+            encoder.u64(lookup.request.get())?;
+            encode_durable_save_as_intent_payload(&mut encoder, &lookup.intent, limits)?;
+        }
+        WireRequestV1::DurableSaveAsRetirement(retirement) => {
+            encoder.u8(DURABLE_SAVE_AS_RETIRE_REQUEST)?;
+            encode_operation_ref(&mut encoder, retirement.operation)?;
+            encoder.u64(retirement.client.get())?;
+            encoder.u64(retirement.request.get())?;
+            encode_durable_save_as_intent_payload(&mut encoder, &retirement.intent, limits)?;
+        }
     }
     encoder.finish(length)
 }
@@ -1062,6 +1244,30 @@ pub fn decode_request_v1(
                 operation: decode_operation_ref(&mut decoder)?,
                 client: client_id(read_u64(&mut decoder)?)?,
                 request: request_id(read_u64(&mut decoder)?)?,
+            })
+        }
+        DURABLE_SAVE_AS_SUBMIT_REQUEST => {
+            WireRequestV1::DurableSaveAsSubmit(DurableSaveAsSubmitRequestV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
+                intent: decode_durable_save_as_intent_payload(&mut decoder, limits)?,
+            })
+        }
+        DURABLE_SAVE_AS_LOOKUP_REQUEST => {
+            WireRequestV1::DurableSaveAsLookup(DurableSaveAsLookupV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
+                intent: decode_durable_save_as_intent_payload(&mut decoder, limits)?,
+            })
+        }
+        DURABLE_SAVE_AS_RETIRE_REQUEST => {
+            WireRequestV1::DurableSaveAsRetirement(DurableSaveAsRetirementV1 {
+                operation: decode_operation_ref(&mut decoder)?,
+                client: client_id(read_u64(&mut decoder)?)?,
+                request: request_id(read_u64(&mut decoder)?)?,
+                intent: decode_durable_save_as_intent_payload(&mut decoder, limits)?,
             })
         }
         _ => return Err(WireDecodeError::UnknownTag),
@@ -1124,6 +1330,24 @@ pub fn encode_reply_v1(
                 DurableReceiptStatusV1::Unavailable => 5,
             })?;
         }
+        WireReplyV1::DurableSaveAsSubmitted(outcome) => {
+            encoder.u8(DURABLE_SAVE_AS_SUBMITTED_REPLY)?;
+            encode_durable_save_as_submit_outcome_fields(&mut encoder, outcome, limits)?;
+        }
+        WireReplyV1::DurableSaveAsLookedUp(outcome) => {
+            encoder.u8(DURABLE_SAVE_AS_LOOKED_UP_REPLY)?;
+            encode_durable_save_as_lookup_outcome_fields(&mut encoder, outcome, limits)?;
+        }
+        WireReplyV1::DurableSaveAsRetired(outcome) => {
+            encoder.u8(DURABLE_SAVE_AS_RETIRED_REPLY)?;
+            encoder.u8(match outcome {
+                DurableReceiptRetirementOutcomeV1::Retired => 1,
+                DurableReceiptRetirementOutcomeV1::AbsentOrForeign => 2,
+                DurableReceiptRetirementOutcomeV1::RequestConflict => 3,
+                DurableReceiptRetirementOutcomeV1::OutcomeUnknown => 4,
+                DurableReceiptRetirementOutcomeV1::Unavailable => 5,
+            })?;
+        }
     }
     encoder.finish(length)
 }
@@ -1164,6 +1388,22 @@ pub fn decode_reply_v1(input: &[u8], limits: WireLimits) -> Result<WireReplyV1, 
                 3 => DurableReceiptStatusV1::Retired,
                 4 => DurableReceiptStatusV1::AbsentOrForeign,
                 5 => DurableReceiptStatusV1::Unavailable,
+                _ => return Err(WireDecodeError::UnknownTag),
+            })
+        }
+        DURABLE_SAVE_AS_SUBMITTED_REPLY => WireReplyV1::DurableSaveAsSubmitted(
+            decode_durable_save_as_submit_outcome_fields(&mut decoder, limits)?,
+        ),
+        DURABLE_SAVE_AS_LOOKED_UP_REPLY => WireReplyV1::DurableSaveAsLookedUp(
+            decode_durable_save_as_lookup_outcome_fields(&mut decoder, limits)?,
+        ),
+        DURABLE_SAVE_AS_RETIRED_REPLY => {
+            WireReplyV1::DurableSaveAsRetired(match read_u8(&mut decoder)? {
+                1 => DurableReceiptRetirementOutcomeV1::Retired,
+                2 => DurableReceiptRetirementOutcomeV1::AbsentOrForeign,
+                3 => DurableReceiptRetirementOutcomeV1::RequestConflict,
+                4 => DurableReceiptRetirementOutcomeV1::OutcomeUnknown,
+                5 => DurableReceiptRetirementOutcomeV1::Unavailable,
                 _ => return Err(WireDecodeError::UnknownTag),
             })
         }
@@ -2338,6 +2578,15 @@ fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
                 .ok_or(WireEncodeError::LengthOverflow)
         }
         WireRequestV1::DurableReceiptStatus(_) => Ok(34),
+        WireRequestV1::DurableSaveAsSubmit(request) => {
+            durable_save_as_request_length(&request.intent)
+        }
+        WireRequestV1::DurableSaveAsLookup(lookup) => {
+            durable_save_as_request_length(&lookup.intent)
+        }
+        WireRequestV1::DurableSaveAsRetirement(retirement) => {
+            durable_save_as_request_length(&retirement.intent)
+        }
         WireRequestV1::Execute(request) => match &request.command {
             CommandV1::WorkspaceInventory | CommandV1::OpenView | CommandV1::CloseView => Ok(19),
             CommandV1::WorkspaceChanges { after, .. } => Ok(if after.is_some() { 52 } else { 28 }),
@@ -2381,6 +2630,17 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             .ok_or(WireEncodeError::LengthOverflow),
         WireReplyV1::DurableReceiptRetired(_) => Ok(3),
         WireReplyV1::DurableReceiptStatus(_) => Ok(3),
+        WireReplyV1::DurableSaveAsSubmitted(outcome) => {
+            durable_save_as_submit_outcome_length(outcome)?
+                .checked_add(2)
+                .ok_or(WireEncodeError::LengthOverflow)
+        }
+        WireReplyV1::DurableSaveAsLookedUp(outcome) => {
+            durable_save_as_lookup_outcome_length(outcome)?
+                .checked_add(2)
+                .ok_or(WireEncodeError::LengthOverflow)
+        }
+        WireReplyV1::DurableSaveAsRetired(_) => Ok(3),
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
             OutcomeV1::WorkspaceInventory(inventory)
             | OutcomeV1::FileAdded(inventory)
@@ -2444,6 +2704,15 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
             .checked_add(validate_durable_intent(&retirement.intent, limits)?)
             .ok_or(WireEncodeError::LengthOverflow)?,
         WireRequestV1::DurableReceiptStatus(_) => 5,
+        WireRequestV1::DurableSaveAsSubmit(request) => {
+            validate_durable_save_as_request(&request.intent, limits)?
+        }
+        WireRequestV1::DurableSaveAsLookup(lookup) => {
+            validate_durable_save_as_request(&lookup.intent, limits)?
+        }
+        WireRequestV1::DurableSaveAsRetirement(retirement) => {
+            validate_durable_save_as_request(&retirement.intent, limits)?
+        }
         WireRequestV1::Execute(RequestV1 {
             command: CommandV1::WorkspaceInventory,
             ..
@@ -2532,6 +2801,13 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
             .ok_or(WireEncodeError::LengthOverflow)?,
         WireReplyV1::DurableReceiptRetired(_) => 3,
         WireReplyV1::DurableReceiptStatus(_) => 3,
+        WireReplyV1::DurableSaveAsSubmitted(outcome) => 2_usize
+            .checked_add(validate_durable_save_as_submit_outcome(outcome, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireReplyV1::DurableSaveAsLookedUp(outcome) => 2_usize
+            .checked_add(validate_durable_save_as_lookup_outcome(outcome, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow)?,
+        WireReplyV1::DurableSaveAsRetired(_) => 3,
         WireReplyV1::Executed(ReplyV1::Refused(_)) => 4,
         WireReplyV1::Executed(ReplyV1::Accepted(outcome)) => match outcome {
             OutcomeV1::WorkspaceInventory(inventory)
@@ -2746,6 +3022,57 @@ fn validate_durable_intent(
     }
 }
 
+fn validate_durable_save_as_request(
+    intent: &DurableSaveAsIntentV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    encode_durable_save_as_intent_v1(intent, limits)?;
+    Ok(7)
+}
+
+fn validate_durable_save_as_state(
+    state: &DurableSaveAsStateV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    if !state.is_congruent() {
+        return Err(WireEncodeError::IdentityMismatch);
+    }
+    match state {
+        DurableSaveAsStateV1::Pending | DurableSaveAsStateV1::Retired => Ok(1),
+        DurableSaveAsStateV1::Fenced(receipt) | DurableSaveAsStateV1::Complete(receipt) => {
+            encode_durable_save_as_receipt_v1(*receipt, limits)?;
+            Ok(2)
+        }
+    }
+}
+
+fn validate_durable_save_as_submit_outcome(
+    outcome: &DurableSaveAsSubmitOutcomeV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableSaveAsSubmitOutcomeV1::Observed(state) => 1_usize
+            .checked_add(validate_durable_save_as_state(state, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableSaveAsSubmitOutcomeV1::Refused(_) => Ok(2),
+    }
+}
+
+fn validate_durable_save_as_lookup_outcome(
+    outcome: &DurableSaveAsLookupOutcomeV1,
+    limits: WireLimits,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableSaveAsLookupOutcomeV1::Observed(state) => 1_usize
+            .checked_add(validate_durable_save_as_state(state, limits)?)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableSaveAsLookupOutcomeV1::RequestConflict
+        | DurableSaveAsLookupOutcomeV1::OutcomeUnknown
+        | DurableSaveAsLookupOutcomeV1::AbsentOrForeign
+        | DurableSaveAsLookupOutcomeV1::Unavailable => Ok(1),
+    }
+}
+
 fn validate_durable_outcome(
     outcome: &DurableExecuteOutcomeV1,
     limits: WireLimits,
@@ -2838,6 +3165,48 @@ fn durable_outcome_length(outcome: &DurableExecuteOutcomeV1) -> Result<usize, Wi
         DurableExecuteOutcomeV1::Completed(receipt) => durable_receipt_length(receipt)?
             .checked_add(1)
             .ok_or(WireEncodeError::LengthOverflow),
+    }
+}
+
+fn durable_save_as_request_length(
+    intent: &DurableSaveAsIntentV1,
+) -> Result<usize, WireEncodeError> {
+    check_wire_text_length(intent.destination().len())?;
+    checked_add(68, intent.destination().len())
+}
+
+fn durable_save_as_state_length(state: &DurableSaveAsStateV1) -> Result<usize, WireEncodeError> {
+    if !state.is_congruent() {
+        return Err(WireEncodeError::IdentityMismatch);
+    }
+    Ok(match state {
+        DurableSaveAsStateV1::Pending | DurableSaveAsStateV1::Retired => 1,
+        DurableSaveAsStateV1::Fenced(_) | DurableSaveAsStateV1::Complete(_) => 36,
+    })
+}
+
+fn durable_save_as_submit_outcome_length(
+    outcome: &DurableSaveAsSubmitOutcomeV1,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableSaveAsSubmitOutcomeV1::Observed(state) => durable_save_as_state_length(state)?
+            .checked_add(1)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableSaveAsSubmitOutcomeV1::Refused(_) => Ok(2),
+    }
+}
+
+fn durable_save_as_lookup_outcome_length(
+    outcome: &DurableSaveAsLookupOutcomeV1,
+) -> Result<usize, WireEncodeError> {
+    match outcome {
+        DurableSaveAsLookupOutcomeV1::Observed(state) => durable_save_as_state_length(state)?
+            .checked_add(1)
+            .ok_or(WireEncodeError::LengthOverflow),
+        DurableSaveAsLookupOutcomeV1::RequestConflict
+        | DurableSaveAsLookupOutcomeV1::OutcomeUnknown
+        | DurableSaveAsLookupOutcomeV1::AbsentOrForeign
+        | DurableSaveAsLookupOutcomeV1::Unavailable => Ok(1),
     }
 }
 

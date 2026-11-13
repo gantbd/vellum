@@ -246,7 +246,7 @@
       "sourceTree": {
         "directory": "client/vellum-client/src",
         "fileCount": 1,
-        "sha256": "86cbbb6ae755a3e00a9f694cc5219562663bc62c363d3c32ea2c80558904a44a"
+        "sha256": "57aa93c5ed9c2ce2f2abf9f35c651263c722ad5d6d9071dabb1804bf8bc0defe"
       }
     },
     {
@@ -436,7 +436,7 @@
       "sourceTree": {
         "directory": "connectors/vellum-mcp/src",
         "fileCount": 3,
-        "sha256": "c94190ef2b5ec1d816f91ed2e9441f6a430cbd3c213d88549e9ddfb213d33423"
+        "sha256": "6a5d009a7c9cbc5169e69d5c2f31a68d5bfd3f6a0f72e039c0a8d5c95f035b0d"
       }
     },
     {
@@ -460,7 +460,7 @@
       "sourceTree": {
         "directory": "protocol/vellum-protocol/src",
         "fileCount": 1,
-        "sha256": "0d74851fd0f3b024f2c0ec1fe6c732b2608971bd107035f801f2eb6ba70491e2"
+        "sha256": "b93d41a1c4bc61d14e913f46d23d2ca2663a72f4bdbef8f29425157d890fb8f1"
       }
     },
     {
@@ -926,7 +926,7 @@
       "sourceTree": {
         "directory": "transport/vellum-transport/src",
         "fileCount": 1,
-        "sha256": "852ec25eca75187632fce9d63f300d27ce4a4e83f3968a8865cc13d33fc5ac7c"
+        "sha256": "6a85e4fdc11ec41211cc63a23579c6fa92a70cd6d5060ac65d77fb1f18da92a1"
       }
     },
     {
@@ -950,7 +950,7 @@
       "sourceTree": {
         "directory": "protocol/vellum-wire/src",
         "fileCount": 1,
-        "sha256": "1c4c0d08fc1bcbf7582f82919aae79fae5c6f3de786adc88141affeb2032e303"
+        "sha256": "5abaeb93218cf33b715eb431f4279f47577b09b446ab6914087028b5be8fb836"
       }
     },
     {

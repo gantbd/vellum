@@ -5,8 +5,10 @@ use std::io::{self, Read, Write};
 use vellum_protocol::{
     ClientId, DurableExecuteOutcomeV1, DurableExecuteRequestV1, DurableReceiptLookupOutcomeV1,
     DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
-    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, ReplyV1, RequestV1,
-    ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
+    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsRetirementV1, DurableSaveAsSubmitOutcomeV1,
+    DurableSaveAsSubmitRequestV1, ReplyV1, RequestV1, ServiceAccessErrorV1, ServiceControlErrorV1,
+    ServicePort,
 };
 use vellum_wire::{
     WireDecodeError, WireEncodeError, WireLimits, WireReplyV1, WireRequestV1, decode_reply_v1,
@@ -208,6 +210,36 @@ impl<X: FrameExchange> ServicePort for RemoteTransport<X> {
         }
     }
 
+    fn submit_durable_save_as(
+        &mut self,
+        request: DurableSaveAsSubmitRequestV1,
+    ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+        match self.call(&WireRequestV1::DurableSaveAsSubmit(request))? {
+            WireReplyV1::DurableSaveAsSubmitted(outcome) => Ok(outcome),
+            _ => self.unexpected(),
+        }
+    }
+
+    fn lookup_durable_save_as(
+        &mut self,
+        lookup: DurableSaveAsLookupV1,
+    ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+        match self.call(&WireRequestV1::DurableSaveAsLookup(lookup))? {
+            WireReplyV1::DurableSaveAsLookedUp(outcome) => Ok(outcome),
+            _ => self.unexpected(),
+        }
+    }
+
+    fn retire_durable_save_as(
+        &mut self,
+        retirement: DurableSaveAsRetirementV1,
+    ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+        match self.call(&WireRequestV1::DurableSaveAsRetirement(retirement))? {
+            WireReplyV1::DurableSaveAsRetired(outcome) => Ok(outcome),
+            _ => self.unexpected(),
+        }
+    }
+
     fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1> {
         match self.call(&WireRequestV1::Disconnect(client)) {
             Ok(WireReplyV1::Disconnected) => Ok(()),
@@ -257,6 +289,24 @@ pub fn dispatch_v1<S: ServicePort>(
         WireRequestV1::DurableReceiptStatus(request) => {
             match service.durable_receipt_status(request) {
                 Ok(status) => WireReplyV1::DurableReceiptStatus(status),
+                Err(_) => return Err(TransportError::ServiceUnavailable),
+            }
+        }
+        WireRequestV1::DurableSaveAsSubmit(request) => {
+            match service.submit_durable_save_as(request) {
+                Ok(outcome) => WireReplyV1::DurableSaveAsSubmitted(outcome),
+                Err(_) => return Err(TransportError::ServiceUnavailable),
+            }
+        }
+        WireRequestV1::DurableSaveAsLookup(lookup) => {
+            match service.lookup_durable_save_as(lookup) {
+                Ok(outcome) => WireReplyV1::DurableSaveAsLookedUp(outcome),
+                Err(_) => return Err(TransportError::ServiceUnavailable),
+            }
+        }
+        WireRequestV1::DurableSaveAsRetirement(retirement) => {
+            match service.retire_durable_save_as(retirement) {
+                Ok(outcome) => WireReplyV1::DurableSaveAsRetired(outcome),
                 Err(_) => return Err(TransportError::ServiceUnavailable),
             }
         }

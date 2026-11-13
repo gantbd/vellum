@@ -619,6 +619,38 @@ pub struct DurableSaveAsIntentV1 {
     effect: DurableSaveAsDestinationEffectV1,
 }
 
+/// Fresh, session-correlated admission of one restart-stable Save As
+/// operation. The trusted service composition owns every internal lifecycle
+/// step; callers receive only the closed operation state below.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableSaveAsSubmitRequestV1 {
+    pub operation: DurableOperationRefV1,
+    pub client: ClientId,
+    pub request: RequestId,
+    pub intent: DurableSaveAsIntentV1,
+}
+
+/// Read-only query for the exact Save As intent retained under an operation
+/// identity. Repeating the intent prevents changed-input reuse from aliasing
+/// historical evidence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableSaveAsLookupV1 {
+    pub operation: DurableOperationRefV1,
+    pub client: ClientId,
+    pub request: RequestId,
+    pub intent: DurableSaveAsIntentV1,
+}
+
+/// Exact request to retire one terminal Save As receipt. Retirement never
+/// authorizes admission, persistence, activation, or reconciliation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableSaveAsRetirementV1 {
+    pub operation: DurableOperationRefV1,
+    pub client: ClientId,
+    pub request: RequestId,
+    pub intent: DurableSaveAsIntentV1,
+}
+
 impl DurableSaveAsIntentV1 {
     pub fn try_new(
         document: WorkspaceDocumentIdV1,
@@ -1128,6 +1160,60 @@ impl fmt::Debug for DurableSaveAsReceiptV1 {
     }
 }
 
+/// Closed observation of a retained Save As operation.
+///
+/// `Pending` proves the exact intent is durably owned but no receipt is yet
+/// available. `Fenced` carries a nonterminal uncertainty receipt that may only
+/// be advanced by the trusted reconciliation owner. `Complete` carries a
+/// terminal replayable receipt. `Retired` is absorbing and prevents delayed
+/// submission from creating a second effect.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsStateV1 {
+    Pending,
+    Fenced(DurableSaveAsReceiptV1),
+    Complete(DurableSaveAsReceiptV1),
+    Retired,
+}
+
+impl DurableSaveAsStateV1 {
+    /// Whether the state and embedded receipt lifecycle form an admissible
+    /// product. Wire and service boundaries must reject incongruent products.
+    pub const fn is_congruent(&self) -> bool {
+        matches!(
+            self,
+            Self::Pending
+                | Self::Retired
+                | Self::Fenced(DurableSaveAsReceiptV1 {
+                    lifecycle: DurableSaveAsLifecycleV1::Fenced(_),
+                    ..
+                })
+                | Self::Complete(DurableSaveAsReceiptV1 {
+                    lifecycle: DurableSaveAsLifecycleV1::TerminalReplayable,
+                    ..
+                })
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsSubmitOutcomeV1 {
+    Observed(DurableSaveAsStateV1),
+    /// Refusal occurred before the service retained the operation. A refusal
+    /// after retention is represented by a terminal Save As receipt instead.
+    Refused(RefusalV1),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DurableSaveAsLookupOutcomeV1 {
+    Observed(DurableSaveAsStateV1),
+    RequestConflict,
+    /// A recovered synchronized intent has no trustworthy terminal reply.
+    /// This is absorbing: lookup cannot retry or reconstruct the effect.
+    OutcomeUnknown,
+    AbsentOrForeign,
+    Unavailable,
+}
+
 impl fmt::Debug for DurableReplaceAndSaveReceiptV1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DurableReplaceAndSaveReceiptV1")
@@ -1390,6 +1476,35 @@ pub trait ServicePort {
     fn retire_durable_receipt(
         &mut self,
         _retirement: DurableReceiptRetirementV1,
+    ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+        Ok(DurableReceiptRetirementOutcomeV1::Unavailable)
+    }
+
+    /// Submits one Save As intent to the trusted retained-operation owner.
+    /// This is deliberately distinct from synchronous durable effects: a
+    /// successful call may observe a still-pending or fenced transaction.
+    fn submit_durable_save_as(
+        &mut self,
+        _request: DurableSaveAsSubmitRequestV1,
+    ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+        Err(ServiceAccessErrorV1::Unavailable)
+    }
+
+    /// Observes only the exact retained Save As operation. This method cannot
+    /// authorize, admit, persist, activate, reconcile, or retry it.
+    fn lookup_durable_save_as(
+        &mut self,
+        _lookup: DurableSaveAsLookupV1,
+    ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+        Ok(DurableSaveAsLookupOutcomeV1::Unavailable)
+    }
+
+    /// Retires only exact terminal Save As evidence. The shared retirement
+    /// outcome algebra preserves absence, conflict, uncertainty and service
+    /// unavailability without inventing a second lifecycle.
+    fn retire_durable_save_as(
+        &mut self,
+        _retirement: DurableSaveAsRetirementV1,
     ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
         Ok(DurableReceiptRetirementOutcomeV1::Unavailable)
     }

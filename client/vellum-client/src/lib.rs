@@ -8,7 +8,9 @@ use vellum_protocol::{
     ClientId, CommandV1, DurableEffectIntentV1, DurableExecuteOutcomeV1, DurableExecuteRequestV1,
     DurableOperationRefV1, DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1,
     DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1, DurableReceiptStatusRequestV1,
-    DurableReceiptStatusV1, RefusalV1, ReplyV1, RequestId, RequestV1, ServiceAccessErrorV1,
+    DurableReceiptStatusV1, DurableSaveAsIntentV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsRetirementV1, DurableSaveAsSubmitOutcomeV1,
+    DurableSaveAsSubmitRequestV1, RefusalV1, ReplyV1, RequestId, RequestV1, ServiceAccessErrorV1,
     ServiceControlErrorV1, ServicePort, VersionWitness, WorkspaceChangeCursorV1,
     WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceInventoryCursorV1, WorkspaceRootIdV1,
 };
@@ -30,7 +32,13 @@ pub struct Client<T> {
 #[derive(Debug, PartialEq, Eq)]
 struct PendingDurableOperation {
     operation: DurableOperationRefV1,
-    intent: DurableEffectIntentV1,
+    intent: PendingDurableIntent,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PendingDurableIntent {
+    Effect(DurableEffectIntentV1),
+    SaveAs(DurableSaveAsIntentV1),
 }
 
 impl<T: ServicePort> Client<T> {
@@ -170,11 +178,10 @@ impl<T: ServicePort> Client<T> {
         if self.pending.is_some() {
             return Err(ServiceAccessErrorV1::OutcomeUnknown);
         }
-        if self
-            .pending_durable
-            .as_ref()
-            .is_some_and(|pending| pending.operation != operation || pending.intent != intent)
-        {
+        if self.pending_durable.as_ref().is_some_and(|pending| {
+            pending.operation != operation
+                || pending.intent != PendingDurableIntent::Effect(intent.clone())
+        }) {
             return Err(ServiceAccessErrorV1::OutcomeUnknown);
         }
         let request = self.next_request_id()?;
@@ -190,8 +197,10 @@ impl<T: ServicePort> Client<T> {
                 Ok(outcome)
             }
             Err(ServiceAccessErrorV1::OutcomeUnknown) => {
-                self.pending_durable =
-                    Some(Box::new(PendingDurableOperation { operation, intent }));
+                self.pending_durable = Some(Box::new(PendingDurableOperation {
+                    operation,
+                    intent: PendingDurableIntent::Effect(intent),
+                }));
                 Err(ServiceAccessErrorV1::OutcomeUnknown)
             }
             Err(error) => Err(error),
@@ -208,11 +217,10 @@ impl<T: ServicePort> Client<T> {
         if self.pending.is_some() {
             return Err(ServiceAccessErrorV1::OutcomeUnknown);
         }
-        if self
-            .pending_durable
-            .as_ref()
-            .is_some_and(|pending| pending.operation != operation || pending.intent != intent)
-        {
+        if self.pending_durable.as_ref().is_some_and(|pending| {
+            pending.operation != operation
+                || pending.intent != PendingDurableIntent::Effect(intent.clone())
+        }) {
             return Err(ServiceAccessErrorV1::OutcomeUnknown);
         }
         let request = self.next_request_id()?;
@@ -271,6 +279,104 @@ impl<T: ServicePort> Client<T> {
                 operation,
                 client: self.client,
                 request,
+            })
+    }
+
+    /// Submits one restart-stable Save As intent. The trusted harness owns the
+    /// internal lifecycle; this client observes only its bounded state and
+    /// retains an exact uncertainty fence if transport loses the reply.
+    pub fn submit_durable_save_as(
+        &mut self,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+        if self.pending.is_some() {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        if self.pending_durable.as_ref().is_some_and(|pending| {
+            pending.operation != operation
+                || pending.intent != PendingDurableIntent::SaveAs(intent.clone())
+        }) {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        let request = self.next_request_id()?;
+        let result = self
+            .transport
+            .submit_durable_save_as(DurableSaveAsSubmitRequestV1 {
+                operation,
+                client: self.client,
+                request,
+                intent: intent.clone(),
+            });
+        match result {
+            Ok(outcome) => {
+                self.pending_durable = None;
+                Ok(outcome)
+            }
+            Err(ServiceAccessErrorV1::OutcomeUnknown) => {
+                self.pending_durable = Some(Box::new(PendingDurableOperation {
+                    operation,
+                    intent: PendingDurableIntent::SaveAs(intent),
+                }));
+                Err(ServiceAccessErrorV1::OutcomeUnknown)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Looks up the exact Save As operation without driving reconciliation.
+    /// Positive observation or exact conflict closes a prior transport-
+    /// uncertainty fence; absence and an unknown recovered outcome do not.
+    pub fn lookup_durable_save_as(
+        &mut self,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+        if self.pending.is_some() {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        if self.pending_durable.as_ref().is_some_and(|pending| {
+            pending.operation != operation
+                || pending.intent != PendingDurableIntent::SaveAs(intent.clone())
+        }) {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        let request = self.next_request_id()?;
+        let result = self
+            .transport
+            .lookup_durable_save_as(DurableSaveAsLookupV1 {
+                operation,
+                client: self.client,
+                request,
+                intent,
+            });
+        if matches!(
+            result,
+            Ok(DurableSaveAsLookupOutcomeV1::Observed(_)
+                | DurableSaveAsLookupOutcomeV1::RequestConflict)
+        ) {
+            self.pending_durable = None;
+        }
+        result
+    }
+
+    /// Retires exact terminal Save As evidence. An unresolved transport effect
+    /// fence must first be closed by exact lookup.
+    pub fn retire_durable_save_as(
+        &mut self,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+        if self.pending.is_some() || self.pending_durable.is_some() {
+            return Err(ServiceAccessErrorV1::OutcomeUnknown);
+        }
+        let request = self.next_request_id()?;
+        self.transport
+            .retire_durable_save_as(DurableSaveAsRetirementV1 {
+                operation,
+                client: self.client,
+                request,
+                intent,
             })
     }
 
@@ -519,6 +625,135 @@ mod tests {
         let transport = client.into_transport();
         assert_eq!(transport.executes.len(), 2);
         assert_eq!(transport.lookups.len(), 2);
+    }
+
+    #[derive(Debug)]
+    struct SaveAsFaultTransport {
+        submissions: Vec<DurableSaveAsSubmitRequestV1>,
+        lookups: Vec<DurableSaveAsLookupV1>,
+        retirements: Vec<DurableSaveAsRetirementV1>,
+        submit_outcomes: VecDeque<Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1>>,
+        lookup_outcomes: VecDeque<Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1>>,
+    }
+
+    impl ServicePort for SaveAsFaultTransport {
+        fn connect(&mut self) -> Result<ClientId, ServiceControlErrorV1> {
+            Ok(ClientId::new(7).unwrap())
+        }
+
+        fn execute(&mut self, _request: RequestV1) -> Result<ReplyV1, ServiceAccessErrorV1> {
+            panic!("Save As APIs must not fall through to ordinary execute")
+        }
+
+        fn disconnect(&mut self, _client: ClientId) -> Result<(), ServiceControlErrorV1> {
+            Ok(())
+        }
+
+        fn submit_durable_save_as(
+            &mut self,
+            request: DurableSaveAsSubmitRequestV1,
+        ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+            self.submissions.push(request);
+            self.submit_outcomes.pop_front().unwrap()
+        }
+
+        fn lookup_durable_save_as(
+            &mut self,
+            lookup: DurableSaveAsLookupV1,
+        ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+            self.lookups.push(lookup);
+            self.lookup_outcomes.pop_front().unwrap()
+        }
+
+        fn retire_durable_save_as(
+            &mut self,
+            retirement: DurableSaveAsRetirementV1,
+        ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+            self.retirements.push(retirement);
+            Ok(DurableReceiptRetirementOutcomeV1::Retired)
+        }
+    }
+
+    #[test]
+    fn save_as_uncertainty_is_exact_and_positive_observation_closes_it() {
+        let mut client = Client::connect(SaveAsFaultTransport {
+            submissions: Vec::new(),
+            lookups: Vec::new(),
+            retirements: Vec::new(),
+            submit_outcomes: [
+                Err(ServiceAccessErrorV1::OutcomeUnknown),
+                Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+                    vellum_protocol::DurableSaveAsStateV1::Pending,
+                )),
+            ]
+            .into_iter()
+            .collect(),
+            lookup_outcomes: [
+                Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown),
+                Ok(DurableSaveAsLookupOutcomeV1::Observed(
+                    vellum_protocol::DurableSaveAsStateV1::Pending,
+                )),
+            ]
+            .into_iter()
+            .collect(),
+        })
+        .unwrap();
+        let workspace = vellum_protocol::WorkspaceIdV1::new(11).unwrap();
+        let document = WorkspaceDocumentIdV1::new(workspace, 3).unwrap();
+        let intent = DurableSaveAsIntentV1::try_new(
+            document,
+            5,
+            "/private/destination".into(),
+            vellum_protocol::DurableSaveAsDestinationEffectV1::CreateExclusive,
+        )
+        .unwrap();
+        let operation = DurableOperationRefV1::new([3; 16]).unwrap();
+        let other = DurableOperationRefV1::new([4; 16]).unwrap();
+
+        assert_eq!(
+            client.submit_durable_save_as(operation, intent.clone()),
+            Err(ServiceAccessErrorV1::OutcomeUnknown)
+        );
+        assert_eq!(
+            client.execute_durable(
+                other,
+                DurableEffectIntentV1::AddFile {
+                    locator: "other".into(),
+                },
+            ),
+            Err(ServiceAccessErrorV1::OutcomeUnknown)
+        );
+        assert_eq!(
+            client.lookup_durable_save_as(operation, intent.clone()),
+            Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown)
+        );
+        assert_eq!(
+            client.lookup_durable_save_as(operation, intent.clone()),
+            Ok(DurableSaveAsLookupOutcomeV1::Observed(
+                vellum_protocol::DurableSaveAsStateV1::Pending,
+            ))
+        );
+        assert_eq!(
+            client.submit_durable_save_as(other, intent.clone()),
+            Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+                vellum_protocol::DurableSaveAsStateV1::Pending,
+            ))
+        );
+        assert_eq!(
+            client.retire_durable_save_as(other, intent),
+            Ok(DurableReceiptRetirementOutcomeV1::Retired)
+        );
+
+        let transport = client.into_transport();
+        assert_eq!(transport.submissions.len(), 2);
+        assert_eq!(transport.lookups.len(), 2);
+        assert_eq!(transport.retirements.len(), 1);
+        assert_eq!(transport.submissions[0].request.get(), 1);
+        assert_eq!(transport.lookups[0].request.get(), 2);
+        assert_eq!(transport.lookups[1].request.get(), 3);
+        assert_eq!(transport.submissions[1].request.get(), 4);
+        assert_eq!(transport.retirements[0].request.get(), 5);
+        assert!(!format!("{:?}", transport.submissions[0]).contains("/private"));
     }
 
     #[test]

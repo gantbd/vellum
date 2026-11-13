@@ -15,10 +15,16 @@ use vellum_sdk_client::{
         CommandV1, DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
         DurableExportCopyFailureV1, DurableExportCopyPersistenceV1, DurableOperationRefV1,
         DurableReceiptLookupOutcomeV1, DurableReceiptRetirementOutcomeV1, DurableReceiptStatusV1,
-        EditPersistenceV1, FileAdmissionStatusV1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
-        MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplyV1, SaveReceiptV1,
-        ServiceAccessErrorV1, ServicePort, ViewCloseStatusV1, ViewOpenStatusV1,
-        WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangesV1,
+        DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1,
+        DurableSaveAsDestinationEffectV1, DurableSaveAsFailureV1, DurableSaveAsFenceReasonV1,
+        DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1,
+        DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+        DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+        DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveAsStateV1,
+        DurableSaveAsSubmitOutcomeV1, EditPersistenceV1, FileAdmissionStatusV1,
+        MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
+        ReplyV1, SaveReceiptV1, ServiceAccessErrorV1, ServicePort, ViewCloseStatusV1,
+        ViewOpenStatusV1, WorkspaceChangeCursorV1, WorkspaceChangeKindV1, WorkspaceChangesV1,
         WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
         WorkspaceReplacementV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
     },
@@ -40,6 +46,9 @@ pub const DURABLE_EXECUTE_TOOL: &str = "vellum.durable_execute";
 pub const DURABLE_RECEIPT_TOOL: &str = "vellum.durable_receipt";
 pub const DURABLE_RETIRE_TOOL: &str = "vellum.durable_retire";
 pub const DURABLE_STATUS_TOOL: &str = "vellum.durable_status";
+pub const DURABLE_SAVE_AS_SUBMIT_TOOL: &str = "vellum.durable_save_as_submit";
+pub const DURABLE_SAVE_AS_LOOKUP_TOOL: &str = "vellum.durable_save_as_lookup";
+pub const DURABLE_SAVE_AS_RETIRE_TOOL: &str = "vellum.durable_save_as_retire";
 const MAX_ROOT_LOOKUP_PAGES: usize = 256;
 const MAX_WORKSPACE_EDIT_DOCUMENTS: usize = 16;
 const MAX_WORKSPACE_EDIT_REPLACEMENTS: usize = 64;
@@ -124,6 +133,10 @@ pub struct McpUsage {
     pub durable_lookups: u64,
     pub durable_retirements: u64,
     pub durable_statuses: u64,
+    pub durable_save_as_submissions: u64,
+    pub durable_save_as_lookups: u64,
+    pub durable_save_as_retirements: u64,
+    pub durable_save_as_fenced: u64,
     pub durable_complete: u64,
     pub durable_retired: u64,
     pub durable_conflict: u64,
@@ -535,6 +548,45 @@ impl<T: ServicePort> McpServer<T> {
                 );
                 return self.durable_status_result(id, operation);
             }
+            DURABLE_SAVE_AS_SUBMIT_TOOL if self.durable_projection => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some((operation, intent)) = durable_save_as_arguments(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                bump(
+                    &mut self.usage.durable_save_as_submissions,
+                    &mut self.usage.counter_saturated,
+                );
+                return self.durable_save_as_submit_result(id, operation, intent);
+            }
+            DURABLE_SAVE_AS_LOOKUP_TOOL if self.durable_projection => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some((operation, intent)) = durable_save_as_arguments(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                bump(
+                    &mut self.usage.durable_save_as_lookups,
+                    &mut self.usage.counter_saturated,
+                );
+                return self.durable_save_as_lookup_result(id, operation, intent);
+            }
+            DURABLE_SAVE_AS_RETIRE_TOOL if self.durable_projection => {
+                let Some(arguments) = params.get("arguments").and_then(Value::as_object) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                let Some((operation, intent)) = durable_save_as_arguments(arguments) else {
+                    return self.protocol_error_value(id, -32602, "invalid tool arguments", None);
+                };
+                bump(
+                    &mut self.usage.durable_save_as_retirements,
+                    &mut self.usage.counter_saturated,
+                );
+                return self.durable_save_as_retirement_result(id, operation, intent);
+            }
             _ => return self.protocol_error_value(id, -32602, "unknown tool", None),
         };
         match result {
@@ -765,6 +817,159 @@ impl<T: ServicePort> McpServer<T> {
                 };
                 bump(counter, &mut self.usage.counter_saturated);
                 success(id, durable_status_json(status))
+            }
+            Err(error) => {
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(access_code(error)))
+            }
+        }
+    }
+
+    fn record_durable_save_as_state(&mut self, state: &DurableSaveAsStateV1) {
+        let counter = match state {
+            DurableSaveAsStateV1::Pending => &mut self.usage.durable_pending,
+            DurableSaveAsStateV1::Fenced(_) => &mut self.usage.durable_save_as_fenced,
+            DurableSaveAsStateV1::Complete(_) => &mut self.usage.durable_complete,
+            DurableSaveAsStateV1::Retired => &mut self.usage.durable_retired,
+        };
+        bump(counter, &mut self.usage.counter_saturated);
+    }
+
+    fn durable_save_as_submit_result(
+        &mut self,
+        id: Value,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Value {
+        match self.client.submit_durable_save_as(operation, intent) {
+            Ok(DurableSaveAsSubmitOutcomeV1::Observed(state)) => {
+                self.record_durable_save_as_state(&state);
+                success(id, durable_save_as_state_json(state))
+            }
+            Ok(DurableSaveAsSubmitOutcomeV1::Refused(refusal)) => {
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(refusal_code(refusal)))
+            }
+            Err(error) => {
+                if error == ServiceAccessErrorV1::OutcomeUnknown {
+                    bump(
+                        &mut self.usage.durable_outcome_unknown,
+                        &mut self.usage.counter_saturated,
+                    );
+                }
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(access_code(error)))
+            }
+        }
+    }
+
+    fn durable_save_as_lookup_result(
+        &mut self,
+        id: Value,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Value {
+        match self.client.lookup_durable_save_as(operation, intent) {
+            Ok(DurableSaveAsLookupOutcomeV1::Observed(state)) => {
+                self.record_durable_save_as_state(&state);
+                success(id, durable_save_as_state_json(state))
+            }
+            Ok(DurableSaveAsLookupOutcomeV1::RequestConflict) => {
+                bump(
+                    &mut self.usage.durable_conflict,
+                    &mut self.usage.counter_saturated,
+                );
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error("request_conflict"))
+            }
+            Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown) => {
+                bump(
+                    &mut self.usage.durable_outcome_unknown,
+                    &mut self.usage.counter_saturated,
+                );
+                success(
+                    id,
+                    tool_complete(
+                        "save_as_outcome_unknown",
+                        json!({"kind": "save_as_outcome_unknown"}),
+                    ),
+                )
+            }
+            Ok(DurableSaveAsLookupOutcomeV1::AbsentOrForeign) => {
+                bump(
+                    &mut self.usage.durable_absent_or_foreign,
+                    &mut self.usage.counter_saturated,
+                );
+                success(
+                    id,
+                    tool_complete(
+                        "save_as_absent_or_foreign",
+                        json!({"kind": "save_as_absent_or_foreign"}),
+                    ),
+                )
+            }
+            Ok(DurableSaveAsLookupOutcomeV1::Unavailable) => {
+                bump(
+                    &mut self.usage.durable_unavailable,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error("service_unavailable"))
+            }
+            Err(error) => {
+                bump(
+                    &mut self.usage.tool_errors,
+                    &mut self.usage.counter_saturated,
+                );
+                success(id, tool_error(access_code(error)))
+            }
+        }
+    }
+
+    fn durable_save_as_retirement_result(
+        &mut self,
+        id: Value,
+        operation: DurableOperationRefV1,
+        intent: DurableSaveAsIntentV1,
+    ) -> Value {
+        match self.client.retire_durable_save_as(operation, intent) {
+            Ok(outcome) => {
+                let counter = match outcome {
+                    DurableReceiptRetirementOutcomeV1::Retired => {
+                        &mut self.usage.retirement_retired
+                    }
+                    DurableReceiptRetirementOutcomeV1::AbsentOrForeign => {
+                        &mut self.usage.retirement_absent_or_foreign
+                    }
+                    DurableReceiptRetirementOutcomeV1::RequestConflict => {
+                        &mut self.usage.retirement_conflict
+                    }
+                    DurableReceiptRetirementOutcomeV1::OutcomeUnknown => {
+                        &mut self.usage.retirement_outcome_unknown
+                    }
+                    DurableReceiptRetirementOutcomeV1::Unavailable => {
+                        &mut self.usage.retirement_unavailable
+                    }
+                };
+                bump(counter, &mut self.usage.counter_saturated);
+                if outcome == DurableReceiptRetirementOutcomeV1::RequestConflict {
+                    bump(
+                        &mut self.usage.tool_errors,
+                        &mut self.usage.counter_saturated,
+                    );
+                }
+                success(id, durable_retirement_json(outcome))
             }
             Err(error) => {
                 bump(
@@ -1596,6 +1801,30 @@ fn tools_result(durable_projection: bool) -> Value {
                 "inputSchema": durable_status_input_schema(),
                 "outputSchema": durable_status_output_schema(),
                 "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            }),
+            json!({
+                "name": DURABLE_SAVE_AS_SUBMIT_TOOL,
+                "title": "Submit a durable Vellum Save As",
+                "description": "Submit one exact rebinding intent under a stable operation reference. The trusted harness owns persistence, binding activation, reconciliation, and checkpointing; the call returns only closed operation state.",
+                "inputSchema": durable_save_as_input_schema(),
+                "outputSchema": durable_save_as_output_schema(true),
+                "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}
+            }),
+            json!({
+                "name": DURABLE_SAVE_AS_LOOKUP_TOOL,
+                "title": "Look up a durable Vellum Save As",
+                "description": "Read the exact retained Save As state without authorizing, retrying, or driving reconciliation.",
+                "inputSchema": durable_save_as_input_schema(),
+                "outputSchema": durable_save_as_output_schema(false),
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            }),
+            json!({
+                "name": DURABLE_SAVE_AS_RETIRE_TOOL,
+                "title": "Retire a durable Vellum Save As receipt",
+                "description": "Retire only exact terminal Save As evidence under the same operation reference and intent.",
+                "inputSchema": durable_save_as_input_schema(),
+                "outputSchema": durable_retirement_output_schema(),
+                "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
             })
         ]);
     }
@@ -1632,6 +1861,86 @@ fn durable_input_schema() -> Value {
             durable_intent_schema("export_document_copy_exclusive", &["workspace", "document", "expected_revision", "destination"])
         ]
     })
+}
+
+fn durable_save_as_input_schema() -> Value {
+    closed_schema(
+        &[
+            "operation_ref",
+            "workspace",
+            "document",
+            "expected_revision",
+            "destination",
+            "effect",
+        ],
+        json!({
+            "operation_ref": {
+                "type": "string",
+                "pattern": "^vdo1[.](?!0{32}$)[0-9a-f]{32}$",
+                "minLength": 37,
+                "maxLength": 37
+            },
+            "workspace": nonzero_integer_schema(),
+            "document": nonzero_integer_schema(),
+            "expected_revision": {"type": "integer", "minimum": 0},
+            "destination": {"type": "string", "minLength": 1, "maxLength": 4096},
+            "effect": {"enum": ["overwrite_existing", "create_exclusive"]}
+        }),
+    )
+}
+
+fn durable_save_as_output_schema(submit: bool) -> Value {
+    let receipt = |kind: &'static str| {
+        closed_schema(
+            &[
+                "kind",
+                "workspace",
+                "document",
+                "source_revision",
+                "persistence",
+                "binding",
+                "failure",
+                "fences",
+            ],
+            json!({
+                "kind": {"const": kind},
+                "workspace": nonzero_integer_schema(),
+                "document": nonzero_integer_schema(),
+                "source_revision": {"type": "integer", "minimum": 0},
+                "persistence": {"enum": ["durable", "not_durable", "unknown", "not_attempted"]},
+                "binding": {"enum": ["activated", "not_activated", "unknown"]},
+                "failure": {"type": ["string", "null"]},
+                "fences": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {"enum": ["retained_task", "physical_uncertainty", "binding_uncertainty"]}
+                }
+            }),
+        )
+    };
+    let mut variants = vec![
+        closed_schema(&["kind"], json!({"kind": {"const": "save_as_pending"}})),
+        receipt("save_as_fenced"),
+        receipt("save_as_complete"),
+        closed_schema(&["kind"], json!({"kind": {"const": "save_as_retired"}})),
+        closed_schema(
+            &["code"],
+            json!({"code": {"type": "string", "enum": TOOL_ERROR_CODES}}),
+        ),
+    ];
+    if !submit {
+        variants.extend([
+            closed_schema(
+                &["kind"],
+                json!({"kind": {"const": "save_as_outcome_unknown"}}),
+            ),
+            closed_schema(
+                &["kind"],
+                json!({"kind": {"const": "save_as_absent_or_foreign"}}),
+            ),
+        ]);
+    }
+    json!({"oneOf": variants})
 }
 
 fn durable_status_input_schema() -> Value {
@@ -2338,6 +2647,46 @@ fn durable_arguments(
     Some((operation, intent))
 }
 
+fn durable_save_as_arguments(
+    arguments: &Map<String, Value>,
+) -> Option<(DurableOperationRefV1, DurableSaveAsIntentV1)> {
+    if !only_keys(
+        arguments,
+        &[
+            "operation_ref",
+            "workspace",
+            "document",
+            "expected_revision",
+            "destination",
+            "effect",
+        ],
+    ) {
+        return None;
+    }
+    let operation = decode_durable_operation(arguments.get("operation_ref")?.as_str()?)?;
+    let workspace = WorkspaceIdV1::new(arguments.get("workspace")?.as_u64()?)?;
+    let document = WorkspaceDocumentIdV1::new(workspace, arguments.get("document")?.as_u64()?)?;
+    let expected_revision = arguments.get("expected_revision")?.as_u64()?;
+    let destination = arguments.get("destination")?.as_str()?;
+    if destination.is_empty() || destination.len() > 4096 {
+        return None;
+    }
+    let effect = match arguments.get("effect")?.as_str()? {
+        "overwrite_existing" => DurableSaveAsDestinationEffectV1::OverwriteExisting,
+        "create_exclusive" => DurableSaveAsDestinationEffectV1::CreateExclusive,
+        _ => return None,
+    };
+    Some((
+        operation,
+        DurableSaveAsIntentV1::try_new(
+            document,
+            expected_revision,
+            destination.to_owned(),
+            effect,
+        )?,
+    ))
+}
+
 fn durable_status_argument(arguments: &Map<String, Value>) -> Option<DurableOperationRefV1> {
     only_keys(arguments, &["operation_ref"])
         .then(|| decode_durable_operation(arguments.get("operation_ref")?.as_str()?))?
@@ -2730,6 +3079,116 @@ fn durable_status_json(status: DurableReceiptStatusV1) -> Value {
         DurableReceiptStatusV1::Unavailable => "unavailable",
     };
     tool_complete(kind, json!({"kind": kind}))
+}
+
+fn durable_save_as_state_json(state: DurableSaveAsStateV1) -> Value {
+    match state {
+        DurableSaveAsStateV1::Pending => {
+            tool_complete("save_as_pending", json!({"kind": "save_as_pending"}))
+        }
+        DurableSaveAsStateV1::Fenced(receipt) => tool_complete(
+            "save_as_fenced",
+            durable_save_as_receipt_json("save_as_fenced", receipt),
+        ),
+        DurableSaveAsStateV1::Complete(receipt) => tool_complete(
+            "save_as_complete",
+            durable_save_as_receipt_json("save_as_complete", receipt),
+        ),
+        DurableSaveAsStateV1::Retired => {
+            tool_complete("save_as_retired", json!({"kind": "save_as_retired"}))
+        }
+    }
+}
+
+fn durable_save_as_receipt_json(kind: &'static str, receipt: DurableSaveAsReceiptV1) -> Value {
+    let mut fences = Vec::new();
+    if let DurableSaveAsLifecycleV1::Fenced(set) = receipt.lifecycle() {
+        for (reason, name) in [
+            (DurableSaveAsFenceReasonV1::RetainedTask, "retained_task"),
+            (
+                DurableSaveAsFenceReasonV1::PhysicalUncertainty,
+                "physical_uncertainty",
+            ),
+            (
+                DurableSaveAsFenceReasonV1::BindingUncertainty,
+                "binding_uncertainty",
+            ),
+        ] {
+            if set.contains(reason) {
+                fences.push(name);
+            }
+        }
+    }
+    json!({
+        "kind": kind,
+        "workspace": receipt.document().workspace().get(),
+        "document": receipt.document().get(),
+        "source_revision": receipt.source_revision(),
+        "persistence": match receipt.persistence() {
+            DurableSaveAsPersistenceV1::Durable => "durable",
+            DurableSaveAsPersistenceV1::NotDurable => "not_durable",
+            DurableSaveAsPersistenceV1::Unknown => "unknown",
+            DurableSaveAsPersistenceV1::NotAttempted => "not_attempted",
+        },
+        "binding": match receipt.binding() {
+            DurableSaveAsBindingV1::Activated => "activated",
+            DurableSaveAsBindingV1::NotActivated => "not_activated",
+            DurableSaveAsBindingV1::Unknown => "unknown",
+        },
+        "failure": receipt.failure().map(durable_save_as_failure_code),
+        "fences": fences,
+    })
+}
+
+fn durable_save_as_failure_code(failure: DurableSaveAsFailureV1) -> &'static str {
+    match failure {
+        DurableSaveAsFailureV1::NotAttempted(reason) => match reason {
+            DurableSaveAsNotAttemptedReasonV1::AuthorityDenied => "not_attempted.authority_denied",
+            DurableSaveAsNotAttemptedReasonV1::AuthorityUnavailable => {
+                "not_attempted.authority_unavailable"
+            }
+            DurableSaveAsNotAttemptedReasonV1::StaleSource => "not_attempted.stale_source",
+            DurableSaveAsNotAttemptedReasonV1::DestinationRefused => {
+                "not_attempted.destination_refused"
+            }
+            DurableSaveAsNotAttemptedReasonV1::Capacity => "not_attempted.capacity",
+            DurableSaveAsNotAttemptedReasonV1::Unsupported => "not_attempted.unsupported",
+        },
+        DurableSaveAsFailureV1::NotDurable(reason) => match reason {
+            DurableSaveAsNotDurableReasonV1::Conflict => "not_durable.conflict",
+            DurableSaveAsNotDurableReasonV1::Unsupported => "not_durable.unsupported",
+            DurableSaveAsNotDurableReasonV1::Limit => "not_durable.limit",
+            DurableSaveAsNotDurableReasonV1::Capacity => "not_durable.capacity",
+            DurableSaveAsNotDurableReasonV1::Io => "not_durable.io",
+        },
+        DurableSaveAsFailureV1::PhysicalUnknown(reason) => match reason {
+            DurableSaveAsPhysicalUnknownReasonV1::Io => "physical_unknown.io",
+            DurableSaveAsPhysicalUnknownReasonV1::Cleanup => "physical_unknown.cleanup",
+            DurableSaveAsPhysicalUnknownReasonV1::EvidenceIncomplete => {
+                "physical_unknown.evidence_incomplete"
+            }
+            DurableSaveAsPhysicalUnknownReasonV1::TaskStateUnavailable => {
+                "physical_unknown.task_state_unavailable"
+            }
+        },
+        DurableSaveAsFailureV1::NotActivated(reason) => match reason {
+            DurableSaveAsNotActivatedReasonV1::NotAttempted => "not_activated.not_attempted",
+            DurableSaveAsNotActivatedReasonV1::ObservedNotApplied => {
+                "not_activated.observed_not_applied"
+            }
+            DurableSaveAsNotActivatedReasonV1::Refused => "not_activated.refused",
+            DurableSaveAsNotActivatedReasonV1::Unavailable => "not_activated.unavailable",
+            DurableSaveAsNotActivatedReasonV1::DestinationChanged => {
+                "not_activated.destination_changed"
+            }
+        },
+        DurableSaveAsFailureV1::BindingUnknown(reason) => match reason {
+            DurableSaveAsBindingUnknownReasonV1::Faulted => "binding_unknown.faulted",
+            DurableSaveAsBindingUnknownReasonV1::TaskStateUnavailable => {
+                "binding_unknown.task_state_unavailable"
+            }
+        },
+    }
 }
 
 fn durable_receipt_json(
@@ -3145,7 +3604,8 @@ mod durable_projection_tests {
     use std::sync::{Arc, Mutex};
     use vellum_sdk_client::protocol::{
         ClientId, DurableExecuteRequestV1, DurableReceiptLookupV1, DurableReceiptRetirementV1,
-        DurableReceiptStatusRequestV1, RequestV1, ServiceControlErrorV1,
+        DurableReceiptStatusRequestV1, DurableSaveAsLookupV1, DurableSaveAsRetirementV1,
+        DurableSaveAsSubmitRequestV1, RequestV1, ServiceControlErrorV1,
     };
 
     #[derive(Default)]
@@ -3158,6 +3618,9 @@ mod durable_projection_tests {
         lookup_intents: Vec<DurableEffectIntentV1>,
         retirement_operations: Vec<DurableOperationRefV1>,
         retirement_intents: Vec<DurableEffectIntentV1>,
+        save_as_submissions: Vec<DurableSaveAsIntentV1>,
+        save_as_lookups: Vec<DurableSaveAsIntentV1>,
+        save_as_retirements: Vec<DurableSaveAsIntentV1>,
     }
 
     struct Port {
@@ -3166,6 +3629,9 @@ mod durable_projection_tests {
         lookup: Result<DurableReceiptLookupOutcomeV1, ServiceAccessErrorV1>,
         retirement: Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1>,
         status: Result<DurableReceiptStatusV1, ServiceAccessErrorV1>,
+        save_as_submit: Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1>,
+        save_as_lookup: Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1>,
+        save_as_retirement: Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1>,
     }
 
     impl ServicePort for Port {
@@ -3216,6 +3682,42 @@ mod durable_projection_tests {
             self.status
         }
 
+        fn submit_durable_save_as(
+            &mut self,
+            request: DurableSaveAsSubmitRequestV1,
+        ) -> Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1> {
+            self.calls
+                .lock()
+                .unwrap()
+                .save_as_submissions
+                .push(request.intent);
+            self.save_as_submit.clone()
+        }
+
+        fn lookup_durable_save_as(
+            &mut self,
+            lookup: DurableSaveAsLookupV1,
+        ) -> Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1> {
+            self.calls
+                .lock()
+                .unwrap()
+                .save_as_lookups
+                .push(lookup.intent);
+            self.save_as_lookup.clone()
+        }
+
+        fn retire_durable_save_as(
+            &mut self,
+            retirement: DurableSaveAsRetirementV1,
+        ) -> Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1> {
+            self.calls
+                .lock()
+                .unwrap()
+                .save_as_retirements
+                .push(retirement.intent);
+            self.save_as_retirement
+        }
+
         fn disconnect(&mut self, _client: ClientId) -> Result<(), ServiceControlErrorV1> {
             Ok(())
         }
@@ -3249,6 +3751,9 @@ mod durable_projection_tests {
             lookup,
             retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
             status: Ok(DurableReceiptStatusV1::Unavailable),
+            save_as_submit: Err(ServiceAccessErrorV1::Unavailable),
+            save_as_lookup: Ok(DurableSaveAsLookupOutcomeV1::Unavailable),
+            save_as_retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
         })
         .unwrap();
         (
@@ -3267,6 +3772,9 @@ mod durable_projection_tests {
             lookup: Ok(DurableReceiptLookupOutcomeV1::Unavailable),
             retirement,
             status: Ok(DurableReceiptStatusV1::Unavailable),
+            save_as_submit: Err(ServiceAccessErrorV1::Unavailable),
+            save_as_lookup: Ok(DurableSaveAsLookupOutcomeV1::Unavailable),
+            save_as_retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
         })
         .unwrap();
         (
@@ -3285,6 +3793,32 @@ mod durable_projection_tests {
             lookup: Ok(DurableReceiptLookupOutcomeV1::Unavailable),
             retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
             status,
+            save_as_submit: Err(ServiceAccessErrorV1::Unavailable),
+            save_as_lookup: Ok(DurableSaveAsLookupOutcomeV1::Unavailable),
+            save_as_retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
+        })
+        .unwrap();
+        (
+            McpServer::build(client, McpLimits::reference(), true).unwrap(),
+            calls,
+        )
+    }
+
+    fn server_with_save_as(
+        submit: Result<DurableSaveAsSubmitOutcomeV1, ServiceAccessErrorV1>,
+        lookup: Result<DurableSaveAsLookupOutcomeV1, ServiceAccessErrorV1>,
+        retirement: Result<DurableReceiptRetirementOutcomeV1, ServiceAccessErrorV1>,
+    ) -> (McpServer<Port>, Arc<Mutex<Calls>>) {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let client = Client::connect(Port {
+            calls: calls.clone(),
+            execute: Err(ServiceAccessErrorV1::Unavailable),
+            lookup: Ok(DurableReceiptLookupOutcomeV1::Unavailable),
+            retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
+            status: Ok(DurableReceiptStatusV1::Unavailable),
+            save_as_submit: submit,
+            save_as_lookup: lookup,
+            save_as_retirement: retirement,
         })
         .unwrap();
         (
@@ -3310,6 +3844,75 @@ mod durable_projection_tests {
             "expected_revision": 7,
             "destination": destination,
         })
+    }
+
+    fn save_as(operation_ref: &str, destination: &str) -> Value {
+        json!({
+            "operation_ref": operation_ref,
+            "workspace": 1,
+            "document": 2,
+            "expected_revision": 7,
+            "destination": destination,
+            "effect": "create_exclusive",
+        })
+    }
+
+    #[test]
+    fn durable_save_as_tools_preserve_retained_state_without_driving_lifecycle() {
+        let (mut server, calls) = server_with_save_as(
+            Ok(DurableSaveAsSubmitOutcomeV1::Observed(
+                DurableSaveAsStateV1::Pending,
+            )),
+            Ok(DurableSaveAsLookupOutcomeV1::OutcomeUnknown),
+            Ok(DurableReceiptRetirementOutcomeV1::Retired),
+        );
+        let operation = "vdo1.11111111111111111111111111111111";
+        let arguments = save_as(operation, "/private/new-binding");
+
+        let submitted: Value = serde_json::from_slice(
+            &server
+                .handle(&request(DURABLE_SAVE_AS_SUBMIT_TOOL, arguments.clone()))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            submitted["result"]["structuredContent"]["kind"],
+            "save_as_pending"
+        );
+        let looked_up: Value = serde_json::from_slice(
+            &server
+                .handle(&request(DURABLE_SAVE_AS_LOOKUP_TOOL, arguments.clone()))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            looked_up["result"]["structuredContent"]["kind"],
+            "save_as_outcome_unknown"
+        );
+        let retired: Value = serde_json::from_slice(
+            &server
+                .handle(&request(DURABLE_SAVE_AS_RETIRE_TOOL, arguments))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(retired["result"]["structuredContent"]["kind"], "retired");
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.save_as_submissions.len(), 1);
+        assert_eq!(calls.save_as_lookups.len(), 1);
+        assert_eq!(calls.save_as_retirements.len(), 1);
+        assert_eq!(calls.executes, 0);
+        assert_eq!(calls.lookups, 0);
+        assert_eq!(
+            calls.save_as_submissions[0].destination(),
+            "/private/new-binding"
+        );
+        assert!(!format!("{:?}", calls.save_as_submissions[0]).contains("/private"));
+        drop(calls);
+        assert_eq!(server.usage().durable_save_as_submissions, 1);
+        assert_eq!(server.usage().durable_save_as_lookups, 1);
+        assert_eq!(server.usage().durable_save_as_retirements, 1);
+        assert_eq!(server.usage().durable_outcome_unknown, 1);
     }
 
     #[test]
@@ -3361,6 +3964,9 @@ mod durable_projection_tests {
             lookup: Ok(DurableReceiptLookupOutcomeV1::AbsentOrForeign),
             retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
             status: Ok(DurableReceiptStatusV1::Unavailable),
+            save_as_submit: Err(ServiceAccessErrorV1::Unavailable),
+            save_as_lookup: Ok(DurableSaveAsLookupOutcomeV1::Unavailable),
+            save_as_retirement: Ok(DurableReceiptRetirementOutcomeV1::Unavailable),
         })
         .unwrap();
         let mut server = McpServer::new(client, McpLimits::reference()).unwrap();
@@ -3375,6 +3981,9 @@ mod durable_projection_tests {
             DURABLE_RECEIPT_TOOL,
             DURABLE_RETIRE_TOOL,
             DURABLE_STATUS_TOOL,
+            DURABLE_SAVE_AS_SUBMIT_TOOL,
+            DURABLE_SAVE_AS_LOOKUP_TOOL,
+            DURABLE_SAVE_AS_RETIRE_TOOL,
         ] {
             let rejected: Value = serde_json::from_slice(
                 &server
@@ -3432,6 +4041,9 @@ mod durable_projection_tests {
                 DURABLE_RECEIPT_TOOL,
                 DURABLE_RETIRE_TOOL,
                 DURABLE_STATUS_TOOL,
+                DURABLE_SAVE_AS_SUBMIT_TOOL,
+                DURABLE_SAVE_AS_LOOKUP_TOOL,
+                DURABLE_SAVE_AS_RETIRE_TOOL,
             ] {
                 let reply: Value = serde_json::from_slice(
                     &server
@@ -3451,7 +4063,7 @@ mod durable_projection_tests {
     fn durable_discovery_describes_the_exact_closed_algebra() {
         let catalog = tools_result(true);
         let tools = catalog["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 15);
         let execute = tools
             .iter()
             .find(|tool| tool["name"] == DURABLE_EXECUTE_TOOL)
@@ -3468,8 +4080,30 @@ mod durable_projection_tests {
             .iter()
             .find(|tool| tool["name"] == DURABLE_STATUS_TOOL)
             .unwrap();
+        let save_as_submit = tools
+            .iter()
+            .find(|tool| tool["name"] == DURABLE_SAVE_AS_SUBMIT_TOOL)
+            .unwrap();
+        let save_as_lookup = tools
+            .iter()
+            .find(|tool| tool["name"] == DURABLE_SAVE_AS_LOOKUP_TOOL)
+            .unwrap();
+        let save_as_retire = tools
+            .iter()
+            .find(|tool| tool["name"] == DURABLE_SAVE_AS_RETIRE_TOOL)
+            .unwrap();
         assert_eq!(status["annotations"]["readOnlyHint"], true);
         assert_eq!(status["annotations"]["destructiveHint"], false);
+        assert_eq!(save_as_submit["annotations"]["readOnlyHint"], false);
+        assert_eq!(save_as_lookup["annotations"]["readOnlyHint"], true);
+        assert_eq!(save_as_retire["annotations"]["readOnlyHint"], false);
+        assert_eq!(save_as_submit["inputSchema"], save_as_lookup["inputSchema"]);
+        assert_eq!(save_as_submit["inputSchema"], save_as_retire["inputSchema"]);
+        assert_eq!(save_as_submit["inputSchema"]["additionalProperties"], false);
+        assert_eq!(
+            save_as_submit["inputSchema"]["properties"]["effect"]["enum"],
+            json!(["overwrite_existing", "create_exclusive"])
+        );
 
         let intents = execute["inputSchema"]["oneOf"].as_array().unwrap();
         assert_eq!(execute["inputSchema"]["type"], "object");

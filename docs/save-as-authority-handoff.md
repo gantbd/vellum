@@ -1,9 +1,11 @@
 # Save As authority handoff
 
-Existing-destination Save As is intentionally not exposed by the native service yet.
-It overwrites an existing filesystem destination and changes the document's ordinary
-binding. Those effects require explicit user approval and a destination-scoped policy;
-the broad persistence roadmap is not itself approval to overwrite an arbitrary path.
+Save As now has a portable native/client/wire/MCP operation surface, but no default
+service interpreter. Submission therefore fails closed as unavailable until a trusted
+harness installs the complete retained lifecycle. Overwriting or exclusively creating
+a filesystem destination and changing the document's ordinary binding require explicit
+user approval and destination-scoped policy; carrying a destination string is never
+authority to write or rebind it.
 
 The service preflight is prepared for a bounded two-action plan. Save As must obtain
 both `PersistSource` and `RebindSource` decisions, validate each decision against its
@@ -27,26 +29,24 @@ Their required provenance is:
 | probe attested, resource continuity attested | Fresh adapter probes around write and activation |
 | companions ready | Explicit composition policy; never inferred from a path |
 | overwrite allowed | Explicit existing-destination approval |
-| create allowed | Implemented only by the separate `ExportCopy` create-exclusive substrate; not installed in this Save As flow |
+| create allowed | Explicit create-exclusive destination decision; no fallback from a failed overwrite and no default adapter installation |
 | disposition readable, reservation release allowed | Current retained-task/control state |
 
-The current Save As flow supports replacement of an existing qualified file only.
-The separate local `ExportCopy` substrate can publish a new destination with
-create-exclusive semantics, but no codec-owned source-capture bridge, service
-command, durable receipt, destination-policy composition, or rebind activation
-connects it to Save As. Missing destinations therefore remain a closed refusal in
-this flow. No rollback or compensating overwrite may be claimed after a successful
-write whose later activation fails.
+The portable intent distinguishes overwrite-existing from create-exclusive and the
+same retained lifecycle carries either effect. Concrete destination probing and
+publication still belong to an installed adapter/authority composition; the default
+service port supplies neither. No rollback or compensating overwrite may be claimed
+after a successful write whose later activation fails.
 
 ## Native surface closure review
 
-The editor and local-filesystem substrate already implement the important physical
-sequence: capture the exact source, reserve an existing destination, re-probe before
-the write, obtain a synchronized write receipt, re-probe again, and activate the
-binding separately. That is not yet enough to expose `SaveAs` through
-`vellum-protocol`, `vellum-wire`, or `vellum-client` truthfully.
+The editor and qualified substrate implement the important physical sequence: capture
+the exact source, reserve a destination under the selected effect, re-probe before the
+write, obtain a synchronized write receipt, re-probe again, and activate the binding
+separately. The portable surface exposes only submission, observation and receipt
+retirement; it deliberately does not expose those privileged lifecycle controls.
 
-The following gaps are release-blocking for that public surface:
+The following laws remain release-blocking for installing a runnable service owner:
 
 1. `vellum-service` currently consumes ordinary authority decisions in
    `authorize_plan` and retains no exact evidence for construction of the engine's
@@ -115,17 +115,19 @@ The following gaps are release-blocking for that public surface:
    OutcomeUnknown. Durable records now carry a bounded canonical envelope with a
    closed `Effect | SaveAs` sort and opaque payload; Save As rejects raw and
    cross-sort bytes. The envelope owns no locator codec, so native path encoding
-   remains an adapter concern. Daemon payload-codec installation is not yet
-   connected, so no public command is admitted.
+   remains an adapter concern. The native client/wire/MCP surface now preserves this
+   exact `Pending | Fenced | Complete | Retired` lifecycle and recovered
+   `OutcomeUnknown`, but the daemon still defaults the methods closed until it owns
+   the corresponding authority, journal, metadata and adapter composition.
 
-Until all five laws are implemented together, no command tag, client convenience
-method, wire fixture, daemon flag, or MCP tool is advertised. In particular,
-`--allow-save` remains ordinary Persist-only and MCP remains unable to widen it by
-accepting a destination string.
+The additive command tags, client methods and MCP tools are now advertised only by
+the durable projection. Older or non-owning service implementations return
+`Unavailable`; they cannot fall through to ordinary execution. `--allow-save` remains
+ordinary Persist-only, and MCP cannot widen it by accepting a destination string.
 
 ## Required public receipt
 
-The eventual bounded receipt must retain, without returning a filesystem locator:
+The bounded receipt retains, without returning a filesystem locator:
 
 - the exact client source witness and workspace document identity;
 - the host destination-policy decision witness and requested disposition;
