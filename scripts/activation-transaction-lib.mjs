@@ -195,6 +195,7 @@ const stageVersion = (versions, role, version, transactionId) => {
   }
   const stage = path.join(versions, `.stage-${transactionId}-${role}`);
   fs.mkdirSync(stage, { mode: 0o700 });
+  let renamed = false;
   try {
     for (const [source, name, fileMode] of [
       [version.daemon.path, 'vellum-daemon', 0o500],
@@ -212,11 +213,16 @@ const stageVersion = (versions, role, version, transactionId) => {
     }
     writeDurableFile(path.join(stage, 'identity.json'), canonicalActivationJson(identity), 0o400);
     fsyncDirectory(stage);
-    fs.chmodSync(stage, 0o500);
     fs.renameSync(stage, destination);
+    renamed = true;
+    fs.chmodSync(destination, 0o500);
     fsyncDirectory(versions);
   } catch (error) {
-    if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
+    const cleanup = renamed ? destination : stage;
+    if (fs.existsSync(cleanup)) {
+      fs.chmodSync(cleanup, 0o700);
+      fs.rmSync(cleanup, { recursive: true, force: true });
+    }
     throw error;
   }
   validateStagedVersion(destination, identity);
