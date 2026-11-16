@@ -1,0 +1,17 @@
+[package]
+name = "vellum-workspace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Presentation-free workspace authority for Vellum services and embeddings"
+
+[dependencies]
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+vellum-host = { version = "=0.1.0", path = "../vellum-host" }
+vellum-session = { version = "=0.1.0", path = "../vellum-session" }
+
+[lints]
+workspace = true

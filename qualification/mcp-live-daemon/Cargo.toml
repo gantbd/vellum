@@ -1,0 +1,33 @@
+[package]
+name = "vellum-mcp-live-daemon-qualification"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gantbd/vellum"
+publish = false
+description = "Repository-only coordinated qualification for the Vellum daemon and MCP peer"
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+serde_json = "=1.0.151"
+vellum-mcp = { version = "=0.1.0", path = "../../../vellum-mcp" }
+vellum-adapter-local-authentication = { version = "=0.1.0", path = "../../adapters/local-authentication" }
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-daemon = { version = "=0.1.0", path = "../../applications/vellum-daemon" }
+vellum-host = { version = "=0.1.0", path = "../../host/vellum-host" }
+vellum-sdk-client = { version = "=0.1.0", path = "../../sdk/client" }
+vellum-service = { version = "=0.1.0", path = "../../service/vellum-service" }
+vellum-workspace = { version = "=0.1.0", path = "../../host/vellum-workspace" }
+
+[patch."https://github.com/gantbd/vellum"]
+vellum-adapter-local-authentication = { path = "../../adapters/local-authentication" }
+vellum-sdk-client = { path = "../../sdk/client" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

@@ -64,9 +64,9 @@ review classified the changes as follows:
   outgoing call hierarchy. Existing frozen semantic frames remain unchanged;
   older closed-vocabulary peers must be upgraded before receiving them;
 
-- the nonpublishing `vellum` distribution package is additive and contains no
-  library API; it installs the existing daemon and MCP peer binaries in one
-  Cargo invocation, while their owning packages remain independently buildable;
+- the nonpublishing `vellum` distribution package contains no library API and
+  now installs only the daemon; MCP binaries are independently installed from
+  their peer repositories;
 
 - inventory pagination adds command/outcome tag `10` and refusal tags `22`
   through `24`; membership retirement adds command/outcome tags `11` and `12`
@@ -142,14 +142,14 @@ unknown persistence facts; treating every accepted outcome as durable is an
 incompatible consumer assumption, not a promise of this contract.
 
 The launchd distribution slice changes no Rust library API or native V1 frame.
-Its current private GitHub candidate manifest schema 5 retains the two product
-binaries, adds the checksum-closed inert renderer and explicit activation
+Its current private GitHub candidate manifest schema 6 retains the daemon
+product, adds the checksum-closed inert renderer and explicit activation
 executor as distinct deployment artifacts, captures both source closures, and
 hash-binds the exact local build recipe and workflow. The canonical bundle also
 adds path-free local commit/tree provenance bound to the candidate manifest and
 byte-equivalence record, without claiming remote reachability or attestation.
-Existing schema-2/schema-3/schema-4 candidate directories and qualification
-evidence must be rebuilt under schema 5; there is no migration that treats an
+Existing schema-2/schema-3/schema-4/schema-5 candidate directories and
+qualification evidence must be rebuilt under schema 6; there is no migration that treats an
 unlisted
 helper as trusted payload. Qualification help-smokes the activator without its
 explicit effect switch and therefore performs no launchd effect.
@@ -157,7 +157,7 @@ explicit effect switch and therefore performs no launchd effect.
 The cargo-install qualification slice likewise changes no Rust package API or
 wire frame. It tightens distribution evidence from an ambient path-install
 smoke to the documented exact-revision Git install under `--locked --offline`
-in fresh Cargo/install/target roots, with an exact daemon+MCP binary closure
+in fresh Cargo/install/target roots, with an exact daemon-only binary closure
 and adversarial filesystem/environment checks. This is a release-process
 compatibility constraint: source payloads
 that relied on an ambient registry cache, extra binaries, symlink binaries or

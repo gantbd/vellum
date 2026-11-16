@@ -93,8 +93,6 @@ impl Fixture {
         let prior_daemon = prior_dir.join("vellum-daemon");
         write(&candidate_daemon, b"candidate daemon\n", 0o500);
         write(&prior_daemon, b"prior daemon\n", 0o500);
-        write(&candidate_dir.join("vellum-mcp"), b"candidate mcp\n", 0o500);
-        write(&prior_dir.join("vellum-mcp"), b"prior mcp\n", 0o500);
 
         let data_socket = state.join("vellum.sock");
         let control_socket = state.join("vellum-control.sock");
@@ -125,10 +123,7 @@ impl Fixture {
         let candidate_manifest = "a".repeat(64);
         let prior_manifest = "b".repeat(64);
         let artifact = |directory: &Path| {
-            vec![
-                json!({"file":"vellum-daemon","sha256":digest(&directory.join("vellum-daemon"))}),
-                json!({"file":"vellum-mcp","sha256":digest(&directory.join("vellum-mcp"))}),
-            ]
+            vec![json!({"file":"vellum-daemon","sha256":digest(&directory.join("vellum-daemon"))})]
         };
         let evidence = scratch.0.join("qualification.json");
         write(
@@ -184,12 +179,12 @@ impl Fixture {
             format!(
                 concat!(
                     "{{\n",
-                    "  \"schema\": 1,\n",
+                    "  \"schema\": 2,\n",
                     "  \"channel\": \"local-release-candidate-installation\",\n",
                     "  \"manifestSha256\": \"{}\",\n",
                     "  \"claims\": [\n",
                     "    \"verified-bundle\",\n",
-                    "    \"daemon-mcp-only\",\n",
+                    "    \"daemon-only\",\n",
                     "    \"durable-local-prefix\"\n",
                     "  ],\n",
                     "  \"nonClaims\": [\n",
@@ -206,11 +201,6 @@ impl Fixture {
                     "      \"file\": \"bin/vellum-daemon\",\n",
                     "      \"bytes\": {},\n",
                     "      \"sha256\": \"{}\"\n",
-                    "    }},\n",
-                    "    {{\n",
-                    "      \"file\": \"bin/vellum-mcp\",\n",
-                    "      \"bytes\": {},\n",
-                    "      \"sha256\": \"{}\"\n",
                     "    }}\n",
                     "  ],\n",
                     "  \"activationPerformed\": false\n",
@@ -219,10 +209,6 @@ impl Fixture {
                 candidate_manifest,
                 fs::metadata(&candidate_daemon).unwrap().len(),
                 digest(&candidate_daemon),
-                fs::metadata(candidate_dir.join("vellum-mcp"))
-                    .unwrap()
-                    .len(),
-                digest(&candidate_dir.join("vellum-mcp")),
             ),
             0o400,
         );
@@ -677,14 +663,15 @@ fn first_install_refuses_installer_receipt_or_product_substitution_before_effect
     assert!(product_port.effects.is_empty());
 
     let closure_fixture = Fixture::new();
-    fs::remove_file(
-        closure_fixture
+    write(
+        &closure_fixture
             .candidate_daemon
             .parent()
             .unwrap()
             .join("vellum-mcp"),
-    )
-    .unwrap();
+        b"legacy extra product\n",
+        0o500,
+    );
     let mut closure_port = FakePort::new_first_install(&closure_fixture);
     assert!(
         first_install_v1(

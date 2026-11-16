@@ -73,12 +73,12 @@ cannot authorize their use.
 The closed first-install configuration instead names the installer receipt,
 the installed `bin` directory as its candidate directory, and a separately
 rendered exact `0600` plist. The receipt must be canonical, same-owner `0400`,
-have schema 1 and channel `local-release-candidate-installation`, retain the
+have schema 2 and channel `local-release-candidate-installation`, retain the
 exact closed installer claims and nonclaims, state `activationPerformed:
-false`, and close exactly `bin/vellum-daemon` and `bin/vellum-mcp`. The
+false`, and close exactly `bin/vellum-daemon`. The
 executor requires the receipt's parent to contain only that receipt and the
-private `0700` `bin` directory, requires `bin` to contain only those two
-same-owner `0500` products, and rechecks their receipt byte counts and SHA-256
+private `0700` `bin` directory, requires `bin` to contain only that same-owner
+`0500` product, and rechecks its receipt byte count and SHA-256
 digests. The affirmative first-install approval binds the receipt's manifest
 digest. Thus bundle verification and local installation still grant no
 launchd authority; the separate approval does.
@@ -139,7 +139,7 @@ check-launchd-activation` runs the tests and warnings-denied Clippy without
 performing activation.
 
 Codesigning, notarization, plist installation location, log retention,
-multi-user policy, daemon/MCP coordinated upgrade, semantic-provider lifecycle,
+multi-user policy, cross-repository daemon/MCP coordination, semantic-provider lifecycle,
 and recovery after an unknown launchctl effect remain separate operator or
 future distribution contracts.
 
@@ -177,7 +177,7 @@ vellum-launchd-activate --reconcile-first-install-journal \
   --config=/absolute/private/first-install.json
 ```
 
-It revalidates the canonical installation receipt, installed two-product
+It revalidates the canonical installation receipt, installed daemon-only
 closure, candidate-only approval, and exact plist, then validates the separate
 first-install journal grammar and reports durable
 candidate-active or installation-refused terminals separately from prepared,

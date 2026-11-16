@@ -15,6 +15,7 @@ native-unicode = []
 vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
 vellum-host = { version = "=0.1.0", path = "../vellum-host" }
 vellum-session = { version = "=0.1.0", path = "../vellum-session" }
+vellum-workspace = { version = "=0.1.0", path = "../vellum-workspace" }
 unicode-segmentation = "=1.13.3"
 unicode-width = "=0.2.2"
 getrandom = "=0.4.3"

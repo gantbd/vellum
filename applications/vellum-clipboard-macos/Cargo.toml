@@ -1,0 +1,26 @@
+[package]
+name = "vellum-clipboard-macos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "macOS clipboard transaction composition for the Vellum editor"
+
+[features]
+qualification-harness = []
+
+[target.'cfg(target_os = "macos")'.dependencies]
+vellum-adapter-clipboard-macos = { version = "=0.1.0", path = "../../adapters/clipboard-macos" }
+vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
+vellum-session = { version = "=0.1.0", path = "../../host/vellum-session" }
+objc2 = { version = "=0.6.5", features = ["exception"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
+vellum-adapter-annotation-json = { version = "=0.1.0", path = "../../adapters/annotation-json" }
+vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
+
+[lints]
+workspace = true

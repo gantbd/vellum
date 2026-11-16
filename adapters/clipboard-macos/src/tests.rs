@@ -3,7 +3,7 @@ use super::*;
 struct Fake {
     writes: usize,
     reads: usize,
-    write_result: Result<bool, ()>,
+    write_result: Result<bool, BackendWriteError>,
     read_result: Result<Option<String>, Error>,
 }
 fn provider(timed: bool) -> Provider<Fake> {
@@ -22,7 +22,7 @@ fn provider(timed: bool) -> Provider<Fake> {
     .unwrap()
 }
 impl Backend for Fake {
-    fn write(&mut self, _: &str) -> Result<bool, ()> {
+    fn write(&mut self, _: &str) -> Result<bool, BackendWriteError> {
         self.writes += 1;
         self.write_result
     }
@@ -61,7 +61,7 @@ fn setter_rejection_and_platform_exception_never_become_acceptance() {
     assert_eq!(p.export("plain"), ExportOutcome::Accepted);
     p.backend.write_result = Ok(false);
     assert_eq!(p.export("plain"), ExportOutcome::RejectedAfterClear);
-    p.backend.write_result = Err(());
+    p.backend.write_result = Err(BackendWriteError);
     assert_eq!(p.export("plain"), ExportOutcome::Unknown);
     assert_eq!(p.backend.writes, 3); // no hidden retries
     assert_eq!(

@@ -2,15 +2,16 @@
 
 Status: consolidated and dependency-closed on 2026-11-09.
 
-Vellum's non-UI semantic spine, service profile, first-party adapters,
-connectors, and composition roots share one atomic-evolution repository.
+Vellum's non-UI semantic spine, service profile, first-party adapters, and
+native composition roots share one atomic-evolution repository. Inbound MCP
+connectors are independently versioned peer repositories.
 Separate crates and categorical directories preserve dependency and authority
 boundaries. Presentation repositories retain independent release lifecycles.
 
 | Project | Owns | Must not own |
 | --- | --- | --- |
 | `vellum/engine` | Closed semantic engine, authoritative source/history state, admission, retained outcomes and bounded instrumentation | UI state, filesystem paths, platform services or connector policy |
-| `vellum/host` | `vellum-host` capability ports, sessions, and the headless `vellum-editor` | Concrete OS, storage, clipboard, transport or rendering implementations |
+| `vellum/host` | `vellum-host` capability ports, sessions, presentation-free `vellum-workspace` authority, and the headless `vellum-editor` presentation/controller model | Concrete OS, storage, clipboard, transport or rendering implementations |
 | `vellum/protocol`, `client`, `service`, `transport` | Native protocol/service profile plus separately bounded semantic-service/client substrate | UI policy, provider selection or language-semantic truth |
 | `vellum/protocol/vellum-semantic-protocol` | Provider-neutral singleton semantic-session values and lifecycle algebra | Sockets, authentication, provider processes, persistence or editing commands |
 | `vellum/protocol/vellum-semantic-helper-protocol` | OS-neutral, bounded snapshot and lifecycle algebra shared by a privileged client and a separately sandboxed semantic-provider helper | XPC, filesystem traversal, ambient paths, provider execution or engine authority |
@@ -21,9 +22,10 @@ boundaries. Presentation repositories retain independent release lifecycles.
 | `vellum/client/vellum-workspace-client` | Presentation-neutral live view state: explicit workspace inventory, selection, redacted snapshot ownership, change cursors and closed freshness transitions over the native client | Source authority, cursor/selection editing semantics, filesystem access, sockets, automatic retry or a UI event loop |
 | `vellum/client/vellum-semantic-session-client` | Transport-neutral phase truth, exact mutation uncertainty, compact synchronization witnesses and witness-backed reply revalidation; exports only content-safe binding facts to trusted composition | Sockets, authentication, grants, broker replay storage, provider selection or automatic retry |
 | `vellum/transport/vellum-semantic-transport` | Canonical one-attempt frame adapter plus a bounded private-path Unix client exchange preserving `NotSent | Reply | OutcomeUnknown` and exact reply binding | Authentication, automatic reconnect/retry, server dispatch, broker/provider ownership, remote TCP or MCP policy |
-| `vellum/adapters` | Qualified interpretations of host ports | Semantic authority, application navigation or hidden retry policy |
-| `vellum/connectors`, `applications` | Inbound projections and explicit composition roots; connector binaries may select public SDKs and credential adapters while their libraries retain bounded protocol projections | Hidden engine or adapter authority; the semantic MCP peer cannot infer snapshot membership or mint sovereign-validation evidence |
-| `vellum/distribution/cargo-install` | One-command source installation of the daemon and MCP peer binaries | Runtime behavior, adapter selection, authority or protocol policy |
+| `vellum/adapters` | Qualified interpretations of host ports and bounded platform mechanisms | Semantic authority, editor transactions, application navigation or hidden retry policy |
+| `vellum/applications` | Explicit native composition roots, including macOS clipboard/editor orchestration | Hidden engine or adapter authority |
+| `vellum-mcp`, `vellum-semantic-mcp` peers | Independently owned inbound projections selecting public SDKs and credential adapters | Vellum source, engine authority, or release lifecycle; the semantic peer cannot infer snapshot membership or mint sovereign-validation evidence |
+| `vellum/distribution/cargo-install` | One-command source installation of the daemon binary | Runtime behavior, adapter selection, authority, connector ownership, or protocol policy |
 | `vellum/distribution/launchd-activate` | Explicit approval/evidence validation, durable launchd-effect bracketing, exact process/status qualification and rollback | Implicit activation, artifact selection, source installation, semantic-provider lifecycle or unbounded restart |
 | `vellum/distribution/launchd-render` | Self-contained validation and inert rendering of the fixed read-only macOS LaunchAgent profile | Installation, activation, process control, health claims or service authority |
 | `vellum/sdk` | Zero-authority embedded/client distribution facades | New behavior or dependency inversion |
@@ -35,12 +37,15 @@ boundaries. Presentation repositories retain independent release lifecycles.
 vellum-tui --------+----> vellum-editor ----> vellum-session -> vellum-engine
                    |          |                    ^
 vellum-gui-macos --+          +--> vellum-host <---+--- vellum-adapters
+                   +----> vellum-clipboard-macos -> clipboard-macos adapter
 
-vellum-mcp -> vellum-sdk-client -> vellum-client -> vellum-protocol <- vellum-service
+vellum-service ----> vellum-workspace ----> vellum-session -> vellum-engine
+
+external vellum-mcp -> vellum-sdk-client -> vellum-client -> vellum-protocol <- vellum-service
       +----> local-authentication adapter                              ^
                          +------> vellum-transport -> vellum-wire         |
                                                                          v
-vellum-daemon -> local-fs adapter -------------------------------> vellum-editor
+vellum-daemon -> local-fs adapter ----------------------------> vellum-workspace
       +-------> local-authentication adapter
       +-------> keystone-observe (bounded passive histogram; no clock/export)
       +-------> keystone-lifecycle (mechanical bounded obligation ledger)
@@ -57,11 +62,11 @@ agent/human -> semantic-session client -> semantic frame transport (no socket)
 vellum-semantic-local -> process group + bounded stdio transport
         +-------------> vellum-adapter-semantic-lsp (composition supplied)
 
-vellum-semantic-mcp -> vellum-semantic-client -> semantic frame transport
+external vellum-semantic-mcp -> vellum-semantic-client -> semantic frame transport
         +------------> vellum-sdk-client ------> native daemon transport
         +------------> local-authentication adapter (credential interpretation)
 
-vellum-semantic-apply-service -> vellum-editor -> vellum-session -> vellum-engine
+vellum-semantic-apply-service -> vellum-workspace -> vellum-session -> vellum-engine
               +--------------> vellum-semantic-service + vellum-host::authority
 ```
 
@@ -126,9 +131,11 @@ workspace and copying of the already-verified fixture into that workspace.
 Provider process authority remains mediated by the semantic-local supervised
 composition rather than a second direct command-launch surface.
 
-`vellum-editor` is a headless editor application layer, not authoritative
-document state. Its presentation-free `Workspace` serializes shared document
-authority while bounded client-owned `EditorView` values keep projections
+`vellum-workspace` is the presentation-free owner that serializes shared
+document authority. `vellum-editor` owns the headless presentation/controller
+model: actions, selections, cursor/viewport state and render frames. Services,
+the daemon and semantic application depend on `vellum-workspace`, never on that
+controller category. Bounded client-owned `EditorView` values keep projections
 independent; the service separately scopes request identities and witnesses per
 client. `vellum-host` owns trusted capability ports. The native service profile
 is multi-client and has a bounded macOS local Unix daemon. The daemon is the
@@ -146,9 +153,9 @@ identity.
 When configured, MCP selects the same local-authentication adapter only to
 produce a credential proof for the native transport handshake; it receives no
 credential-derived authority.
-Its production dependency boundary is prepared for extraction into a sibling
-repository; the Vellum-owned live-daemon qualification remains separate from
-the connector's portable conformance suite.
+Its production source, lockfile, conformance suite, install contract, and
+release lifecycle live in the sibling `vellum-mcp` repository. Vellum retains
+the coordinated live-daemon and official-client qualifications only.
 
 Language semantics are another peer boundary, not an editor feature or native
 Vellum service command. `vellum-host::semantic` is the bounded shared value and

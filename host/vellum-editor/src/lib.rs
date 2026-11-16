@@ -3,11 +3,10 @@
 #![forbid(unsafe_code)]
 mod app;
 pub use app::*;
-mod workspace;
 pub use vellum_engine::attachment::{
     AttachmentTarget as CommentTarget, LocationEvidence as CommentLocationEvidence,
     Placement as CommentPlacement, PointProfile as CommentPointProfile,
 };
 pub use vellum_engine::coordinator::HistoryDirection as CommentHistoryDirection;
 pub use vellum_engine::coordinator::SearchDirection;
-pub use workspace::*;
+pub use vellum_workspace::*;

@@ -1,15 +1,15 @@
 use super::*;
-use crate::integration::tests::Fixture;
+use crate::tests::Fixture;
 use vellum_editor::Action;
 
 struct Fake {
     reads: usize,
     writes: usize,
-    result: Result<bool, ()>,
+    result: Result<bool, BackendWriteError>,
     value: Option<String>,
 }
 impl Backend for Fake {
-    fn write(&mut self, _: &str) -> Result<bool, ()> {
+    fn write(&mut self, _: &str) -> Result<bool, BackendWriteError> {
         self.writes += 1;
         self.result
     }
@@ -20,7 +20,7 @@ impl Backend for Fake {
 }
 fn make(
     value: Option<&str>,
-    result: Result<bool, ()>,
+    result: Result<bool, BackendWriteError>,
 ) -> Result<(Provider<Fake>, CopyProviderRegistrationV1), Error> {
     Ok((
         Provider::new(
@@ -158,7 +158,7 @@ fn unknown_result_blocks_new_gestures_and_even_discard_close_without_new_io() {
     editor.set_selection(&version, 0, 1).unwrap();
     let r = d
         .perform(&mut editor, TextTransferKindV1::Cut, access(), || {
-            make(None, Err(()))
+            make(None, Err(BackendWriteError))
         })
         .unwrap();
     assert!(r.retained);
@@ -183,11 +183,7 @@ fn unknown_result_blocks_new_gestures_and_even_discard_close_without_new_io() {
 fn reference_limits_allow_copying_the_entire_supported_64k_document() {
     let f = Fixture::new();
     std::fs::write(f.0.join("a"), "x".repeat(65536)).unwrap();
-    let mut editor = Editor::open(
-        &[f.0.join("a")],
-        crate::integration::tests::reference_profile(),
-    )
-    .unwrap();
+    let mut editor = Editor::open(&[f.0.join("a")], crate::tests::reference_profile()).unwrap();
     let _configured = ReferenceClipboard::new(&mut editor).unwrap();
     editor.apply(Action::SelectAll).unwrap();
     let mut d = Desktop { binding: None };

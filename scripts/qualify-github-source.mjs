@@ -269,8 +269,7 @@ try {
   fs.writeFileSync(
     path.join(gitSeed, 'Cargo.toml'),
     `[package]\nname = "vellum-git-seed"\nversion = "0.0.0"\nedition = "2024"\npublish = false\n`
-      + `[dependencies]\nvellum-daemon = { git = ${JSON.stringify(policy.vellumRepository)}, rev = ${JSON.stringify(vellumRevision)} }\n`
-      + `vellum-mcp = { git = ${JSON.stringify(policy.vellumRepository)}, rev = ${JSON.stringify(vellumRevision)} }\n`,
+      + `[dependencies]\nvellum-daemon = { git = ${JSON.stringify(policy.vellumRepository)}, rev = ${JSON.stringify(vellumRevision)} }\n`,
   );
   fs.writeFileSync(path.join(gitSeed, 'src/lib.rs'), 'pub const PRESENT: bool = true;\n');
   run('cargo', ['fetch'], { cwd: gitSeed, env: fetchEnvironment });

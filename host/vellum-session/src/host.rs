@@ -147,6 +147,13 @@ pub struct LocalDocument<H> {
     pub(crate) resource: H,
     pub(crate) loaded: DocumentVersion,
 }
+impl<H> LocalDocument<H> {
+    /// Native identity of the document this host handle admits.
+    pub fn document_id(&self) -> &DocumentId {
+        &self.loaded.document
+    }
+}
+
 impl<A: ResourceAdapter> LocalHost<A> {
     /// Configure one host for many files. Provider ownership stays exclusive to
     /// this trusted local embedding; paths never enter the semantic engine.

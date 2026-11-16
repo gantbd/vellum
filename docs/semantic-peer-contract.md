@@ -477,7 +477,8 @@ It must not be presented as a production semantic backend.
 For an MCP-host framing or catalog qualification run:
 
 ```sh
-cargo run --locked --offline -p vellum-semantic-mcp -- --unavailable
+cargo run --manifest-path ../vellum-semantic-mcp/Cargo.toml \
+  --locked --offline -- --unavailable
 ```
 
 The host owns the child lifetime and sends one JSON-RPC object per newline on

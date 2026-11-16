@@ -18,7 +18,6 @@
 use std::{collections::BTreeMap, fmt};
 
 use sha2::{Digest as _, Sha256};
-use vellum_editor::{Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError};
 use vellum_engine::source::Replacement;
 use vellum_host::{
     authority::{
@@ -30,6 +29,7 @@ use vellum_host::{
 use vellum_semantic_service::{
     SemanticClientRefV1, SemanticProviderReadinessV1, SemanticProviderStateV1, SemanticSnapshotV1,
 };
+use vellum_workspace::{Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError};
 
 mod journal;
 #[cfg(all(test, target_os = "macos"))]

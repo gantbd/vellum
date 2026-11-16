@@ -82,12 +82,12 @@ impl Drop for Fixture {
 struct Fake {
     writes: usize,
     reads: usize,
-    result: Result<bool, ()>,
+    result: Result<bool, BackendWriteError>,
     value: Option<String>,
     panic_write: bool,
 }
 impl Backend for Fake {
-    fn write(&mut self, _: &str) -> Result<bool, ()> {
+    fn write(&mut self, _: &str) -> Result<bool, BackendWriteError> {
         self.writes += 1;
         assert!(!self.panic_write, "test provider interrupted");
         self.result
@@ -268,7 +268,7 @@ fn unknown_export_is_retained_without_cut_or_fake_retirement() {
     let version = editor.version().unwrap();
     editor.set_selection(&version, 0, 1).unwrap();
     let mut service = controller(&mut editor, None);
-    service.provider.backend.result = Err(());
+    service.provider.backend.result = Err(BackendWriteError);
     service.begin(&mut editor, cut()).unwrap();
     service.export(&mut editor, launch(), release()).unwrap();
     service.deliver(&mut editor, ingress()).unwrap();

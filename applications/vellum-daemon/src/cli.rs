@@ -291,7 +291,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let workspace = compose_startup_workspace(
         &roots,
-        vellum_editor::reference_workspace_profile(
+        vellum_workspace::reference_workspace_profile(
             LocalFilesystemFactory::new(filesystem_limits).erase(),
         ),
         limits,

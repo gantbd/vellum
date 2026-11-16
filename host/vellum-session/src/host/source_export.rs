@@ -4,8 +4,8 @@ use vellum_engine::coordinator::{
     TrustedSourceExportControlV1, TrustedSourceExportFactsV1, TrustedSourceSaveAsFactsV1,
 };
 use vellum_engine::resource::{
-    PreparedSourceArtifactIdV1, SourceExportDestinationV1, SourceExportOptionsV1,
-    SourceExportPurposeV1,
+    CapturedSourceSerializationV1, PreparedSourceArtifactIdV1, SourceExportDestinationV1,
+    SourceExportOptionsV1, SourceExportPurposeV1,
 };
 use vellum_host::authority::{AuthorityRequestV1, SaveAsDestinationRequestV1};
 use vellum_host::export_copy::{
@@ -230,6 +230,29 @@ impl<A: ResourceAdapter> LocalHost<A> {
             serialization,
         })
     }
+    /// Capture the current exact source for an authorized integration read.
+    /// Destination policy and publication remain with the caller's host.
+    pub fn capture_source_for_integration(
+        &mut self,
+        expected: &DocumentVersion,
+        authorize: impl FnOnce(&DocumentVersion) -> bool,
+    ) -> Result<Option<CapturedSourceSerializationV1>, SessionError> {
+        if !authorize(expected) {
+            return Ok(None);
+        }
+        let prepared = self.prepare_source_export(expected)?;
+        match self
+            .owner
+            .capture_prepared_source_serialization(&prepared.native, &mut self.diagnostics)
+        {
+            Ok(capture) => Ok(Some(capture)),
+            Err(error) => {
+                let _ = self.discard_source_export_preparation(&prepared);
+                Err(SessionError::from(error))
+            }
+        }
+    }
+
     pub fn discard_source_export_preparation(
         &mut self,
         prepared: &SourceExportPreparation,

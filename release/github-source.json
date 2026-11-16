@@ -38,19 +38,17 @@
       "package": "vellum",
       "path": "distribution/cargo-install",
       "binaries": [
-        "vellum-daemon",
-        "vellum-mcp"
+        "vellum-daemon"
       ],
       "platform": "macos",
-      "role": "installation-only composition of the daemon and its peer MCP connector"
+      "role": "installation-only composition of the Vellum daemon"
     }
   ],
   "releaseCandidate": {
     "workflow": ".github/workflows/release-candidate.yml",
     "platform": "macos",
     "packages": [
-      "vellum-daemon",
-      "vellum-mcp"
+      "vellum-daemon"
     ],
     "publishing": "none",
     "signing": "none",
@@ -71,8 +69,7 @@
     "SECURITY.md",
     "docs/release-policy.md",
     "docs/release-reproducibility.md",
-    "docs/mcp-extraction.md",
-    "docs/semantic-mcp-extraction.md",
+    "docs/mcp-peers.md",
     "docs/security-threat-model.md",
     "docs/supply-chain.md",
     "docs/compatibility-baseline.md",
@@ -84,8 +81,7 @@
     "release/dependency-policy.json",
     "release/github-source.json",
     "release/source-sbom.manifest.json",
-    "release/vellum-mcp-extraction.json",
-    "release/vellum-semantic-mcp-extraction.json",
+    "release/mcp-peers.json",
     "rust-toolchain.toml",
     "scripts/check-release-contract.mjs",
     "scripts/check-compatibility-baseline.mjs",
@@ -93,10 +89,7 @@
     "scripts/check-supply-chain.mjs",
     "scripts/check-supply-chain.test.mjs",
     "scripts/supply-chain-lib.mjs",
-    "scripts/verify-mcp-extraction.mjs",
-    "scripts/emit-mcp-peer-source.mjs",
-    "scripts/verify-semantic-mcp-extraction.mjs",
-    "scripts/emit-semantic-mcp-peer-source.mjs",
+    "scripts/check-mcp-peers.mjs",
     "scripts/build-release-candidate.mjs",
     "scripts/build-release-candidate.test.mjs",
     "scripts/release-candidate-lib.mjs",
@@ -126,6 +119,9 @@
     "qualification/mcp-official-client/verify-source.mjs",
     "qualification/mcp-official-client/verify-source.test.mjs",
     "qualification/mcp-official-client/qualify.mjs",
+    "qualification/mcp-live-daemon/Cargo.toml",
+    "qualification/mcp-live-daemon/README.md",
+    "qualification/mcp-live-daemon/tests/live_daemon.rs",
     "distribution/launchd-render/Cargo.toml",
     "distribution/launchd-render/src/lib.rs",
     "distribution/launchd-render/src/main.rs",
@@ -136,7 +132,6 @@
     "distribution/launchd-activate/tests/qualification.rs",
     "distribution/cargo-install/Cargo.toml",
     "distribution/cargo-install/src/bin/vellum-daemon.rs",
-    "distribution/cargo-install/src/bin/vellum-mcp.rs",
     "protocol/vellum-wire/tests/qualification.rs",
     "transport/vellum-transport/tests/qualification.rs",
     "service/vellum-service/tests/qualification.rs",

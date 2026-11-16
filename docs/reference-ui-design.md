@@ -68,8 +68,9 @@ AppKit, with acceptance distinct from durability or cross-app delivery. The
 exception-to-unknown handling, change-count-checked reads and content-free
 outcome/timing counters. Foundation encoding tests preserve literal leading
 U+FEFF, CR/LF, NUL and combining text; they do not access a pasteboard. Joining
-this provider to original native transfer tasks is implemented by
-`EditorClipboard`: one pending operation, one provider service, retained receipts
+this provider to original native transfer tasks belongs to the
+`vellum-clipboard-macos` application composition. Its `EditorClipboard` has one
+pending operation, one provider service, retained receipts
 across ingress refusal, independently checked publication, and explicit native
 retirement. Its API takes current host premises rather than granting authority;
 unknown effects and interrupted provider work cannot be discarded or retried.
@@ -87,8 +88,8 @@ independent clipboard paths remain disabled; no clipboard registry was added to
 the semantic engine. Historical F22/F23/F11 design references are not evidence
 that the remaining provider/UI work is complete.
 
-An opt-in `vellum-adapter-clipboard-macos` example prepares isolated live qualification:
-`cargo run --offline -p vellum-adapter-clipboard-macos --features private-pasteboard-qualification --example private-pasteboard -- --allow-private-pasteboard`.
+The standalone clipboard qualifier prepares isolated live qualification:
+`cargo run --offline --manifest-path qualification/clipboard-macos/Cargo.toml -- --allow-private-pasteboard`.
 Run it only after explicit operator approval. It creates unique private AppKit
 pasteboards (never General) and temporary source documents, using the same I/O
 implementation and native controller as the apps. It checks exact raw text,

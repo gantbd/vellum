@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Completed MCP peer ownership: `vellum-mcp` and `vellum-semantic-mcp`
+  production source now lives only in their sibling repositories while Vellum
+  retains coordinated live, official-client, semantic-local, and provider
+  qualifications. Vellum's source-install and release-candidate closures are
+  daemon-only; candidate schema 6, installation receipt schema 2, and persisted
+  activation identity/pointer schema 2 reject legacy two-product closures.
 - Daemon startup now emits a closed, content-safe binding-refusal class before
   returning its existing generic CLI error. The classification is exhaustive
   over typed startup failures and discloses no paths, filesystem identities,

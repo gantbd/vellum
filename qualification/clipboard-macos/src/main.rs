@@ -56,7 +56,7 @@ mod macos {
     use objc2_app_kit::NSPasteboard;
     use objc2_foundation::{NSData, NSString};
     use std::panic::AssertUnwindSafe;
-    use vellum_adapter_clipboard_macos::{
+    use vellum_clipboard_macos::{
         Error, QualificationBackend, QualificationWriteError, qualify_backend,
     };
 

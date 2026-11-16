@@ -38,12 +38,13 @@ impl AppKitClipboard {
     }
 }
 
-pub(crate) struct AppKit {
+#[doc(hidden)]
+pub struct AppKit {
     _thread: MainThreadMarker,
 }
 
 impl AppKit {
-    pub(crate) fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self, Error> {
         Ok(Self {
             _thread: MainThreadMarker::new().ok_or(Error::Unavailable)?,
         })
@@ -51,7 +52,7 @@ impl AppKit {
 }
 
 impl Backend for AppKit {
-    fn write(&mut self, text: &str) -> Result<bool, ()> {
+    fn write(&mut self, text: &str) -> Result<bool, BackendWriteError> {
         objc2::exception::catch(AssertUnwindSafe(|| {
             let board = NSPasteboard::generalPasteboard();
             // Publish the standard UTF-8 plain-text representation as exact
@@ -61,7 +62,7 @@ impl Backend for AppKit {
             board.clearContents();
             Ok(board.setData_forType(Some(&data), &kind))
         }))
-        .map_err(|_| ())?
+        .map_err(|_| BackendWriteError)?
     }
 
     fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error> {

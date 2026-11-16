@@ -59,11 +59,10 @@ try {
   write(
     vellum,
     'Cargo.toml',
-    '[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/cargo-install", "distribution/launchd-render", "distribution/launchd-activate"]\nresolver = "3"\n',
+    '[workspace]\nmembers = ["applications/vellum-daemon", "distribution/cargo-install", "distribution/launchd-render", "distribution/launchd-activate"]\nresolver = "3"\n',
   );
   const profiles = [
     ['applications/vellum-daemon', 'vellum-daemon', 'keystone-observe'],
-    ['connectors/vellum-mcp', 'vellum-mcp', 'keystone-codec'],
   ];
   for (const [directory, name, dependency] of profiles) {
     write(
@@ -80,17 +79,12 @@ try {
   write(
     vellum,
     'distribution/cargo-install/Cargo.toml',
-    '[package]\nname = "vellum"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n[[bin]]\nname = "vellum-mcp"\npath = "src/bin/vellum-mcp.rs"\n',
+    '[package]\nname = "vellum"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n',
   );
   write(
     vellum,
     'distribution/cargo-install/src/bin/vellum-daemon.rs',
     'fn main() { println!("vellum-daemon --help"); }\n',
-  );
-  write(
-    vellum,
-    'distribution/cargo-install/src/bin/vellum-mcp.rs',
-    'fn main() { println!("vellum-mcp --help"); }\n',
   );
   write(
     vellum,
@@ -125,21 +119,21 @@ try {
         repository: 'https://github.com/example/keystone',
         revision: keystoneRevision,
         relativePath: '../keystone',
-        crates: ['keystone-codec', 'keystone-observe'],
+        crates: ['keystone-observe'],
       },
       sourceInstallProfiles: [
         {
           package: 'vellum',
           path: 'distribution/cargo-install',
-          binaries: ['vellum-daemon', 'vellum-mcp'],
+          binaries: ['vellum-daemon'],
           platform: 'macos',
-          role: 'installation-only composition of the daemon and its peer MCP connector',
+          role: 'installation-only composition of the daemon',
         },
       ],
       releaseCandidate: {
         workflow: '.github/workflows/release-candidate.yml',
         platform: 'macos',
-        packages: ['vellum-daemon', 'vellum-mcp'],
+        packages: ['vellum-daemon'],
         publishing: 'none',
         signing: 'none',
         attestation: 'none',
@@ -173,14 +167,14 @@ try {
     vellum,
     { ...process.env, KEYSTONE_SOURCE: keystone },
   );
-  if (!report.includes('2 binaries; unsigned and unattested')) {
+  if (!report.includes('1 binary; unsigned and unattested')) {
     throw new Error('builder did not preserve its signature and attestation nonclaims');
   }
   const manifestText = fs.readFileSync(path.join(output, 'manifest.json'), 'utf8');
   if (manifestText.includes(fixture)) throw new Error('manifest disclosed the fixture path');
   const manifest = JSON.parse(manifestText);
   if (
-    manifest.schema !== 5
+    manifest.schema !== 6
     || manifest.claims.at(-1) !== 'activation-executor-packaged'
     || !manifest.claims.includes('build-recipe-sha256')
     || !manifest.nonClaims.includes('activation')
@@ -194,7 +188,7 @@ try {
   if (manifest.source.keystone.revision !== keystoneRevision) {
     throw new Error('manifest did not record the exact Keystone revision');
   }
-  if (manifest.artifacts.map((artifact) => artifact.binary).join(',') !== 'vellum-daemon,vellum-mcp') {
+  if (manifest.artifacts.map((artifact) => artifact.binary).join(',') !== 'vellum-daemon') {
     throw new Error('candidate artifact scope drifted');
   }
   if (

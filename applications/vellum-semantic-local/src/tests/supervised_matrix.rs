@@ -1673,7 +1673,11 @@ fn supervised_process_poll_failure_retains_the_lawful_ready_pretransition() {
         std::thread::sleep(Duration::from_millis(2));
     };
     assert_eq!(
+        receipt.provider().terminal_evidence(),
+        LspTransportTerminalV1::FailedCleanupConfirmed
+    );
+    assert_eq!(
         receipt.provider().terminal(),
-        LocalSemanticRetirementTerminalV1::CleanupFailed
+        LocalSemanticRetirementTerminalV1::ForcedConfirmed
     );
 }

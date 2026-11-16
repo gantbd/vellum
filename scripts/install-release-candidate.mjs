@@ -30,5 +30,5 @@ const report = installCandidateBundle(
   { repositoryRoot: fs.realpathSync(process.cwd()) },
 );
 process.stdout.write(
-  `Vellum candidate ${report.status}: ${report.manifestSha256}; ${report.productCount} products; activation not performed\n`,
+  `Vellum candidate ${report.status}: ${report.manifestSha256}; ${report.productCount} ${report.productCount === 1 ? 'product' : 'products'}; activation not performed\n`,
 );

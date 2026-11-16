@@ -76,11 +76,10 @@ try {
   write(
     vellum,
     'Cargo.toml',
-    `[workspace]\nmembers = ["applications/vellum-daemon", "connectors/vellum-mcp", "distribution/cargo-install"]\nresolver = "3"\n\n[workspace.package]\nversion = "0.1.0"\nedition = "2024"\npublish = false\n`,
+    `[workspace]\nmembers = ["applications/vellum-daemon", "distribution/cargo-install"]\nresolver = "3"\n\n[workspace.package]\nversion = "0.1.0"\nedition = "2024"\npublish = false\n`,
   );
   const packages = [
     ['applications/vellum-daemon', 'vellum-daemon', 'keystone-observe'],
-    ['connectors/vellum-mcp', 'vellum-mcp', 'keystone-codec'],
   ];
   for (const [directory, name, dependency] of packages) {
     write(
@@ -98,9 +97,9 @@ try {
   write(
     vellum,
     'distribution/cargo-install/Cargo.toml',
-    `[package]\nname = "vellum"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n\n[[bin]]\nname = "vellum-mcp"\npath = "src/bin/vellum-mcp.rs"\n\n[dependencies]\nvellum-daemon = { version = "=0.1.0", path = "../../applications/vellum-daemon" }\nvellum-mcp = { version = "=0.1.0", path = "../../connectors/vellum-mcp" }\n`,
+    `[package]\nname = "vellum"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n\n[dependencies]\nvellum-daemon = { version = "=0.1.0", path = "../../applications/vellum-daemon" }\n`,
   );
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     const crate = name.replaceAll('-', '_');
     write(
       vellum,
@@ -117,7 +116,7 @@ try {
       repository: keystoneRepository,
       revision: keystoneRevision,
       relativePath: '../keystone',
-      crates: ['keystone-codec', 'keystone-observe'],
+      crates: ['keystone-observe'],
       apiClosure: [
         {
           package: 'keystone-observe',
@@ -139,9 +138,9 @@ try {
       {
         package: 'vellum',
         path: 'distribution/cargo-install',
-        binaries: ['vellum-daemon', 'vellum-mcp'],
+        binaries: ['vellum-daemon'],
         platform: 'unix',
-        role: 'installation-only composition of daemon and peer connector',
+        role: 'installation-only composition of daemon',
       },
     ],
     excludedPresentations: ['vellum-tui', 'vellum-gui-macos'],
@@ -178,8 +177,8 @@ try {
       RUSTC_WRAPPER: path.join(fixture, 'ambient-wrapper-must-not-be-used'),
     },
   );
-  if (!output.includes('2 immutable-Git install smoke binaries from 1 install package(s); workspace release build locked')) {
-    throw new Error('qualifier did not report both fixture binaries');
+  if (!output.includes('1 immutable-Git install smoke binaries from 1 install package(s); workspace release build locked')) {
+    throw new Error('qualifier did not report the daemon fixture binary');
   }
   if (!output.includes('Vellum and Keystone GitHub reachability were not verified')) {
     throw new Error('qualifier did not preserve the remote-retrievability nonclaim');

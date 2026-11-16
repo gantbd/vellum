@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  daemon-and-mcp:
+  daemon-only:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -57,9 +57,6 @@ jobs:
           make check-activation-transaction
           make check-launchd-distribution
           make check-launchd-activation
-          make check-shipped-mcp
-          npm ci --ignore-scripts --no-audit --no-fund --prefix qualification/mcp-official-client
-          make qualify-mcp-official-client
       - name: Build twice from exact clean source and compare bytes
         working-directory: vellum
         run: >-
@@ -80,11 +77,10 @@ jobs:
             --bundle-file=../vellum-release-candidate.tar \
             --install-root=../vellum-candidate-install
           ../vellum-candidate-install/bin/vellum-daemon --help
-          ../vellum-candidate-install/bin/vellum-mcp --help
       - name: Upload unsigned candidate artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: vellum-daemon-mcp-launchd-${{ github.sha }}
+          name: vellum-daemon-launchd-${{ github.sha }}
           path: vellum-release-candidate.tar
           if-no-files-found: error
           retention-days: 7

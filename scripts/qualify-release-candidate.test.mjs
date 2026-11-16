@@ -57,10 +57,10 @@ if (!target) throw new Error('rustc host unavailable');
 
 const makeCandidate = (directory, revision, marker) => {
   fs.mkdirSync(directory);
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     write(directory, name, `#!/bin/sh\necho "${name} ${marker}"\n`, 0o755);
   }
-  const artifacts = ['vellum-daemon', 'vellum-mcp'].map((name, index) => {
+  const artifacts = ['vellum-daemon'].map((name) => {
     const file = path.join(directory, name);
     return {
       package: 'vellum',
@@ -68,7 +68,6 @@ const makeCandidate = (directory, revision, marker) => {
       file: name,
       bytes: fs.statSync(file).size,
       sha256: sha256File(file),
-      ...(index === 1 ? { role: 'peer connector to an already-running daemon' } : {}),
     };
   });
   write(directory, 'vellum-launchd-render', rendererSource, 0o755);
@@ -83,7 +82,7 @@ const makeCandidate = (directory, revision, marker) => {
     role: 'explicitly-authorized-launchd-activation-executor', runtime: 'native',
   }];
   const manifest = {
-    schema: 5,
+    schema: 6,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build',

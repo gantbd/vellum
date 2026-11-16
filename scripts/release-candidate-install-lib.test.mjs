@@ -78,18 +78,17 @@ const keystoneTree = run(
 try {
   fs.mkdirSync(candidate, { recursive: true, mode: 0o700 });
   fs.chmodSync(candidate, 0o700);
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     write(path.join(candidate, name), `#!/bin/sh\necho '${name} --help'\n`, 0o755);
   }
   for (const name of ['vellum-launchd-render', 'vellum-launchd-activate']) {
     fs.copyFileSync(path.join(targetDirectory, 'debug', name), path.join(candidate, name));
     fs.chmodSync(path.join(candidate, name), 0o755);
   }
-  const artifacts = ['vellum-daemon', 'vellum-mcp'].map((name, index) => ({
+  const artifacts = ['vellum-daemon'].map((name) => ({
     package: 'vellum', binary: name, file: name,
     bytes: fs.statSync(path.join(candidate, name)).size,
     sha256: sha256File(path.join(candidate, name)),
-    ...(index === 1 ? { role: 'peer connector to an already-running daemon' } : {}),
   }));
   const deployment = ['vellum-launchd-render', 'vellum-launchd-activate'].map((name, index) => ({
     file: name,
@@ -101,7 +100,7 @@ try {
     runtime: 'native',
   }));
   const manifest = {
-    schema: 5,
+    schema: 6,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build', 'native-help-smoke', 'sha256-checksums',
@@ -187,16 +186,16 @@ try {
     `--bundle-file=${bundle}`,
     `--install-root=${installation}`,
   ]);
-  if (!installed.stdout.includes('2 products; activation not performed')) {
+  if (!installed.stdout.includes('1 product; activation not performed')) {
     throw new Error('installer omitted its exact product/effect disposition');
   }
   if (fs.readdirSync(installation).sort().join(',') !== 'bin,install-receipt.json') {
     throw new Error('installed closure is incompatible');
   }
-  if (fs.readdirSync(path.join(installation, 'bin')).sort().join(',') !== 'vellum-daemon,vellum-mcp') {
+  if (fs.readdirSync(path.join(installation, 'bin')).sort().join(',') !== 'vellum-daemon') {
     throw new Error('installer admitted a non-product payload');
   }
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     const file = path.join(installation, 'bin', name);
     if ((fs.statSync(file).mode & 0o777) !== 0o500) throw new Error(`${name} mode drifted`);
     if (!run(file, ['--help']).stdout.includes(name)) throw new Error(`${name} install smoke failed`);
@@ -211,7 +210,7 @@ try {
     receiptText !== canonicalJson(receipt)
     || receipt.activationPerformed !== false
     || receipt.products.map((product) => product.file).join(',')
-      !== 'bin/vellum-daemon,bin/vellum-mcp'
+      !== 'bin/vellum-daemon'
     || receiptText.includes(scratch)
   ) {
     throw new Error('installation receipt is noncanonical, path-bearing, or effect-ambiguous');
@@ -258,7 +257,7 @@ try {
     /installation root closure is incomplete or contains extra entries/,
   );
 
-  for (const point of ['after-bin', 'after-vellum-daemon', 'after-vellum-mcp']) {
+  for (const point of ['after-bin', 'after-vellum-daemon']) {
     const interrupted = privateRoot(`interrupted-${point}`);
     expectRefusal(
       () => installCandidateBundle(bundle, interrupted, { repositoryRoot: root, faultAfter: point }),

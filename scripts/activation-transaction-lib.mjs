@@ -62,10 +62,10 @@ const validateRegularInput = (file, label, expectedDigest, executable) => {
 };
 
 const validateVersion = (version, label) => {
-  exactKeys(version, ['manifestSha256', 'daemon', 'mcp', 'plist'], label);
+  exactKeys(version, ['manifestSha256', 'daemon', 'plist'], label);
   if (!DIGEST.test(version.manifestSha256)) fail(`${label} manifest digest is invalid`);
   const result = { manifestSha256: version.manifestSha256 };
-  for (const [name, executable] of [['daemon', true], ['mcp', true], ['plist', false]]) {
+  for (const [name, executable] of [['daemon', true], ['plist', false]]) {
     exactKeys(version[name], ['path', 'sha256'], `${label}.${name}`);
     result[name] = {
       path: validateRegularInput(
@@ -157,18 +157,17 @@ const replaceDurableJson = (root, name, value, transactionId) => {
 };
 
 const versionIdentity = (role, version) => ({
-  schema: 1,
+  schema: 2,
   channel: 'vellum-immutable-deployment-version',
   role,
   manifestSha256: version.manifestSha256,
   daemonSha256: version.daemon.sha256,
-  mcpSha256: version.mcp.sha256,
   plistSha256: version.plist.sha256,
 });
 
 const validateStagedVersion = (directory, identity) => {
   validatePrivateDirectory(directory, 'immutable version', 0o500);
-  const expected = ['identity.json', 'vellum-daemon', 'vellum-mcp', 'vellum.plist'];
+  const expected = ['identity.json', 'vellum-daemon', 'vellum.plist'];
   if (fs.readdirSync(directory).sort().join(',') !== expected.join(',')) {
     fail('immutable version file closure differs');
   }
@@ -178,7 +177,6 @@ const validateStagedVersion = (directory, identity) => {
   }
   for (const [name, digest, fileMode] of [
     ['vellum-daemon', identity.daemonSha256, 0o500],
-    ['vellum-mcp', identity.mcpSha256, 0o500],
     ['vellum.plist', identity.plistSha256, 0o400],
   ]) {
     const file = path.join(directory, name);
@@ -200,7 +198,6 @@ const stageVersion = (versions, role, version, transactionId) => {
   try {
     for (const [source, name, fileMode] of [
       [version.daemon.path, 'vellum-daemon', 0o500],
-      [version.mcp.path, 'vellum-mcp', 0o500],
       [version.plist.path, 'vellum.plist', 0o400],
     ]) {
       const destinationFile = path.join(stage, name);
@@ -227,13 +224,12 @@ const stageVersion = (versions, role, version, transactionId) => {
 };
 
 const pointer = (generation, selectedRole, identity) => ({
-  schema: 1,
+  schema: 2,
   channel: 'vellum-local-desired-deployment',
   generation,
   selectedRole,
   manifestSha256: identity.manifestSha256,
   daemonSha256: identity.daemonSha256,
-  mcpSha256: identity.mcpSha256,
   plistSha256: identity.plistSha256,
   atomicity: 'one-desired-state-pointer-only',
   launchdEffect: 'not-attempted',
@@ -379,7 +375,7 @@ export function inspectScratchActivation(root) {
     selected,
     [
       'schema', 'channel', 'generation', 'selectedRole', 'manifestSha256', 'daemonSha256',
-      'mcpSha256', 'plistSha256', 'atomicity', 'launchdEffect',
+      'plistSha256', 'atomicity', 'launchdEffect',
     ],
     'desired deployment pointer',
   );
@@ -390,7 +386,7 @@ export function inspectScratchActivation(root) {
     && DIGEST.test(value.priorManifestSha256)
     && value.atomicity === 'one-desired-state-pointer-only'
     && value.launchdEffect === 'not-attempted'
-    && selected.schema === 1
+    && selected.schema === 2
     && selected.channel === 'vellum-local-desired-deployment'
     && Number.isSafeInteger(selected.generation)
     && selected.generation >= 0
@@ -398,7 +394,6 @@ export function inspectScratchActivation(root) {
     && ['candidate', 'prior'].includes(selected.selectedRole)
     && DIGEST.test(selected.manifestSha256)
     && DIGEST.test(selected.daemonSha256)
-    && DIGEST.test(selected.mcpSha256)
     && DIGEST.test(selected.plistSha256)
     && selected.atomicity === 'one-desired-state-pointer-only'
     && selected.launchdEffect === 'not-attempted';
@@ -421,12 +416,11 @@ export function inspectScratchActivation(root) {
   validateStagedVersion(
     path.join(privateRoot, VERSIONS_DIRECTORY, selected.manifestSha256),
     {
-      schema: 1,
+      schema: 2,
       channel: 'vellum-immutable-deployment-version',
       role: selected.selectedRole,
       manifestSha256: selected.manifestSha256,
       daemonSha256: selected.daemonSha256,
-      mcpSha256: selected.mcpSha256,
       plistSha256: selected.plistSha256,
     },
   );

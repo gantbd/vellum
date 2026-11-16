@@ -53,10 +53,9 @@ try {
     vellum,
     'distribution/cargo-install/Cargo.toml',
     '[package]\nname = "vellum"\nversion = "0.1.0"\nedition = "2024"\npublish = false\n'
-      + '[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n'
-      + '[[bin]]\nname = "vellum-mcp"\npath = "src/bin/vellum-mcp.rs"\n',
+      + '[[bin]]\nname = "vellum-daemon"\npath = "src/bin/vellum-daemon.rs"\n',
   );
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     write(
       vellum,
       `distribution/cargo-install/src/bin/${name}.rs`,
@@ -106,13 +105,13 @@ try {
       sourceInstallProfiles: [{
         package: 'vellum',
         path: 'distribution/cargo-install',
-        binaries: ['vellum-daemon', 'vellum-mcp'],
+        binaries: ['vellum-daemon'],
         platform: 'macos',
       }],
       releaseCandidate: {
         workflow: '.github/workflows/release-candidate.yml',
         platform: 'macos',
-        packages: ['vellum-daemon', 'vellum-mcp'],
+        packages: ['vellum-daemon'],
         publishing: 'none',
         signing: 'none',
         attestation: 'none',
@@ -137,7 +136,7 @@ try {
   const candidateFiles = fs.readdirSync(candidate).sort().join(',');
   if (
     candidateFiles
-      !== 'SHA256SUMS,manifest.json,vellum-daemon,vellum-launchd-activate,vellum-launchd-render,vellum-mcp'
+      !== 'SHA256SUMS,manifest.json,vellum-daemon,vellum-launchd-activate,vellum-launchd-render'
   ) {
     throw new Error('clean qualification emitted the wrong candidate closure');
   }

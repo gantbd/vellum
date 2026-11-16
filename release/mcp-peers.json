@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "protocolVersion": "2026-07-28",
+  "publication": "none",
+  "peers": [
+    {
+      "package": "vellum-mcp",
+      "repository": "https://github.com/gantbd/vellum-mcp",
+      "revision": "f193c69956947a659da87fe0961870e0814aa227",
+      "sourceOwner": "vellum-mcp",
+      "vellumFacades": ["vellum-adapter-local-authentication", "vellum-sdk-client"],
+      "ordinaryTools": [
+        "vellum.snapshot",
+        "vellum.save",
+        "vellum.replace",
+        "vellum.replace_and_save",
+        "vellum.workspace_edit",
+        "vellum.poll_changes",
+        "vellum.resolve_locator",
+        "vellum.membership"
+      ],
+      "authenticatedAdditions": [
+        "vellum.durable_execute",
+        "vellum.durable_receipt",
+        "vellum.durable_retire",
+        "vellum.durable_status",
+        "vellum.durable_save_as_submit",
+        "vellum.durable_save_as_lookup",
+        "vellum.durable_save_as_retire"
+      ],
+      "retainedVellumQualification": [
+        "qualification/mcp-live-daemon",
+        "qualification/mcp-official-client"
+      ]
+    },
+    {
+      "package": "vellum-semantic-mcp",
+      "repository": "https://github.com/gantbd/vellum-semantic-mcp",
+      "revision": "a6e1291f55b87c2511748ef06acd9934c74ea1a8",
+      "sourceOwner": "vellum-semantic-mcp",
+      "vellumFacades": [
+        "vellum-adapter-local-authentication",
+        "vellum-sdk-client",
+        "vellum-sdk-semantic-client"
+      ],
+      "tools": [
+        "vellum.semantic.symbols",
+        "vellum.semantic.definition",
+        "vellum.semantic.references",
+        "vellum.semantic.implementations",
+        "vellum.semantic.incoming_calls",
+        "vellum.semantic.outgoing_calls",
+        "vellum.semantic.diagnostics",
+        "vellum.semantic.type_at_point",
+        "vellum.semantic.plan_rename",
+        "vellum.semantic.release_request"
+      ],
+      "retainedVellumQualification": [
+        "applications/vellum-semantic-local",
+        "qualification/semantic-lsp-provider"
+      ]
+    }
+  ],
+  "coordinatedWorkingTreeQualified": false,
+  "remoteReachabilityQualified": false
+}

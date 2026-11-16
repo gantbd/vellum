@@ -1,7 +1,14 @@
-//! Original-operation orchestration over Editor, never a semantic publisher.
+//! Original-operation clipboard orchestration over Editor.
 
-use crate::{ACKNOWLEDGMENT_PROFILE, Backend, Error, ExportOutcome, Limits, Provider, Usage};
+#![forbid(unsafe_code)]
+#![cfg(target_os = "macos")]
+
+use vellum_adapter_clipboard_macos::ACKNOWLEDGMENT_PROFILE;
+#[doc(hidden)]
+pub use vellum_adapter_clipboard_macos::{AppKit, Backend, BackendWriteError, Provider};
+pub use vellum_adapter_clipboard_macos::{Error, ExportOutcome, Limits, Usage};
 use vellum_editor::{ClipboardPlan, ClipboardReport, Editor, EditorError};
+pub use vellum_session::host::copy_transfer::TextTransferKindV1 as Operation;
 use vellum_session::host::copy_transfer::*;
 mod desktop;
 #[cfg(feature = "qualification-harness")]
@@ -422,7 +429,7 @@ impl<B: Backend> Controller<B> {
 /// binding or queries; no default authority premises or hidden retry loop.
 /// Drop does not acknowledge work or discharge the Editor's native obligations.
 pub struct EditorClipboard {
-    controller: Controller<crate::appkit::AppKit>,
+    controller: Controller<AppKit>,
 }
 impl std::fmt::Debug for EditorClipboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -437,7 +444,7 @@ impl EditorClipboard {
         limits: Limits,
         timed: bool,
     ) -> Result<Self, IntegrationError> {
-        let provider = Provider::new(crate::appkit::AppKit::new()?, limits, timed)?;
+        let provider = Provider::new(AppKit::new()?, limits, timed)?;
         let controller = Controller::register(
             editor,
             provider,

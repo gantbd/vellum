@@ -17,12 +17,14 @@ pub trait QualificationBackend {
     fn release(&mut self) -> Result<(), Error>;
 }
 
-impl<T: QualificationBackend> Backend for T {
-    fn write(&mut self, text: &str) -> Result<bool, ()> {
-        QualificationBackend::write(self, text).map_err(|_| ())
+struct QualificationAdapter<T>(T);
+
+impl<T: QualificationBackend> Backend for QualificationAdapter<T> {
+    fn write(&mut self, text: &str) -> Result<bool, BackendWriteError> {
+        QualificationBackend::write(&mut self.0, text).map_err(|_| BackendWriteError)
     }
     fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error> {
-        QualificationBackend::read(self, max_bytes)
+        QualificationBackend::read(&mut self.0, max_bytes)
     }
 }
 
@@ -109,7 +111,7 @@ fn qualify_mode<B: QualificationBackend>(
     config: fn() -> vellum_editor::ReferenceSessionConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut provider = Provider::new(
-        backend,
+        QualificationAdapter(backend),
         Limits {
             max_plain_bytes: 65536,
         },
@@ -118,6 +120,7 @@ fn qualify_mode<B: QualificationBackend>(
     .map_err(|_| "qualification provider limits refused")?;
     provider
         .backend
+        .0
         .clear()
         .map_err(|_| "private clear failed")?;
     require(
@@ -141,10 +144,12 @@ fn qualify_mode<B: QualificationBackend>(
     let mut provider = qualify_workflow(capture_capacity, provider, config())?;
     provider
         .backend
+        .0
         .clear()
         .map_err(|_| "private final clear failed")?;
     provider
         .backend
+        .0
         .release()
         .map_err(|_| "private server-resource release failed or uncertain")?;
     require(
@@ -152,7 +157,7 @@ fn qualify_mode<B: QualificationBackend>(
         "released private target remained readable",
     )?;
     require(
-        provider.backend.write("must not reach General").is_err(),
+        QualificationBackend::write(&mut provider.backend.0, "must not reach General").is_err(),
         "released private target did not refuse export",
     )?;
     Ok(())
@@ -349,19 +354,15 @@ mod tests {
     fn manual_probe_workflow_and_cleanup_oracles_execute_without_any_pasteboard() {
         for capacity in [0, 1, 256] {
             let provider = Provider::new(
-                Memory::default(),
+                QualificationAdapter(Memory::default()),
                 Limits {
                     max_plain_bytes: 65536,
                 },
                 false,
             )
             .unwrap();
-            let provider = qualify_workflow(
-                capacity,
-                provider,
-                crate::integration::tests::reference_profile(),
-            )
-            .unwrap();
+            let provider =
+                qualify_workflow(capacity, provider, crate::tests::reference_profile()).unwrap();
             assert_eq!(provider.usage.export_offers, 2);
             assert_eq!(provider.usage.read_offers, 2);
             assert_eq!(provider.usage.export_service_total, None);

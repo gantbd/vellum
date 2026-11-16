@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 
 const DEFAULT_BASELINE = "release/compatibility-baseline.json";
@@ -236,8 +236,10 @@ function main() {
   let root = process.cwd();
   let baselinePath = DEFAULT_BASELINE;
   let emit = false;
+  let update = false;
   for (const argument of process.argv.slice(2)) {
     if (argument === "--emit=-") emit = true;
+    else if (argument === "--update-baseline") update = true;
     else if (argument.startsWith("--root=")) root = resolve(argument.slice("--root=".length));
     else if (argument.startsWith("--baseline=")) baselinePath = argument.slice("--baseline=".length);
     else fail(`unknown argument ${argument}`);
@@ -246,6 +248,15 @@ function main() {
   const actual = snapshot(root);
   if (emit) {
     process.stdout.write(canonicalJson(actual));
+    return;
+  }
+  if (update) {
+    const target = resolve(root, baselinePath);
+    if (!target.startsWith(`${root}${sep}`)) {
+      fail("baseline update target must remain inside the repository");
+    }
+    writeFileSync(target, canonicalJson(actual));
+    process.stdout.write(`compatibility baseline: updated ${normalizedPath(relative(root, target))}\n`);
     return;
   }
   const baselineText = readText(root, baselinePath);

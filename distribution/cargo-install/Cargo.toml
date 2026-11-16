@@ -6,19 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "GitHub-source installation unit for the Vellum daemon and MCP peer"
+description = "GitHub-source installation unit for the Vellum daemon"
 
 [[bin]]
 name = "vellum-daemon"
 path = "src/bin/vellum-daemon.rs"
 
-[[bin]]
-name = "vellum-mcp"
-path = "src/bin/vellum-mcp.rs"
-
 [dependencies]
 vellum-daemon = { version = "=0.1.0", path = "../../applications/vellum-daemon" }
-vellum-mcp = { version = "=0.1.0", path = "../../connectors/vellum-mcp" }
 
 [lints]
 workspace = true

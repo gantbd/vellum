@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 export const MANIFEST_FILE = 'manifest.json';
 export const CHECKSUM_FILE = 'SHA256SUMS';
-export const ARTIFACT_NAMES = ['vellum-daemon', 'vellum-mcp'];
+export const ARTIFACT_NAMES = ['vellum-daemon'];
 export const DEPLOYMENT_NAMES = ['vellum-launchd-render', 'vellum-launchd-activate'];
 const SMOKE_TIMEOUT_MILLIS = 30_000;
 
@@ -55,7 +55,7 @@ export function validateCandidate(directory, options = {}) {
   const expectedFiles = [...ARTIFACT_NAMES, ...DEPLOYMENT_NAMES, MANIFEST_FILE, CHECKSUM_FILE].sort();
   const actualFiles = entries.map((entry) => entry.name).sort();
   if (actualFiles.join(',') !== expectedFiles.join(',')) {
-    fail('file closure differs from daemon, MCP, manifest, and checksums');
+    fail('file closure differs from daemon, deployment tools, manifest, and checksums');
   }
   for (const entry of entries) regularFile(root, entry.name);
 
@@ -73,7 +73,7 @@ export function validateCandidate(directory, options = {}) {
     ['schema', 'channel', 'claims', 'nonClaims', 'source', 'build', 'inputs', 'artifacts', 'deployment'],
     'manifest',
   );
-  if (manifest.schema !== 5 || manifest.channel !== 'github-release-candidate-artifact') {
+  if (manifest.schema !== 6 || manifest.channel !== 'github-release-candidate-artifact') {
     fail('manifest schema or channel is incompatible');
   }
   if (
@@ -152,16 +152,10 @@ export function validateCandidate(directory, options = {}) {
   }
   const artifactFiles = [];
   for (const [index, artifact] of manifest.artifacts.entries()) {
-    const required = index === 1
-      ? ['package', 'binary', 'file', 'bytes', 'sha256', 'role']
-      : ['package', 'binary', 'file', 'bytes', 'sha256'];
-    exactKeys(artifact, required, `artifacts[${index}]`);
+    exactKeys(artifact, ['package', 'binary', 'file', 'bytes', 'sha256'], `artifacts[${index}]`);
     const expectedName = ARTIFACT_NAMES[index];
     if (artifact.package !== 'vellum' || artifact.binary !== expectedName || artifact.file !== expectedName) {
       fail('artifact ordering or identity is incompatible');
-    }
-    if (index === 1 && artifact.role !== 'peer connector to an already-running daemon') {
-      fail('MCP artifact role is incompatible');
     }
     if (!Number.isSafeInteger(artifact.bytes) || artifact.bytes <= 0) fail(`${expectedName} byte count is invalid`);
     const file = regularFile(root, artifact.file);

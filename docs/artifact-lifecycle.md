@@ -5,10 +5,10 @@ publishes, installs, activates, signs, attests, or mutates a remote service.
 
 ## States and evidence
 
-The candidate builder produces two product binaries, the inert
+The candidate builder produces one product binary, the inert
 `vellum-launchd-render` helper, the explicitly authorized
 `vellum-launchd-activate` executor, and canonical `manifest.json` and
-`SHA256SUMS` files. Manifest schema 5 identifies the exact Vellum and Keystone
+`SHA256SUMS` files. Manifest schema 6 identifies the exact Vellum and Keystone
 commits, effective Cargo build selection, Rust/Cargo versions, target, profile,
 feature mode, path-remap environment, and hashes of the lock, compatibility,
 dependency, SBOM, source-policy, toolchain, renderer, activation-executor,
@@ -75,7 +75,7 @@ build across runs, remote availability, signing, or attestation.
 
 ## Local qualification
 
-After building a new candidate and retaining a distinct prior candidate:
+After building a new daemon candidate and retaining a distinct prior candidate:
 
 ```sh
 node scripts/qualify-release-candidate.mjs \
@@ -107,8 +107,8 @@ or contacts a remote service.
 ## Verified local installation
 
 From the exact Vellum source revision that produced the candidate, create one
-empty, canonical, same-owner private installation root and install the two
-first-release products with:
+empty, canonical, same-owner private installation root and install the daemon
+product with:
 
 ```sh
 mkdir -m 0700 /absolute/private/vellum
@@ -124,7 +124,6 @@ exactly:
 
 ```text
 bin/vellum-daemon       0500
-bin/vellum-mcp          0500
 install-receipt.json    0400
 ```
 
@@ -149,7 +148,7 @@ authorization. Unknown fields, noncanonical JSON, aliases, wrong ownership or
 mode, changed identities, and absent authorization refuse before the scratch
 root is changed.
 
-The simulator stages the candidate and prior daemon, MCP peer, and rendered
+The simulator stages the candidate and prior daemon and rendered
 plist into separate digest-named version directories. Every input is a
 canonical same-owner regular file with an exact SHA-256 identity; executable
 payloads become `0500`, plists and version identities become `0400`, and the

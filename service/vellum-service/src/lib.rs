@@ -18,19 +18,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use vellum_editor::{
-    DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
-    Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError,
-    WorkspaceExportCopyErrorV1, WorkspaceRootId, WorkspaceRootKind, WorkspaceSaveAsErrorV1,
-    WorkspaceSaveAsIdV1, WorkspaceSaveAsStatusV1, WorkspaceSaveReceipt,
-};
 use vellum_engine::{
     coordinator::{
         DocumentVersion, TrustedSourceExportControlV1, TrustedSourceExportFactsV1,
         TrustedSourceSaveAsFactsV1,
     },
     instrumentation::{Boundary, Disposition, Recorder},
-    resource::{Application, SaveRequirements, Synchronization},
+    resource::{Application, CapturedSourceSerializationV1, SaveRequirements, Synchronization},
     source::Replacement,
 };
 use vellum_host::authentication::AuthenticatedSessionV1;
@@ -65,6 +59,12 @@ use vellum_protocol::{
     WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
     WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceLocatorResolutionV1,
     WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
+};
+use vellum_workspace::{
+    DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
+    Workspace, WorkspaceDocumentEdits, WorkspaceDocumentId, WorkspaceError,
+    WorkspaceExportCopyErrorV1, WorkspaceRootId, WorkspaceRootKind, WorkspaceSaveAsErrorV1,
+    WorkspaceSaveAsIdV1, WorkspaceSaveAsStatusV1, WorkspaceSaveReceipt,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -477,6 +477,43 @@ pub struct Service {
 impl Service {
     pub const fn workspace_id(&self) -> WorkspaceIdV1 {
         self.workspace_id
+    }
+
+    /// Resolve a served member for a trusted integration under current read policy.
+    pub fn handoff_document_version(
+        &mut self,
+        client: ClientId,
+        document: WorkspaceDocumentIdV1,
+    ) -> Result<DocumentVersion, RefusalV1> {
+        self.authorize_plan(client, action_plan(&CommandV1::Snapshot))?;
+        let native = self.projected_native_document(document)?;
+        self.workspace
+            .document_version(&native)
+            .map_err(classify_workspace)
+    }
+
+    /// Capture an exact live source for a trusted in-process integration.
+    /// The caller is responsible for association checks and for authorizing
+    /// any subsequent publication or review.
+    pub fn capture_document_for_handoff(
+        &mut self,
+        client: ClientId,
+        document: WorkspaceDocumentIdV1,
+        expected: &DocumentVersion,
+    ) -> Result<CapturedSourceSerializationV1, RefusalV1> {
+        self.authorize_plan(client, action_plan(&CommandV1::Snapshot))?;
+        let native = self.projected_native_document(document)?;
+        let current = self
+            .workspace
+            .document_version(&native)
+            .map_err(classify_workspace)?;
+        if &current != expected {
+            return Err(RefusalV1::Stale);
+        }
+        self.workspace
+            .capture_document_for_handoff(&native, expected, |_, _| true)
+            .map_err(classify_workspace)?
+            .ok_or(RefusalV1::EditorUnavailable)
     }
 
     /// Authorizes the separate receipt-retirement action for an active client.
@@ -1900,20 +1937,26 @@ impl Service {
         &self,
         document: WorkspaceDocumentIdV1,
     ) -> Result<EditorView, RefusalV1> {
-        if document.workspace() != self.workspace_id {
-            return Err(RefusalV1::UnknownDocument);
-        }
-        let native = self
-            .document_projections
-            .iter()
-            .find(|projection| projection.protocol == document)
-            .map(|projection| projection.native.clone())
-            .ok_or(RefusalV1::UnknownDocument)?;
+        let native = self.projected_native_document(document)?;
         let mut view = self.workspace.open_view().map_err(classify_workspace)?;
         self.workspace
             .select_document_id(&mut view, &native)
             .map_err(|_| RefusalV1::UnknownDocument)?;
         Ok(view)
+    }
+
+    fn projected_native_document(
+        &self,
+        document: WorkspaceDocumentIdV1,
+    ) -> Result<WorkspaceDocumentId, RefusalV1> {
+        if document.workspace() != self.workspace_id {
+            return Err(RefusalV1::UnknownDocument);
+        }
+        self.document_projections
+            .iter()
+            .find(|projection| projection.protocol == document)
+            .map(|projection| projection.native.clone())
+            .ok_or(RefusalV1::UnknownDocument)
     }
 
     fn durable_save_document(
@@ -3771,7 +3814,7 @@ mod tests {
     fn discovery_failures_are_content_safe_service_unavailability() {
         assert_eq!(
             classify_workspace(WorkspaceError::Discovery(
-                vellum_editor::DirectoryDiscoveryRefusal::Io,
+                vellum_workspace::DirectoryDiscoveryRefusal::Io,
             )),
             RefusalV1::EditorUnavailable
         );

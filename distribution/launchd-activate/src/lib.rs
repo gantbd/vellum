@@ -632,12 +632,12 @@ fn expected_plist(configuration: &ActivationConfigurationV1, daemon: &Path) -> O
 }
 
 fn qualified_daemon(artifacts: &[QualifiedArtifactV1]) -> Option<&QualifiedArtifactV1> {
-    (artifacts.len() == 2
+    (artifacts.len() == 1
         && artifacts
             .iter()
             .map(|artifact| artifact.file.as_str())
             .collect::<BTreeSet<_>>()
-            == BTreeSet::from(["vellum-daemon", "vellum-mcp"]))
+            == BTreeSet::from(["vellum-daemon"]))
     .then(|| {
         artifacts
             .iter()
@@ -878,36 +878,33 @@ fn validate_first_install_version(
                 .map_err(|_| refuse("installed product directory could not be read"))
         })
         .collect::<Result<BTreeSet<_>, _>>()?;
-    if product_entries != BTreeSet::from(["vellum-daemon".into(), "vellum-mcp".into()]) {
+    if product_entries != BTreeSet::from(["vellum-daemon".into()]) {
         return Err(refuse("installed product directory closure differs"));
     }
     canonical_regular_file(&input.plist, configuration.owner_uid, Some(0o600), false)?;
     let daemon = input.directory.join("vellum-daemon");
-    let mcp = input.directory.join("vellum-mcp");
-    if receipt.products.len() != 2
+    if receipt.products.len() != 1
         || receipt
             .products
             .iter()
             .map(|product| product.file.as_str())
             .collect::<BTreeSet<_>>()
-            != BTreeSet::from(["bin/vellum-daemon", "bin/vellum-mcp"])
+            != BTreeSet::from(["bin/vellum-daemon"])
     {
         return Err(refuse("installation receipt product closure differs"));
     }
-    for (path, name) in [(&daemon, "bin/vellum-daemon"), (&mcp, "bin/vellum-mcp")] {
-        canonical_regular_file(path, configuration.owner_uid, Some(0o500), true)?;
-        let expected = receipt
-            .products
-            .iter()
-            .find(|product| product.file == name)
-            .ok_or_else(|| refuse("installation receipt product closure differs"))?;
-        decode_hex::<DIGEST_BYTES>(&expected.sha256)
-            .ok_or_else(|| refuse("installed product digest is invalid"))?;
-        let metadata =
-            fs::metadata(path).map_err(|_| refuse("installed product could not be inspected"))?;
-        if metadata.len() != expected.bytes || sha256_file(path)? != expected.sha256 {
-            return Err(refuse("installed product identity differs"));
-        }
+    canonical_regular_file(&daemon, configuration.owner_uid, Some(0o500), true)?;
+    let expected = receipt
+        .products
+        .iter()
+        .find(|product| product.file == "bin/vellum-daemon")
+        .ok_or_else(|| refuse("installation receipt product closure differs"))?;
+    decode_hex::<DIGEST_BYTES>(&expected.sha256)
+        .ok_or_else(|| refuse("installed product digest is invalid"))?;
+    let metadata =
+        fs::metadata(&daemon).map_err(|_| refuse("installed product could not be inspected"))?;
+    if metadata.len() != expected.bytes || sha256_file(&daemon)? != expected.sha256 {
+        return Err(refuse("installed product identity differs"));
     }
     let plist = fs::read_to_string(&input.plist).map_err(|_| refuse("plist could not be read"))?;
     if Some(plist)
@@ -1007,9 +1004,9 @@ fn prepare_first_install(
     let receipt =
         read_installation_receipt(&configuration.installation_receipt, configuration.owner_uid)?;
     let approval = read_first_install_approval(&configuration.approval, configuration.owner_uid)?;
-    if receipt.schema != 1
+    if receipt.schema != 2
         || receipt.channel != "local-release-candidate-installation"
-        || receipt.claims != ["verified-bundle", "daemon-mcp-only", "durable-local-prefix"]
+        || receipt.claims != ["verified-bundle", "daemon-only", "durable-local-prefix"]
         || receipt.non_claims
             != [
                 "path-configuration",

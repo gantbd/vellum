@@ -11,18 +11,16 @@ Status: source distribution only; no crates.io publication is authorized.
   sibling checkout is optional for builds and is used only to inspect the
   pinned object during local qualification.
 - The nonpublishing `vellum` distribution package owns no runtime semantics. It
-  installs exactly the `vellum-daemon` and `vellum-mcp` peer executables from
-  one Cargo invocation; their implementation and independent package ownership
-  remain unchanged.
+  installs exactly the `vellum-daemon` executable. MCP connectors are
+  independently versioned peer repositories and never enter Vellum's install
+  or candidate artifact closure.
 - The coordinated source manifest pins the reviewed Keystone commit and names
   the only Keystone crates in Vellum's current closure. A local checkout of the
   object is not evidence that the commit is retrievable from GitHub.
 - `vellum-tui` and `vellum-gui-macos` are independent presentation
   repositories and are outside this release unit.
-- `vellum-semantic-mcp` is likewise an independently materialized peer. Its
-  exact-Git source shape is qualified in coordinated CI, but it remains outside
-  the first daemon/native-MCP release candidate while semantic-local provider
-  confinement is unclosed.
+- `vellum-mcp` and `vellum-semantic-mcp` are independently owned peers. Vellum
+  retains only the qualifications that cross the native/peer boundary.
 - A GitHub tag or source archive is not, by itself, a production-support or
   compatibility promise.
 
@@ -40,10 +38,8 @@ Cargo metadata, dependency/effect-boundary, compatibility-baseline,
 supply-chain/SBOM, formatting, lint, test, and documentation checks. The
 source-policy gate additionally inspects a local copy of the pinned Keystone
 object when one is available.
-Coordinated CI also verifies both MCP extraction closures and materializes the
-semantic MCP peer from one committed Vellum tree, then exercises its locked
-tests, strict lint and exact-revision Git installation through local URL
-rewrites. This proves the distribution shape without creating a remote.
+The static MCP peer contract verifies source ownership and retained Vellum
+qualification without recreating peer source inside this repository.
 The supply-chain gate and its explicit nonclaims are documented in
 [`supply-chain.md`](supply-chain.md).
 
@@ -69,8 +65,8 @@ either commit is retrievable from GitHub.
 
 [`release/github-source.json`](../release/github-source.json) is the
 machine-readable source contract. It records the optional local verification
-path, pins Keystone by full commit, excludes `vellum-tui` and `vellum-gui-macos`, and
-identifies `vellum-mcp` as a peer connector to an already-running daemon.
+path, pins Keystone by full commit, excludes `vellum-tui` and
+`vellum-gui-macos`, and declares the daemon-only source-install closure.
 
 From a Vellum checkout with the pinned Keystone object available at the local
 verification path, run:
@@ -86,8 +82,8 @@ identities. It prefetches the locked graph into a fresh private `CARGO_HOME`,
 then builds the archived workspace and executes the documented
 `cargo install --locked --offline --git ... --rev ... vellum` command into a
 fresh install root and target directory. It then executes
-both installed peer help paths plus an empty-invocation refusal. It requires the
-exact two-binary closure, rejects symlink/non-regular/group- or world-writable
+the installed daemon help path plus an empty-invocation refusal. It requires the
+exact one-binary closure, rejects symlink/non-regular/group- or world-writable
 payloads, excludes TUI/GUI binaries, and checks that refusal output discloses
 none of its temporary source/build paths. Ambient `CARGO_*` overrides, Rust
 flags, and compiler wrappers are removed from the child environment. It separately performs
@@ -191,13 +187,13 @@ publication remain separate gates.
 
 The manually dispatched `release-candidate.yml` workflow checks out the exact
 Vellum workflow revision and the Keystone commit pinned by the coordinated
-source manifest. On macOS its product scope remains exactly `vellum-daemon`
-and `vellum-mcp`, both built from the installation-only `vellum` package; it
+source manifest. On macOS its product scope is exactly `vellum-daemon`, built
+from the installation-only `vellum` package; it
 also builds the two separately classified launchd
 deployment tools. It stages the product binaries, executes each staged
 `--help` path, and checksum-closes the inert, relocatable
 `vellum-launchd-render` helper and activation executor. It uploads one
-short-lived canonical USTAR Actions artifact containing the two binaries, the
+short-lived canonical USTAR Actions artifact containing the daemon binary, the
 renderer, the separately authorized activation executor, a content-safe
 `manifest.json`, `SHA256SUMS`, and byte-equivalence evidence. The renderer emits a
 fail-closed read-only LaunchAgent plist but
@@ -217,14 +213,14 @@ clones and exact URL rewrites are used; the qualifier performs no remote fetch,
 release, package publication, or activation.
 
 Before upload, the workflow also installs that exact flattened-mode download
-into a fresh private scratch root and executes the installed daemon and MCP help
-paths. The installer admits only those two product binaries and a canonical
+into a fresh private scratch root and executes the installed daemon help path.
+The installer admits only that daemon product and a canonical schema-2
 receipt. It does not place the packaged launchd tools in the ordinary product
 prefix, mutate `PATH`, install a plist, invoke launchd, activate, overwrite,
 upgrade or uninstall. This qualifies the download-to-binaries path without
 granting deployment authority.
 
-`vellum-semantic-local`, `vellum-semantic-mcp`, and all TUI/GUI applications
+`vellum-mcp`, `vellum-semantic-local`, `vellum-semantic-mcp`, and all TUI/GUI applications
 are explicitly outside this artifact set. In particular, semantic-local must
 not enter a production distribution until immutable executable/loader identity,
 provider confinement, physical resource policy, abrupt-owner cleanup,

@@ -448,3 +448,51 @@ fn membership_retirement_is_idempotent_bounded_and_does_not_delete_files_or_casc
     assert!(readmitted.added);
     assert_ne!(readmitted.document, admitted.document);
 }
+
+#[test]
+fn handoff_captures_authorized_unsaved_bytes_for_exact_workspace_member() {
+    let first = Fixture::new("\u{feff}alpha\r\n");
+    let second = Fixture::new("beta");
+    let mut workspace = Workspace::open(&[first.0.clone(), second.0.clone()], profile()).unwrap();
+    let ids = workspace.inventory().unwrap().documents;
+    let old = workspace.document_snapshot(&ids[0]).unwrap();
+    assert!(
+        workspace
+            .capture_document_for_handoff(&ids[0], &old.version, |_, _| false)
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        workspace.capture_document_for_handoff(&ids[1], &old.version, |_, _| panic!(
+            "foreign member reached policy"
+        )),
+        Err(WorkspaceError::InvalidView)
+    ));
+    workspace
+        .edit_document_batch(&[WorkspaceDocumentEdits {
+            document: ids[0].clone(),
+            expected: old.version.clone(),
+            edits: vec![Replacement {
+                start: old.text.find("alpha").unwrap(),
+                end: old.text.find("alpha").unwrap() + 5,
+                expected: "alpha".into(),
+                inserted: "edited".into(),
+            }],
+        }])
+        .unwrap();
+    assert!(
+        workspace
+            .capture_document_for_handoff(&ids[0], &old.version, |_, _| true)
+            .is_err()
+    );
+    let current = workspace.document_version(&ids[0]).unwrap();
+    let captured = workspace
+        .capture_document_for_handoff(&ids[0], &current, |member, version| {
+            member == &ids[0] && version == &current
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(captured.source(), &current);
+    assert_eq!(captured.bytes(), b"\xef\xbb\xbfedited\r\n");
+    assert_eq!(fs::read(&first.0).unwrap(), b"\xef\xbb\xbfalpha\r\n");
+}

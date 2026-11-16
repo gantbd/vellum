@@ -34,10 +34,6 @@ use vellum_adapter_local_fs::{
     FilesystemLimits, LocalDirectoryDiscovery, LocalExportCopyEffectV1, LocalRequestJournalV1,
     LocalWorkspaceIdentityMetadataV1, install_local_export_destination,
 };
-#[cfg(unix)]
-use vellum_editor::Workspace;
-#[cfg(target_os = "macos")]
-use vellum_editor::{WorkspaceConfig, WorkspaceError};
 #[cfg(target_os = "macos")]
 use vellum_host::authority::{
     AuthorityActionSetV1, AuthorityActionV1, AuthorityDecisionRefV1, AuthorityResourceRefV1,
@@ -101,6 +97,10 @@ use vellum_wire::{
     WireReplyV1, WireRequestV1, decode_reply_v1, decode_request_v1, encode_reply_v1,
     encode_request_v1,
 };
+#[cfg(unix)]
+use vellum_workspace::Workspace;
+#[cfg(target_os = "macos")]
+use vellum_workspace::{WorkspaceConfig, WorkspaceError};
 
 #[cfg(unix)]
 const AUTHENTICATION_HANDSHAKE_VERSION_V1: u8 = 1;

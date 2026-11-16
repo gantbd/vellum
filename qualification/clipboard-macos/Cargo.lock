@@ -108,6 +108,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "keystone-observe"
 version = "0.0.1"
+source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
 
 [[package]]
 name = "libc"
@@ -320,9 +321,6 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
- "vellum-editor",
- "vellum-engine",
- "vellum-session",
 ]
 
 [[package]]
@@ -332,6 +330,17 @@ dependencies = [
  "rustix",
  "vellum-engine",
  "vellum-host",
+ "vellum-protocol",
+]
+
+[[package]]
+name = "vellum-clipboard-macos"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "vellum-adapter-clipboard-macos",
+ "vellum-editor",
+ "vellum-session",
 ]
 
 [[package]]
@@ -342,8 +351,8 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "vellum-adapter-annotation-json",
- "vellum-adapter-clipboard-macos",
  "vellum-adapter-local-fs",
+ "vellum-clipboard-macos",
  "vellum-editor",
 ]
 
@@ -358,6 +367,7 @@ dependencies = [
  "vellum-engine",
  "vellum-host",
  "vellum-session",
+ "vellum-workspace",
 ]
 
 [[package]]
@@ -365,6 +375,7 @@ name = "vellum-engine"
 version = "0.1.0"
 dependencies = [
  "keystone-observe",
+ "sha2",
 ]
 
 [[package]]
@@ -373,7 +384,12 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "vellum-engine",
+ "vellum-protocol",
 ]
+
+[[package]]
+name = "vellum-protocol"
+version = "0.1.0"
 
 [[package]]
 name = "vellum-session"
@@ -381,6 +397,15 @@ version = "0.1.0"
 dependencies = [
  "vellum-engine",
  "vellum-host",
+]
+
+[[package]]
+name = "vellum-workspace"
+version = "0.1.0"
+dependencies = [
+ "vellum-engine",
+ "vellum-host",
+ "vellum-session",
 ]
 
 [[package]]

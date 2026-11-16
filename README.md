@@ -4,16 +4,16 @@ Vellum is a headless, agent-friendly Rust editing engine for code and prose.
 Its engine owns authoritative source and history state, bounded admission,
 retained outcomes, and content-safe instrumentation. The repository also owns
 the adapter-neutral host, native protocol/service/client profile, qualified
-first-party adapters, connectors, and non-UI composition roots. These remain
+first-party adapters, and non-UI composition roots. Inbound connectors are
+independently versioned peer repositories. These remain
 separate crates with enforced dependency direction.
 
 The workspace is organized by architectural role rather than packaging type:
 
 - `engine/` — categorically closed `vellum-engine` semantics
-- `host/` — trusted ports, session orchestration, and headless editor substrate
+- `host/` — trusted ports, session/workspace authority, and editor controller
 - `protocol/`, `client/`, `service/`, and `transport/` — native service contract
 - `adapters/` — qualified outbound effect interpretations
-- `connectors/` — inbound protocol projections such as MCP
 - `applications/` — non-UI executable composition roots such as the daemon
 - `qualification/` — unpublished conformance and live-platform probes
 - `sdk/` — zero-authority embedded and client distribution facades
@@ -45,14 +45,14 @@ working-tree bytes. The engine crate itself has no upward
 Vellum, UI, filesystem, clipboard, ICU, service-runtime, or
 application-framework dependency.
 
-Install both first-release executables from one source checkout with:
+Install the Vellum daemon from one source checkout with:
 
 ```sh
 cargo install --locked --path distribution/cargo-install
 ```
 
-That installation-only package contains no engine behavior. It installs the
-independent `vellum-daemon` service and `vellum-mcp` peer connector. The
+That installation-only package contains no engine behavior. It installs only
+the `vellum-daemon` service. MCP connectors are independently owned peers. The
 equivalent command for a remotely available Vellum release commit is:
 
 ```sh
@@ -74,7 +74,7 @@ node scripts/install-release-candidate.mjs \
 ```
 
 Run the installer from the exact Vellum source revision that produced the
-candidate. It installs only `bin/vellum-daemon` and `bin/vellum-mcp`; it does
+candidate. It installs only `bin/vellum-daemon`; it does
 not alter `PATH`, install a plist, invoke launchd, activate a service, fetch a
 dependency, overwrite an installation, or install the packaged deployment
 tools. See the [artifact lifecycle](docs/artifact-lifecycle.md).

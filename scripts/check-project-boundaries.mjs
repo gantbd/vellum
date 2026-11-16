@@ -18,6 +18,7 @@ const locations = new Map([
   ['vellum-engine', '/engine/'],
   ['vellum-host', '/host/'],
   ['vellum-session', '/host/'],
+  ['vellum-workspace', '/host/'],
   ['vellum-editor', '/host/'],
   ['vellum-protocol', '/protocol/'],
   ['vellum-wire', '/protocol/'],
@@ -42,9 +43,8 @@ const locations = new Map([
   ['vellum-adapter-unicode-icu', '/adapters/'],
   ['vellum-adapter-semantic-lsp', '/adapters/'],
   ['vellum-adapter-clipboard-macos', '/adapters/'],
-  ['vellum-mcp', '/connectors/'],
-  ['vellum-semantic-mcp', '/connectors/'],
   ['vellum-daemon', '/applications/'],
+  ['vellum-clipboard-macos', '/applications/'],
   ['vellum-semantic-local', '/applications/'],
   ['vellum', '/distribution/'],
   ['vellum-launchd-activate', '/distribution/'],
@@ -156,13 +156,14 @@ forbidEdges(
 );
 requireEdges(
   'vellum-semantic-apply-service',
-  ['vellum-engine', 'vellum-editor', 'vellum-host', 'vellum-semantic-service'],
+  ['vellum-engine', 'vellum-workspace', 'vellum-host', 'vellum-semantic-service'],
   false,
 );
 forbidEdges(
   'vellum-semantic-apply-service',
   [
     'vellum-client',
+    'vellum-editor',
     'vellum-semantic-client',
     'vellum-service',
     'vellum-session',
@@ -250,11 +251,23 @@ requireEdges(
   [
     'vellum-service',
     'vellum-transport',
-    'vellum-editor',
+    'vellum-workspace',
     'vellum-adapter-local-fs',
     'vellum-adapter-local-authentication',
   ],
 );
+requireEdges('vellum-clipboard-macos', [
+  'vellum-adapter-clipboard-macos',
+  'vellum-editor',
+  'vellum-session',
+]);
+forbidEdges('vellum-adapter-clipboard-macos', [
+  'vellum-engine',
+  'vellum-editor',
+  'vellum-session',
+]);
+forbidEdges('vellum-service', ['vellum-editor'], false);
+forbidEdges('vellum-daemon', ['vellum-editor'], false);
 requireEdges(
   'vellum-semantic-local',
   ['vellum-adapter-semantic-lsp', 'vellum-host'],
@@ -263,53 +276,6 @@ requireEdges(
 forbidEdges(
   'vellum-semantic-local',
   ['vellum-engine', 'vellum-editor', 'vellum-session', 'vellum-service', 'vellum-mcp'],
-  false,
-);
-requireEdges(
-  'vellum-mcp',
-  ['vellum-sdk-client', 'vellum-adapter-local-authentication'],
-  false,
-);
-requireEdges(
-  'vellum-semantic-mcp',
-  [
-    'vellum-sdk-client',
-    'vellum-sdk-semantic-client',
-    'vellum-adapter-local-authentication',
-  ],
-  false,
-);
-forbidEdges(
-  'vellum-semantic-mcp',
-  [
-    'vellum-host',
-    'vellum-semantic-apply-service',
-    'vellum-adapter-semantic-lsp',
-    'vellum-editor',
-    'vellum-engine',
-    'vellum-session',
-    'vellum-service',
-    'vellum-semantic-local',
-    'vellum-semantic-client',
-    'vellum-semantic-protocol',
-    'vellum-semantic-service',
-    'vellum-semantic-session-client',
-    'vellum-semantic-transport',
-  ],
-  false,
-);
-forbidEdges(
-  'vellum-mcp',
-  [
-    'vellum-client',
-    'vellum-protocol',
-    'vellum-transport',
-    'vellum-engine',
-    'vellum-host',
-    'vellum-session',
-    'vellum-editor',
-    'vellum-service',
-  ],
   false,
 );
 requireEdges('vellum-sdk-embedded', ['vellum-host', 'vellum-session', 'vellum-editor']);
@@ -333,7 +299,7 @@ requireEdges(
     'vellum-semantic-transport',
   ],
 );
-requireEdges('vellum', ['vellum-daemon', 'vellum-mcp'], false);
+requireEdges('vellum', ['vellum-daemon'], false);
 for (const dependency of dependencies('vellum-launchd-render', false)) {
   if (!['rustix', 'serde', 'serde_json'].includes(dependency)) {
     failures.push(`launchd renderer has forbidden runtime dependency on ${dependency}`);
@@ -369,9 +335,8 @@ for (const pkg of packages.values()) {
       dependency.name.startsWith('vellum-adapter-') &&
       ![
         'vellum-daemon',
-        'vellum-mcp',
+        'vellum-clipboard-macos',
         'vellum-semantic-local',
-        'vellum-semantic-mcp',
       ].includes(pkg.name) &&
       !pkg.name.startsWith('vellum-adapter-')
     ) {
@@ -472,6 +437,44 @@ if (semanticProviderCargo.status !== 0) {
   }
 }
 
+const mcpLiveDaemonCargo = spawnSync(
+  'cargo',
+  [
+    'metadata', '--offline', '--locked', '--no-deps', '--format-version', '1',
+    '--manifest-path', 'qualification/mcp-live-daemon/Cargo.toml',
+  ],
+  { encoding: 'utf8' },
+);
+if (mcpLiveDaemonCargo.status !== 0) {
+  failures.push(`MCP live-daemon qualification metadata failed: ${mcpLiveDaemonCargo.stderr}`);
+} else {
+  const mcpMetadata = JSON.parse(mcpLiveDaemonCargo.stdout);
+  const qualification = mcpMetadata.packages.find(
+    (pkg) => pkg.name === 'vellum-mcp-live-daemon-qualification',
+  );
+  if (qualification === undefined) {
+    failures.push('MCP live-daemon qualification package is missing');
+  } else {
+    if (qualification.publish?.length !== 0) {
+      failures.push('MCP live-daemon qualification must remain unpublished');
+    }
+    const edges = new Set(qualification.dependencies.map((dependency) => dependency.name));
+    for (const required of ['vellum-mcp', 'vellum-daemon', 'vellum-service', 'vellum-workspace']) {
+      if (!edges.has(required)) {
+        failures.push(`MCP live-daemon qualification must exercise ${required}`);
+      }
+    }
+    for (const forbidden of ['vellum-editor', 'vellum-tui', 'vellum-gui-macos', 'vellum-semantic-mcp']) {
+      if (edges.has(forbidden)) {
+        failures.push(`MCP live-daemon qualification has forbidden presentation edge ${forbidden}`);
+      }
+    }
+  }
+  if (mcpMetadata.workspace_members.length !== 1) {
+    failures.push('MCP live-daemon qualification must remain a standalone workspace');
+  }
+}
+
 const rootManifest = fs.readFileSync('Cargo.toml', 'utf8');
 const qualificationManifest = fs.readFileSync(
   'qualification/clipboard-macos/Cargo.toml',
@@ -489,5 +492,5 @@ if (failures.length !== 0) {
   process.exit(1);
 }
 process.stdout.write(
-  `Vellum boundaries closed; ${packages.size} crates, 3 zero-authority SDK facades, 4 adapter-selecting composition roots, 3 standalone qualification packages\n`,
+  `Vellum boundaries closed; ${packages.size} crates, 3 zero-authority SDK facades, 5 adapter-selecting composition roots, 4 standalone qualification packages\n`,
 );

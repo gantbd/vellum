@@ -8,20 +8,10 @@ repository.workspace = true
 publish.workspace = true
 description = "Bounded eager plain-text AppKit clipboard I/O, outside the editor engine"
 
-[features]
-qualification-harness = []
-
 [target.'cfg(target_os = "macos")'.dependencies]
-vellum-engine = { version = "=0.1.0", path = "../../engine/vellum-engine" }
-vellum-editor = { version = "=0.1.0", path = "../../host/vellum-editor" }
-vellum-session = { version = "=0.1.0", path = "../../host/vellum-session" }
 objc2 = { version = "=0.6.5", features = ["exception"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSData", "NSThread"] }
-
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-vellum-adapter-local-fs = { version = "=0.1.0", path = "../local-fs" }
-vellum-adapter-annotation-json = { version = "=0.1.0", path = "../annotation-json" }
 
 [lints]
 workspace = true

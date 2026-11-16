@@ -47,7 +47,7 @@ renderer whose checksum is internally consistent but whose behavior emits a
 different or malformed profile is refused before evidence publication.
 
 The local non-activating activation-transaction model stages each candidate and prior
-daemon/MCP/plist triple as one immutable digest-named version and atomically
+daemon/plist pair as one immutable digest-named version and atomically
 replaces a content-safe desired-deployment pointer. A synchronized journal
 distinguishes prepared, candidate, rollback, terminal, refused, and unknown
 cuts, including crashes between pointer and journal publication. This closes a
@@ -64,7 +64,7 @@ tool and qualification exercises only `--help`; its transaction tests inject
 all effects and never invoke launchctl.
 
 For an authorized first installation, use the verified bundle installer's
-canonical `0400` receipt and closed two-product `bin` directory, render and
+canonical `0400` schema-2 receipt and closed daemon-only `bin` directory, render and
 inspect a separate exact plist, then use the executor's explicit
 `--execute-authorized-first-install` path with its separate candidate-only
 approval and configuration. The receipt records verification and durable local

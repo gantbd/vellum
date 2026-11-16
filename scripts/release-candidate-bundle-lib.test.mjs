@@ -95,18 +95,17 @@ const writeMutant = (label, bytes) => {
 try {
   fs.mkdirSync(candidate, { recursive: true, mode: 0o700 });
   fs.chmodSync(candidate, 0o700);
-  for (const name of ['vellum-daemon', 'vellum-mcp']) {
+  for (const name of ['vellum-daemon']) {
     write(path.join(candidate, name), `#!/bin/sh\necho '${name} --help'\n`, 0o755);
   }
   for (const name of ['vellum-launchd-render', 'vellum-launchd-activate']) {
     fs.copyFileSync(path.join(targetDirectory, 'debug', name), path.join(candidate, name));
     fs.chmodSync(path.join(candidate, name), 0o755);
   }
-  const artifacts = ['vellum-daemon', 'vellum-mcp'].map((name, index) => ({
+  const artifacts = ['vellum-daemon'].map((name) => ({
     package: 'vellum', binary: name, file: name,
     bytes: fs.statSync(path.join(candidate, name)).size,
     sha256: sha256File(path.join(candidate, name)),
-    ...(index === 1 ? { role: 'peer connector to an already-running daemon' } : {}),
   }));
   const deployment = ['vellum-launchd-render', 'vellum-launchd-activate'].map((name, index) => ({
     file: name,
@@ -118,7 +117,7 @@ try {
     runtime: 'native',
   }));
   const manifest = {
-    schema: 5,
+    schema: 6,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build', 'native-help-smoke', 'sha256-checksums',

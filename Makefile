@@ -1,6 +1,6 @@
-.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-candidate-install check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-extraction check-mcp-official-client-profile check-release-contract check-semantic-provider-qualification check-shipped-mcp check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-mcp-official-client qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
+.PHONY: check check-activation-transaction check-artifact-lifecycle check-boundaries check-candidate-bundle check-candidate-install check-cargo-install-qualification check-clean-release-candidate check-compatibility check-effect-boundaries check-fuzz-soak check-launchd-activation check-launchd-distribution check-mcp-peers check-mcp-official-client-profile check-release-contract check-semantic-provider-qualification check-shipped-mcp check-supply-chain sbom fmt lint test doc perf-build perf perf-run check-perf qualify-mcp-official-client qualify-unicode qualify-unicode-portable qualify-github-source qualify-semantic-provider
 
-check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-candidate-install check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-extraction check-mcp-official-client-profile check-shipped-mcp check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
+check: check-release-contract check-artifact-lifecycle check-candidate-bundle check-candidate-install check-activation-transaction check-cargo-install-qualification check-launchd-distribution check-launchd-activation check-mcp-peers check-mcp-official-client-profile check-boundaries check-effect-boundaries check-compatibility check-supply-chain check-semantic-provider-qualification fmt lint test doc
 
 check-release-contract:
 	node scripts/check-release-contract.mjs
@@ -52,13 +52,9 @@ check-launchd-activation:
 	cargo test --locked --offline -p vellum-launchd-activate --all-targets --all-features
 	cargo clippy --locked --offline -p vellum-launchd-activate --all-targets --all-features -- -D warnings
 
-check-mcp-extraction:
-	node --check scripts/verify-mcp-extraction.mjs
-	node --check scripts/emit-mcp-peer-source.mjs
-	node --check scripts/verify-semantic-mcp-extraction.mjs
-	node --check scripts/emit-semantic-mcp-peer-source.mjs
-	node scripts/verify-mcp-extraction.mjs
-	node scripts/verify-semantic-mcp-extraction.mjs
+check-mcp-peers:
+	node --check scripts/check-mcp-peers.mjs
+	node scripts/check-mcp-peers.mjs
 
 check-mcp-official-client-profile:
 	node --check qualification/mcp-official-client/verify-source.mjs
@@ -69,12 +65,14 @@ check-mcp-official-client-profile:
 qualify-mcp-official-client: check-mcp-official-client-profile
 	node qualification/mcp-official-client/verify-source.mjs
 	@test -d qualification/mcp-official-client/node_modules || (echo "official MCP client locked closure is not installed" >&2; exit 1)
-	cargo build --locked --offline -p vellum-daemon --bin vellum-daemon -p vellum-mcp --bin vellum-mcp
-	VELLUM_DAEMON_BIN="$(CURDIR)/target/debug/vellum-daemon" VELLUM_MCP_BIN="$(CURDIR)/target/debug/vellum-mcp" node qualification/mcp-official-client/qualify.mjs
+	cargo build --locked --offline -p vellum-daemon --bin vellum-daemon
+	cargo build --manifest-path ../vellum-mcp/Cargo.toml --locked --offline --bin vellum-mcp
+	VELLUM_DAEMON_BIN="$(CURDIR)/target/debug/vellum-daemon" VELLUM_MCP_BIN="$(CURDIR)/../vellum-mcp/target/debug/vellum-mcp" node qualification/mcp-official-client/qualify.mjs
 
 check-shipped-mcp:
-	cargo build --locked --offline -p vellum-daemon --bin vellum-daemon -p vellum-mcp --bin vellum-mcp
-	cargo test --locked --offline -p vellum-mcp --test live_daemon shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog -- --exact --ignored
+	cargo build --locked --offline -p vellum-daemon --bin vellum-daemon
+	cargo build --manifest-path ../vellum-mcp/Cargo.toml --locked --offline --bin vellum-mcp
+	VELLUM_DAEMON_BIN="$(CURDIR)/target/debug/vellum-daemon" VELLUM_MCP_BIN="$(CURDIR)/../vellum-mcp/target/debug/vellum-mcp" cargo test --manifest-path qualification/mcp-live-daemon/Cargo.toml --locked --offline --test live_daemon shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog -- --exact --ignored
 
 check-boundaries:
 	node scripts/check-project-boundaries.mjs

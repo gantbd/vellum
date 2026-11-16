@@ -196,8 +196,9 @@ untrusted-script sandbox or frozen compatibility promise.
   completion follows the original plan, never current focus. A new applied active
   result spends old widget input and refreshes source projection; background
   results and retained retries do not reset the current attachment. Replacement
-  projection caches are staged before installation. `vellum-adapter-clipboard-macos`
-  now supplies `EditorClipboard` over those routes: explicit host premises,
+  projection caches are staged before installation. The
+  `vellum-clipboard-macos` application composition supplies `EditorClipboard`
+  over the bounded AppKit adapter: explicit host premises,
   one pending original operation, retained provider receipts and independent
   publication/retirement. Delivery retries never repeat platform work;
   platform-result summaries remain distinct from native local outcomes. An eager

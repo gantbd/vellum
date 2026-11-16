@@ -41,19 +41,9 @@ jobs:
       - name: Qualify clean archive and immutable-Git installation
         working-directory: vellum
         run: make check-cargo-install-qualification qualify-github-source
-      - name: Qualify MCP peer extraction boundaries
+      - name: Qualify MCP peer ownership boundaries
         working-directory: vellum
-        run: make check-mcp-extraction check-mcp-official-client-profile
-      - name: Qualify the official MCP client against the Rust peers
-        working-directory: vellum
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund --prefix qualification/mcp-official-client
-          make qualify-mcp-official-client
-      - name: Materialize exact-Git semantic MCP peer
-        working-directory: vellum
-        run: >-
-          node scripts/emit-semantic-mcp-peer-source.mjs
-          --output=.peer-staging/vellum-semantic-mcp
+        run: make check-mcp-peers check-mcp-official-client-profile
       - name: Check dependency, effect, and release policies offline
         working-directory: vellum
         run: >-
@@ -68,9 +58,6 @@ jobs:
       - name: Test every target and feature offline
         working-directory: vellum
         run: cargo test --workspace --all-targets --all-features --locked --offline
-      - name: Qualify the shipped daemon and MCP peer together
-        working-directory: vellum
-        run: make check-shipped-mcp
       - name: Test deterministic semantic-provider qualification offline
         working-directory: vellum
         run: make check-semantic-provider-qualification

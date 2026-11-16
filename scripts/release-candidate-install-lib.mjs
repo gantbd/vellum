@@ -12,7 +12,6 @@ const PRODUCT_DIRECTORY = 'bin';
 const FAULTS = new Set([
   'after-bin',
   'after-vellum-daemon',
-  'after-vellum-mcp',
 ]);
 
 const fail = (message) => {
@@ -78,10 +77,10 @@ const writeExclusiveDurable = (destination, bytes, mode) => {
 };
 
 const receiptFor = (prepared) => ({
-  schema: 1,
+  schema: 2,
   channel: 'local-release-candidate-installation',
   manifestSha256: prepared.report.manifestSha256,
-  claims: ['verified-bundle', 'daemon-mcp-only', 'durable-local-prefix'],
+  claims: ['verified-bundle', 'daemon-only', 'durable-local-prefix'],
   nonClaims: [
     'path-configuration',
     'launchd-installation',

@@ -15,7 +15,7 @@ resolver = "3"
 objc2-app-kit = { path = "../../vendor/objc2-app-kit" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-vellum-adapter-clipboard-macos = { path = "../../adapters/clipboard-macos", features = ["qualification-harness"] }
+vellum-clipboard-macos = { path = "../../applications/vellum-clipboard-macos", features = ["qualification-harness"] }
 vellum-adapter-local-fs = { path = "../../adapters/local-fs" }
 vellum-adapter-annotation-json = { path = "../../adapters/annotation-json" }
 vellum-editor = { path = "../../host/vellum-editor" }

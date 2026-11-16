@@ -79,10 +79,10 @@ if (
   || candidate.publishing !== 'none'
   || candidate.signing !== 'none'
   || candidate.attestation !== 'none'
-  || candidatePackages.join(',') !== 'vellum-daemon,vellum-mcp'
+  || candidatePackages.join(',') !== 'vellum-daemon'
   || profiles.some((profile) => profile === undefined)
 ) {
-  throw new Error('release-candidate scope must be exactly daemon and MCP');
+  throw new Error('release-candidate scope must be exactly the daemon');
 }
 if (profiles.some((profile) => profile.platform === 'macos') && process.platform !== 'darwin') {
   throw new Error('the coordinated daemon release candidate requires macOS');
@@ -134,9 +134,6 @@ try {
       file: profile.binary,
       bytes: fs.statSync(staged).size,
       sha256: sha256(staged),
-      ...(profile.binary === 'vellum-mcp'
-        ? { role: 'peer connector to an already-running daemon' }
-        : {}),
     });
   }
   const deployment = DEPLOYMENT_NAMES.map((name, index) => {
@@ -158,7 +155,7 @@ try {
   });
 
   const manifest = {
-    schema: 5,
+    schema: 6,
     channel: 'github-release-candidate-artifact',
     claims: [
       'locked-workspace-build',
@@ -238,7 +235,7 @@ try {
     mode: 0o600,
   });
   process.stdout.write(
-    `Vellum release candidate staged: ${vellumRevision}; ${artifacts.length} binaries; unsigned and unattested\n`,
+    `Vellum release candidate staged: ${vellumRevision}; ${artifacts.length} ${artifacts.length === 1 ? 'binary' : 'binaries'}; unsigned and unattested\n`,
   );
 } catch (error) {
   fs.rmSync(output, { recursive: true, force: true });

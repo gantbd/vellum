@@ -1,31 +1,18 @@
-//! Eager plain-text clipboard I/O and original-operation integration, not a
-//! semantic publisher, authority evaluator or second native task registry.
+//! Bounded eager plain-text AppKit I/O, not an editor workflow, semantic
+//! publisher, authority evaluator, or presentation controller.
 //!
-//! `EditorClipboard` orchestrates admission, one dispatch, retained receipts and
-//! separately authorized publication through the existing Editor facade. Call
-//! raw `AppKitClipboard` only after that facade releases the original payload;
-//! feed results into the same native owner. Do not
-//! infer cut deletion or retry permission from these provider values. Acceptance
-//! is AppKit acceptance, not persistence or delivery to another application.
+//! Acceptance is AppKit acceptance, not persistence or delivery to another
+//! application. Editor admission and publication belong to an application
+//! composition such as `vellum-clipboard-macos`.
 //! This module does not read the clipboard during construction or observation.
 #![forbid(unsafe_code)]
 #![cfg(target_os = "macos")]
 
 use std::time::{Duration, Instant};
-mod integration;
-pub use integration::{
-    Admission, ClipboardStage, DesktopAccess, DesktopResult, EditorClipboard, IntegrationError,
-    ProviderReceiptSummary, Publication, ReferenceClipboard,
-};
-#[cfg(feature = "qualification-harness")]
-#[doc(hidden)]
-pub use integration::{QualificationBackend, QualificationWriteError, qualify_backend};
-pub use vellum_session::host::copy_transfer::TextTransferKindV1 as Operation;
-
 #[cfg(target_os = "macos")]
 mod appkit;
 #[cfg(target_os = "macos")]
-pub use appkit::AppKitClipboard;
+pub use appkit::{AppKit, AppKitClipboard};
 
 pub const ACKNOWLEDGMENT_PROFILE: &str = "macos.appkit.eager-plain/1";
 
@@ -99,20 +86,26 @@ pub struct Usage {
 
 // Private platform port permits deterministic fault tests without a general
 // pasteboard, a hidden session clipboard, or a production fake provider profile.
-trait Backend {
-    fn write(&mut self, text: &str) -> Result<bool, ()>;
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendWriteError;
+
+#[doc(hidden)]
+pub trait Backend {
+    fn write(&mut self, text: &str) -> Result<bool, BackendWriteError>;
     fn read(&mut self, max_bytes: usize) -> Result<Option<String>, Error>;
 }
 
-struct Provider<B> {
-    backend: B,
-    limits: Limits,
+#[doc(hidden)]
+pub struct Provider<B> {
+    pub backend: B,
+    pub limits: Limits,
     timed: bool,
-    usage: Usage,
+    pub usage: Usage,
 }
 
 impl<B: Backend> Provider<B> {
-    fn new(backend: B, limits: Limits, timed: bool) -> Result<Self, Error> {
+    pub fn new(backend: B, limits: Limits, timed: bool) -> Result<Self, Error> {
         if limits.max_plain_bytes == 0 || limits.max_plain_bytes > isize::MAX as usize {
             return Err(Error::Limit);
         }
@@ -124,7 +117,7 @@ impl<B: Backend> Provider<B> {
         })
     }
 
-    fn export(&mut self, text: &str) -> ExportOutcome {
+    pub fn export(&mut self, text: &str) -> ExportOutcome {
         self.usage.export_offers = self.usage.export_offers.saturating_add(1);
         let start = self.timed.then(clock).flatten();
         let outcome = if text.len() > self.limits.max_plain_bytes {
@@ -133,7 +126,7 @@ impl<B: Backend> Provider<B> {
             match self.backend.write(text) {
                 Ok(true) => ExportOutcome::Accepted,
                 Ok(false) => ExportOutcome::RejectedAfterClear,
-                Err(()) => ExportOutcome::Unknown,
+                Err(BackendWriteError) => ExportOutcome::Unknown,
             }
         };
         let counter = match outcome {
@@ -157,7 +150,7 @@ impl<B: Backend> Provider<B> {
         outcome
     }
 
-    fn read(&mut self) -> Result<Option<String>, Error> {
+    pub fn read(&mut self) -> Result<Option<String>, Error> {
         self.usage.read_offers = self.usage.read_offers.saturating_add(1);
         let start = self.timed.then(clock).flatten();
         let result = self

@@ -1,4 +1,5 @@
 #![cfg(target_os = "macos")]
+//! Vellum-owned coordinated qualification of the independently owned MCP peer.
 
 use serde_json::{Value, json};
 use std::{
@@ -18,7 +19,7 @@ use vellum_adapter_local_fs::{
     LocalWorkspaceIdentityMetadataV1,
 };
 use vellum_daemon::{AuthenticatedUnixConnector, DaemonExportPolicyV1, DaemonLimits, LocalDaemon};
-use vellum_editor::Workspace;
+use vellum_workspace::Workspace;
 use vellum_host::{
     authority::{AuthorityActionSetV1, AuthorityActionV1},
     request_journal::{
@@ -63,17 +64,21 @@ fn durable_call(name: &str, arguments: Value) -> Vec<u8> {
 }
 
 fn built_daemon_binary() -> PathBuf {
-    let executable = std::env::current_exe().unwrap();
-    let profile = executable
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("integration test executable must be below PROFILE/deps");
-    let daemon = profile.join("vellum-daemon");
-    assert!(
-        daemon.is_file(),
-        "build both product binaries before process qualification"
-    );
-    daemon
+    let binary = std::env::var_os("VELLUM_DAEMON_BIN")
+        .map(PathBuf::from)
+        .expect("VELLUM_DAEMON_BIN must identify the built Vellum daemon");
+    assert!(binary.is_absolute(), "VELLUM_DAEMON_BIN must be absolute");
+    assert!(binary.is_file(), "VELLUM_DAEMON_BIN must be a regular file");
+    binary
+}
+
+fn built_mcp_binary() -> PathBuf {
+    let binary = std::env::var_os("VELLUM_MCP_BIN")
+        .map(PathBuf::from)
+        .expect("VELLUM_MCP_BIN must identify the built sibling MCP peer");
+    assert!(binary.is_absolute(), "VELLUM_MCP_BIN must be absolute");
+    assert!(binary.is_file(), "VELLUM_MCP_BIN must be a regular file");
+    binary
 }
 
 fn recovered_document(
@@ -151,12 +156,17 @@ fn inject_save_as_record(
     }
 }
 
-fn extraction_catalog() -> (Vec<String>, Vec<String>) {
-    let contract =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../release/vellum-mcp-extraction.json");
+fn peer_catalog() -> (Vec<String>, Vec<String>) {
+    let contract = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../release/mcp-peers.json");
     let contract: Value = serde_json::from_slice(&fs::read(contract).unwrap()).unwrap();
+    let peer = contract["peers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|peer| peer["package"] == "vellum-mcp")
+        .expect("ordinary MCP peer contract");
     let names = |field: &str| {
-        contract["protocol"][field]
+        peer[field]
             .as_array()
             .unwrap_or_else(|| panic!("protocol.{field} must be an array"))
             .iter()
@@ -234,7 +244,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         );
     }
 
-    let mut mcp = Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+    let mut mcp = Command::new(built_mcp_binary())
         .arg("--socket")
         .arg(&socket)
         .arg("--credential")
@@ -309,7 +319,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect::<Vec<_>>();
-    let (ordinary_contract, authenticated_contract) = extraction_catalog();
+    let (ordinary_contract, authenticated_contract) = peer_catalog();
     let ordinary_runtime = [
         SNAPSHOT_TOOL,
         SAVE_TOOL,
@@ -385,7 +395,7 @@ fn shipped_daemon_and_mcp_binaries_share_the_authenticated_durable_catalog() {
     let mut owner_ready = String::new();
     owner_stdout.read_line(&mut owner_ready).unwrap();
     assert_eq!(owner_ready, "vellum-daemon ready\n");
-    let mut owner_mcp = Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+    let mut owner_mcp = Command::new(built_mcp_binary())
         .arg("--socket")
         .arg(&socket)
         .stdin(Stdio::piped())
@@ -501,7 +511,7 @@ fn shipped_processes_recover_a_lost_durable_reply_after_both_restart() {
         assert!(daemon.wait().unwrap().success());
     };
     let spawn_mcp = || {
-        Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+        Command::new(built_mcp_binary())
             .arg("--socket")
             .arg(&socket)
             .arg("--credential")
@@ -672,7 +682,7 @@ fn shipped_mcp_projects_recovered_save_as_and_absorbing_retirement() {
         assert!(daemon.wait().unwrap().success());
     };
     let spawn_mcp = || {
-        Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+        Command::new(built_mcp_binary())
             .arg("--socket")
             .arg(&socket)
             .arg("--credential")
@@ -840,7 +850,7 @@ fn stdio_adapter_reaches_the_real_daemon_and_disconnects_on_eof() {
     let daemon = std::thread::spawn(move || {
         let workspace = Workspace::open(
             std::slice::from_ref(&daemon_source),
-            vellum_editor::reference_workspace_profile(
+            vellum_workspace::reference_workspace_profile(
                 LocalFilesystemFactory::new(FilesystemLimits {
                     max_resources: 8,
                     max_bytes: 4096,
@@ -870,7 +880,7 @@ fn stdio_adapter_reaches_the_real_daemon_and_disconnects_on_eof() {
     });
     ready_rx.recv().unwrap();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_vellum-mcp"))
+    let mut child = Command::new(built_mcp_binary())
         .arg("--socket")
         .arg(&socket)
         .stdin(Stdio::piped())
@@ -943,7 +953,7 @@ fn authenticated_mcp_receipt_lookup_and_retirement_survive_restart_without_reexe
     let workspace = || {
         Workspace::open(
             std::slice::from_ref(&source),
-            vellum_editor::reference_workspace_profile(
+            vellum_workspace::reference_workspace_profile(
                 LocalFilesystemFactory::new(FilesystemLimits {
                     max_resources: 8,
                     max_bytes: 4096,
@@ -1245,7 +1255,7 @@ fn authenticated_mcp_export_lost_reply_recovers_without_republication_or_state_c
     let workspace = || {
         Workspace::open(
             std::slice::from_ref(&source),
-            vellum_editor::reference_workspace_profile(
+            vellum_workspace::reference_workspace_profile(
                 LocalFilesystemFactory::new(FilesystemLimits {
                     max_resources: 8,
                     max_bytes: 4096,

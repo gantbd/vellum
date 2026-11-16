@@ -18,7 +18,7 @@ use vellum_adapter_semantic_lsp::{
     LspServerHealthV1, LspServerIdentityDispositionV1, LspTransportTerminalV1,
     LspVirtualDocumentIssuerV1, LspVirtualDocumentV1, SemanticGenerationIssuerV1,
 };
-use vellum_editor::{Workspace, reference_workspace_profile};
+use vellum_workspace::{Workspace, reference_workspace_profile};
 use vellum_host::{
     authority::{
         AuthorityActionSetV1, AuthorityActionV1, AuthorityContextV1, AuthorityResourceRefV1,

@@ -30,6 +30,59 @@ use vellum_service::{Service, ServiceBuildError, ServiceLimits, ServiceUsage};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn handoff_reads_exact_unsaved_source_from_the_served_workspace() {
+    let fixture = Fixture::new("\u{feff}alpha\r\n");
+    let mut workspace = workspace_for(std::slice::from_ref(&fixture.0));
+    let member = workspace.inventory().unwrap().documents.remove(0);
+    let mut expected = workspace.document_version(&member).unwrap();
+    let mut service = Service::new_with_action_ceiling(
+        workspace,
+        ServiceLimits::reference(),
+        AuthorityActionSetV1::top(),
+    )
+    .unwrap();
+    let client = service.connect().unwrap();
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceInventory(inventory)) =
+        service.execute(request(client, 1, CommandV1::WorkspaceInventory))
+    else {
+        panic!("expected document inventory");
+    };
+    let document = inventory.documents[0];
+    let edit = CommandV1::WorkspaceEdit {
+        documents: vec![WorkspaceDocumentEditV1 {
+            document,
+            expected_revision: expected.revision,
+            replacements: vec![WorkspaceReplacementV1 {
+                start: 0,
+                end: 5,
+                inserted: "beta".into(),
+            }],
+        }],
+    };
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt)) =
+        service.execute(request(client, 2, edit))
+    else {
+        panic!("expected an unsaved edit");
+    };
+    assert!(matches!(
+        service.capture_document_for_handoff(client, document, &expected),
+        Err(RefusalV1::Stale)
+    ));
+    expected.revision = receipt.documents[0].snapshot.revision;
+    let capture = service
+        .capture_document_for_handoff(client, document, &expected)
+        .unwrap();
+    assert_eq!(capture.source(), &expected);
+    assert_eq!(capture.bytes(), b"\xef\xbb\xbfbeta\r\n");
+    assert_eq!(fs::read(&fixture.0).unwrap(), b"\xef\xbb\xbfalpha\r\n");
+    service.disconnect(client).unwrap();
+    assert!(matches!(
+        service.capture_document_for_handoff(client, document, &expected),
+        Err(RefusalV1::UnknownClient)
+    ));
+}
+
+#[test]
 fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim() {
     let first = Fixture::new("abcd");
     let second = Fixture::new("wxyz");

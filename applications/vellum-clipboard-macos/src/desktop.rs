@@ -237,7 +237,7 @@ fn retirement() -> CopyRetirementFactsV1 {
 /// Shared thin reference workflow. Generic SDK callers retain phase-specific APIs.
 /// Construction configures bounds only; AppKit is bound lazily at a gesture.
 pub struct ReferenceClipboard {
-    desktop: Desktop<crate::appkit::AppKit>,
+    desktop: Desktop<AppKit>,
 }
 impl ReferenceClipboard {
     pub fn new(editor: &mut Editor) -> Result<Self, IntegrationError> {
@@ -272,7 +272,7 @@ impl ReferenceClipboard {
         self.desktop.perform(editor, operation, access, || {
             Ok((
                 Provider::new(
-                    crate::appkit::AppKit::new()?,
+                    AppKit::new()?,
                     Limits {
                         max_plain_bytes: 65536,
                     },

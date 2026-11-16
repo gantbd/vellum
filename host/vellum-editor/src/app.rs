@@ -1149,104 +1149,6 @@ fn clipped_line(
     out
 }
 
-/// Reference workspace budgets, not engine defaults, release SLOs or platform
-/// promises. This selects no annotation codec or presentation policy.
-pub fn reference_workspace_profile(
-    resource_adapter: ErasedPathResourceAdapterFactory,
-) -> crate::workspace::WorkspaceConfig {
-    use vellum_engine::{
-        coordinator::{CoordinatorConfig, CoordinatorLimits, HistoryLimits},
-        instrumentation::NativeTimingProfileV1,
-        resource::ResourceLimits,
-        source::Limits,
-    };
-    let session = SessionConfig {
-        line_edits: Some(vellum_engine::coordinator::LineEditBudget {
-            max_lines: 128,
-            max_prefix_bytes: 65536,
-            max_indent_columns: 65536 * 4 + 4,
-            max_unit_bytes: 4,
-            max_derived_bytes: 262144,
-            max_source_scan_bytes: 65536,
-        }),
-        logical_views: Some(vellum_engine::coordinator::LogicalViewLimits {
-            max_live_views: 16,
-            max_issued_views: 16,
-            max_total_selections: 128,
-            normalization: vellum_engine::selection::SelectionBudget {
-                max_input_selections: 16,
-                max_output_selections: 16,
-                max_work: 65536,
-            },
-            max_mapping_steps: 65536,
-        }),
-        engine: CoordinatorConfig {
-            limits: CoordinatorLimits {
-                max_document_incarnations: 16,
-                max_participants: 16,
-                max_staged_bytes: 262144,
-                source: Limits {
-                    max_source_bytes: 65536,
-                    max_edits: 128,
-                    max_edit_payload_bytes: 262144,
-                },
-            },
-            invocation: None,
-            history: Some(HistoryLimits {
-                max_retained_groups: 4096,
-                max_journal_bytes: 16777216,
-                max_pins: 16,
-            }),
-            resources: Some(ResourceLimits {
-                max_providers: 1,
-                max_live_tasks: 128,
-                max_issued_tasks: 4096,
-                max_queued_per_destination: 4,
-                max_outstanding: 16,
-                max_blob_bytes: 65536,
-                max_key_bytes: 64,
-                max_validator_bytes: 64,
-                max_encoders: 1,
-                max_live_artifacts: 128,
-                max_issued_artifacts: 4096,
-                max_held_artifact_bytes: 8388608,
-                max_future_baseline_bytes: 8388608,
-                max_live_reads: 16,
-                max_issued_reads: 4096,
-                max_read_chunks: 16,
-                max_held_read_bytes: 1048576,
-                max_restorers: 1,
-                max_restoration_bytes: 65536,
-            }),
-            search: Some(vellum_engine::coordinator::SearchLimits {
-                max_sessions_issued: 64,
-                max_live_sessions: 16,
-                max_live_results: 32,
-                max_root_bytes: 262144,
-                max_scope_ranges: 16,
-                max_query_bytes: 1024,
-                max_comparisons: 1048576,
-                max_matches: 4096,
-                max_match_bytes: 65536,
-                max_replacement_bytes: 262144,
-            }),
-            annotations: Some(vellum_engine::coordinator::AnnotationLimits {
-                max_issued: 4096,
-                max_records: 128,
-                max_body_bytes: 4096,
-                max_retained_body_bytes: 524288,
-                max_mapping_steps: 65536,
-                max_live_snapshots: 8,
-                max_snapshot_bytes: 1048576,
-            }),
-        },
-        resource_adapter,
-        capture_capacity: 256,
-        timing: NativeTimingProfileV1::ProcessMonotonicV1,
-    };
-    crate::workspace::WorkspaceConfig::new(session)
-}
-
 /// Reference editor composition. Without explicit native-Unicode opt-in,
 /// UI-local graphemes use unicode-segmentation 1.13.3/Unicode 17.
 pub fn reference_profile(
@@ -1254,7 +1156,7 @@ pub fn reference_profile(
     annotation_codec: Box<dyn AnnotationCodec>,
 ) -> ReferenceSessionConfig {
     ReferenceSessionConfig {
-        session: reference_workspace_profile(resource_adapter).into_session(),
+        session: vellum_workspace::reference_workspace_profile(resource_adapter).into_session(),
         annotation_codec,
     }
 }

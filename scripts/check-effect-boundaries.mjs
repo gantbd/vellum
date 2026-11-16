@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const productionRoots = [
   'engine', 'host', 'service', 'protocol', 'client', 'sdk', 'transport',
-  'adapters', 'applications', 'connectors',
+  'adapters', 'applications',
   'distribution',
   // The excluded live-provider qualifier is still an authority-bearing
   // composition root and therefore participates in the exact effect ledger.
@@ -22,7 +22,7 @@ const mechanisms = new Map([
 // possible effect mechanism.
 const trusted = new Map([
   ['filesystem', new Set([
-    'adapters/clipboard-macos/src/integration/qualification.rs',
+    'applications/vellum-clipboard-macos/src/qualification.rs',
     'adapters/local-authentication/src/unix.rs',
     'adapters/local-fs/src/append_journal.rs',
     'adapters/local-fs/src/export_copy.rs',
@@ -46,7 +46,6 @@ const trusted = new Map([
     // stream so SIGINT/SIGTERM can interrupt a blocked authenticated read.
     'applications/vellum-semantic-local/src/main.rs',
     'applications/vellum-semantic-local/src/service.rs',
-    'connectors/vellum-semantic-mcp/src/main.rs',
     'transport/vellum-transport/src/lib.rs',
     'transport/vellum-semantic-transport/src/unix.rs',
   ])],

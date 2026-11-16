@@ -1,7 +1,7 @@
 # Vellum MCP adapter
 
-Status: bounded MCP `2026-07-28` stdio profile implemented 2026-11-09;
-unpublished.
+Status: bounded MCP `2026-07-28` stdio profile independently owned by the
+`vellum-mcp` peer repository; unpublished.
 
 `vellum-mcp` is the agent/harness peer to the TUI and GUI. It is not an editor,
 service, or canonical protocol. It launches under an MCP host, speaks one
@@ -10,14 +10,15 @@ the client and transport projections from the public `vellum-sdk-client`
 facade to connect to an already-running local `vellum-daemon`.
 
 ```sh
-cargo run --locked -p vellum-mcp -- --socket PRIVATE_DIR/vellum.sock
+cargo run --manifest-path ../vellum-mcp/Cargo.toml --locked -- \
+  --socket PRIVATE_DIR/vellum.sock
 ```
 
 When the daemon selects the local credential profile, the MCP peer selects the
 matching provider with a path-only argument:
 
 ```sh
-cargo run --locked -p vellum-mcp -- \
+cargo run --manifest-path ../vellum-mcp/Cargo.toml --locked -- \
   --socket PRIVATE_DIR/vellum.sock \
   --credential PRIVATE_DIR/credential
 ```
@@ -245,14 +246,14 @@ No crate is published or pushed to crates.io. Install the connector from the
 source checkout with:
 
 ```sh
-cargo install --path connectors/vellum-mcp
+cargo install --locked --path ../vellum-mcp
 ```
 
-A single-URL `cargo install --git` claim waits for the Vellum release commit
-and pinned Keystone object to be reachable from their declared remotes. The
-transitive dependency graph already uses an exact Git revision.
-The qualified extraction boundary and remaining repository/workflow blockers
-are recorded in [`../mcp-extraction.md`](../mcp-extraction.md).
+The peer's documented single-URL form is `cargo install --locked --git
+https://github.com/gantbd/vellum-mcp --rev RELEASE_COMMIT vellum-mcp`. Remote
+reachability remains unclaimed. Vellum's exact peer identity and retained
+cross-repository qualifications are recorded in
+[`../mcp-peers.md`](../mcp-peers.md).
 
 Normative protocol references are the official MCP
 [versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning),

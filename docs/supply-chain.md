@@ -63,14 +63,14 @@ The current local Keystone checkout has no configured remote. A repository URL
 in policy is an intended source identity, not proof that the pinned object is
 retrievable there; remote reachability remains explicitly unverified.
 
-The checked-in source-SBOM manifest closes over 121 locked components and
-records zero blockers. The source-policy gate separately verifies that every
+The checked-in source-SBOM manifest closes over the exact locked workspace
+components and records zero blockers. The source-policy gate separately verifies that every
 required manifest and the `keystone-observe` histogram/saturation API are
 present in the pinned commit.
 
 The excluded semantic-provider qualifier has an independent lockfile and an
 independent CycloneDX digest manifest. The supply gate evaluates its 72-component
-closure separately from the shipping daemon/MCP closure; qualification-only
+closure separately from the shipping daemon closure; qualification-only
 dependencies therefore cannot silently enlarge a release artifact's claimed
 SBOM. This records source closure only and does not attest the separately
 downloaded provider executable or its transitive toolchain behavior.

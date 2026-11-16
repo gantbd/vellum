@@ -26,7 +26,7 @@ const fixture = () => {
     const directory = path.join(payload, role);
     fs.mkdirSync(directory, { mode: 0o700 });
     const files = {};
-    for (const [name, fileMode] of [['vellum-daemon', 0o500], ['vellum-mcp', 0o500], ['vellum.plist', 0o400]]) {
+    for (const [name, fileMode] of [['vellum-daemon', 0o500], ['vellum.plist', 0o400]]) {
       const file = path.join(directory, name);
       fs.writeFileSync(file, `${role}:${name}:${marker}\n`, { mode: fileMode });
       fs.chmodSync(file, fileMode);
@@ -36,7 +36,6 @@ const fixture = () => {
     return {
       manifestSha256,
       daemon: files['vellum-daemon'],
-      mcp: files['vellum-mcp'],
       plist: files['vellum.plist'],
     };
   };
@@ -116,7 +115,6 @@ const clean = ({ parent }) => {
     const versionRoot = path.join(f.root, 'versions', f.candidate.manifestSha256);
     assert.equal(mode(versionRoot), 0o500);
     assert.equal(mode(path.join(versionRoot, 'vellum-daemon')), 0o500);
-    assert.equal(mode(path.join(versionRoot, 'vellum-mcp')), 0o500);
     assert.equal(mode(path.join(versionRoot, 'vellum.plist')), 0o400);
     assert.equal(sha256(path.join(versionRoot, 'vellum-daemon')), f.candidate.daemon.sha256);
   } finally {

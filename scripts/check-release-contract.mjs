@@ -20,8 +20,7 @@ const requiredFiles = [
   'LICENSE-MIT',
   'rust-toolchain.toml',
   'docs/release-policy.md',
-  'docs/mcp-extraction.md',
-  'docs/semantic-mcp-extraction.md',
+  'docs/mcp-peers.md',
   'docs/security-threat-model.md',
   'docs/supply-chain.md',
   'docs/compatibility-baseline.md',
@@ -38,12 +37,8 @@ const requiredFiles = [
   'scripts/check-supply-chain.mjs',
   'scripts/check-supply-chain.test.mjs',
   'scripts/supply-chain-lib.mjs',
-  'release/vellum-mcp-extraction.json',
-  'scripts/verify-mcp-extraction.mjs',
-  'scripts/emit-mcp-peer-source.mjs',
-  'release/vellum-semantic-mcp-extraction.json',
-  'scripts/verify-semantic-mcp-extraction.mjs',
-  'scripts/emit-semantic-mcp-peer-source.mjs',
+  'release/mcp-peers.json',
+  'scripts/check-mcp-peers.mjs',
   'scripts/build-release-candidate.mjs',
   'scripts/build-release-candidate.test.mjs',
   'scripts/release-candidate-lib.mjs',
@@ -74,6 +69,9 @@ const requiredFiles = [
   'qualification/mcp-official-client/verify-source.mjs',
   'qualification/mcp-official-client/verify-source.test.mjs',
   'qualification/mcp-official-client/qualify.mjs',
+  'qualification/mcp-live-daemon/Cargo.toml',
+  'qualification/mcp-live-daemon/README.md',
+  'qualification/mcp-live-daemon/tests/live_daemon.rs',
   'distribution/launchd-render/Cargo.toml',
   'distribution/launchd-render/src/lib.rs',
   'distribution/launchd-render/src/main.rs',
@@ -84,7 +82,6 @@ const requiredFiles = [
   'distribution/launchd-activate/tests/qualification.rs',
   'distribution/cargo-install/Cargo.toml',
   'distribution/cargo-install/src/bin/vellum-daemon.rs',
-  'distribution/cargo-install/src/bin/vellum-mcp.rs',
   'docs/release-reproducibility.md',
   'qualification/semantic-lsp-provider/profiles/rust-analyzer-v1.json',
   '.github/workflows/release-contract.yml',
@@ -138,6 +135,7 @@ const qualificationManifests = [
   'qualification/clipboard-macos/Cargo.toml',
   'qualification/unicode-reference/Cargo.toml',
   'qualification/semantic-lsp-provider/Cargo.toml',
+  'qualification/mcp-live-daemon/Cargo.toml',
 ];
 for (const manifestPath of qualificationManifests) {
   const manifest = read(manifestPath);
@@ -228,27 +226,27 @@ if (sourcePolicy !== undefined) {
   if (
     profiles.size !== 1
     || installProfile?.path !== 'distribution/cargo-install'
-    || (installProfile?.binaries ?? []).join(',') !== 'vellum-daemon,vellum-mcp'
+    || (installProfile?.binaries ?? []).join(',') !== 'vellum-daemon'
   ) {
-    fail('the source install unit must be exactly vellum yielding daemon and MCP binaries');
+    fail('the source install unit must be exactly vellum yielding the daemon binary');
   }
   if (
     installProfile?.role
-    !== 'installation-only composition of the daemon and its peer MCP connector'
+    !== 'installation-only composition of the Vellum daemon'
   ) {
-    fail('the GitHub source policy must preserve the install package as ownership-neutral');
+    fail('the GitHub source policy must preserve daemon-only install ownership');
   }
 
   const candidate = sourcePolicy.releaseCandidate ?? {};
   if (
     candidate.workflow !== '.github/workflows/release-candidate.yml'
     || candidate.platform !== 'macos'
-    || (candidate.packages ?? []).join(',') !== 'vellum-daemon,vellum-mcp'
+    || (candidate.packages ?? []).join(',') !== 'vellum-daemon'
     || candidate.publishing !== 'none'
     || candidate.signing !== 'none'
     || candidate.attestation !== 'none'
   ) {
-    fail('release-candidate policy must remain macOS daemon+MCP only and non-publishing');
+    fail('release-candidate policy must remain macOS daemon-only and non-publishing');
   }
 
   const candidateWorkflow = read(candidate.workflow ?? '.github/workflows/release-candidate.yml');
@@ -293,7 +291,6 @@ if (sourcePolicy !== undefined) {
     '--bundle-file=../vellum-release-candidate.tar',
     '--install-root=../vellum-candidate-install',
     '../vellum-candidate-install/bin/vellum-daemon --help',
-    '../vellum-candidate-install/bin/vellum-mcp --help',
     'path: vellum-release-candidate.tar',
   ]) {
     if (!candidateWorkflow.includes(required)) {
@@ -349,160 +346,60 @@ if (sourcePolicy !== undefined) {
   }
 }
 
-let mcpExtraction;
+let mcpPeers;
 try {
-  mcpExtraction = JSON.parse(read('release/vellum-mcp-extraction.json'));
+  mcpPeers = JSON.parse(read('release/mcp-peers.json'));
 } catch (error) {
-  fail(`release/vellum-mcp-extraction.json is invalid JSON: ${error.message}`);
+  fail(`release/mcp-peers.json is invalid JSON: ${error.message}`);
 }
-if (mcpExtraction !== undefined) {
-  const copied = new Set((mcpExtraction.copy ?? []).map((entry) => entry.from));
-  const retained = new Set(mcpExtraction.retainedVellumQualification ?? []);
+if (mcpPeers !== undefined) {
+  const peers = new Map((mcpPeers.peers ?? []).map((peer) => [peer.package, peer]));
+  const ordinary = peers.get('vellum-mcp');
+  const semantic = peers.get('vellum-semantic-mcp');
+  const fullRevision = (value) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
   if (
-    mcpExtraction.schema !== 1
-    || mcpExtraction.archiveRoot !== 'vellum-mcp'
-    || mcpExtraction.targetSibling !== '../vellum-mcp'
-    || mcpExtraction.publicSdk?.package !== 'vellum-sdk-client'
-    || mcpExtraction.publicSdk?.repository !== sourcePolicy?.vellumRepository
-    || mcpExtraction.credentialAdapter?.package !== 'vellum-adapter-local-authentication'
-    || mcpExtraction.credentialAdapter?.repository !== sourcePolicy?.vellumRepository
-    || (mcpExtraction.normalDependencies ?? []).sort().join(',')
-      !== 'serde_json,vellum-adapter-local-authentication,vellum-sdk-client'
-    || mcpExtraction.publication !== 'none'
+    mcpPeers.schema !== 1
+    || mcpPeers.protocolVersion !== '2026-07-28'
+    || mcpPeers.publication !== 'none'
+    || mcpPeers.coordinatedWorkingTreeQualified !== false
+    || mcpPeers.remoteReachabilityQualified !== false
+    || peers.size !== 2
   ) {
-    fail('MCP extraction must remain a non-publishing public-client-SDK peer with the local credential adapter');
+    fail('MCP peer policy has an unsupported identity or overclaims release qualification');
   }
-  const expectedOrdinaryMcpTools = [
-    'vellum.snapshot',
-    'vellum.save',
-    'vellum.replace',
-    'vellum.replace_and_save',
-    'vellum.workspace_edit',
-    'vellum.poll_changes',
-    'vellum.resolve_locator',
-    'vellum.membership',
-  ];
-  const expectedAuthenticatedMcpAdditions = [
-    'vellum.durable_execute',
-    'vellum.durable_receipt',
-    'vellum.durable_retire',
-    'vellum.durable_status',
-    'vellum.durable_save_as_submit',
-    'vellum.durable_save_as_lookup',
-    'vellum.durable_save_as_retire',
-  ];
   if (
-    JSON.stringify(mcpExtraction.protocol?.ordinaryTools)
-      !== JSON.stringify(expectedOrdinaryMcpTools)
-    || JSON.stringify(mcpExtraction.protocol?.authenticatedAdditions)
-      !== JSON.stringify(expectedAuthenticatedMcpAdditions)
+    ordinary?.repository !== 'https://github.com/gantbd/vellum-mcp'
+    || ordinary?.sourceOwner !== 'vellum-mcp'
+    || !fullRevision(ordinary?.revision)
+    || (ordinary?.vellumFacades ?? []).join(',')
+      !== 'vellum-adapter-local-authentication,vellum-sdk-client'
+    || (ordinary?.ordinaryTools ?? []).length !== 8
+    || (ordinary?.authenticatedAdditions ?? []).length !== 7
+    || !(ordinary?.retainedVellumQualification ?? []).includes('qualification/mcp-live-daemon')
+    || !(ordinary?.retainedVellumQualification ?? []).includes('qualification/mcp-official-client')
   ) {
-    fail('MCP extraction catalog must retain eight ordinary tools plus seven authenticated additions');
+    fail('ordinary MCP peer ownership or retained qualification drifted');
   }
-  const blockers = mcpExtraction.immutableDependencyBlockers ?? [];
-  const immutableDependencies = mcpExtraction.qualifiedImmutableDependencies ?? [];
   if (
-    blockers.length !== 0
-    || immutableDependencies.length !== 1
-    || immutableDependencies[0]?.dependency !== 'keystone-codec'
-    || immutableDependencies[0]?.repository !== sourcePolicy?.keystone?.repository
-    || immutableDependencies[0]?.revision !== sourcePolicy?.keystone?.revision
+    semantic?.repository !== 'https://github.com/gantbd/vellum-semantic-mcp'
+    || semantic?.sourceOwner !== 'vellum-semantic-mcp'
+    || !fullRevision(semantic?.revision)
+    || (semantic?.vellumFacades ?? []).join(',')
+      !== 'vellum-adapter-local-authentication,vellum-sdk-client,vellum-sdk-semantic-client'
+    || (semantic?.tools ?? []).length !== 10
+    || !(semantic?.retainedVellumQualification ?? []).includes('applications/vellum-semantic-local')
+    || !(semantic?.retainedVellumQualification ?? []).includes('qualification/semantic-lsp-provider')
   ) {
-    fail('MCP extraction must retain the exact transitive Keystone Git source');
+    fail('semantic MCP peer ownership or retained qualification drifted');
   }
-  for (const source of [
-    'connectors/vellum-mcp/CHANGELOG.md',
-    'connectors/vellum-mcp/README.md',
-    'connectors/vellum-mcp/SECURITY.md',
-    'connectors/vellum-mcp/src/cli.rs',
-    'connectors/vellum-mcp/src/lib.rs',
-    'connectors/vellum-mcp/src/main.rs',
-    'connectors/vellum-mcp/tests/mcp.rs',
+  for (const forbidden of [
+    'connectors/vellum-mcp',
+    'connectors/vellum-semantic-mcp',
+    'distribution/cargo-install/src/bin/vellum-mcp.rs',
   ]) {
-    if (!copied.has(source)) fail(`MCP extraction is missing portable source ${source}`);
-  }
-  if (
-    copied.has('connectors/vellum-mcp/tests/live_daemon.rs')
-    || !retained.has('connectors/vellum-mcp/tests/live_daemon.rs')
-  ) {
-    fail('the real-daemon MCP test must remain Vellum-owned qualification');
+    if (fs.existsSync(forbidden)) fail(`peer-owned production source remains in Vellum: ${forbidden}`);
   }
 }
-
-let semanticMcpExtraction;
-try {
-  semanticMcpExtraction = JSON.parse(read('release/vellum-semantic-mcp-extraction.json'));
-} catch (error) {
-  fail(`release/vellum-semantic-mcp-extraction.json is invalid JSON: ${error.message}`);
-}
-if (semanticMcpExtraction !== undefined) {
-  const dependencies = semanticMcpExtraction.vellumDependencies ?? [];
-  const dependencyNames = dependencies.map((dependency) => dependency.package).sort();
-  const copied = new Set((semanticMcpExtraction.copy ?? []).map((entry) => entry.from));
-  const immutable = semanticMcpExtraction.qualifiedImmutableDependencies ?? [];
-  if (
-    semanticMcpExtraction.schema !== 1
-    || semanticMcpExtraction.archiveRoot !== 'vellum-semantic-mcp'
-    || semanticMcpExtraction.targetSibling !== '../vellum-semantic-mcp'
-    || semanticMcpExtraction.sourceRepository !== sourcePolicy?.vellumRepository
-    || dependencyNames.join(',')
-      !== [
-        'vellum-adapter-local-authentication',
-        'vellum-sdk-client',
-        'vellum-sdk-semantic-client',
-      ].join(',')
-    || semanticMcpExtraction.publication !== 'none'
-  ) {
-    fail('semantic MCP extraction must remain a non-publishing SDK-facade peer');
-  }
-  if (
-    immutable.length !== 1
-    || immutable[0]?.repository !== sourcePolicy?.keystone?.repository
-    || immutable[0]?.revision !== sourcePolicy?.keystone?.revision
-    || (immutable[0]?.packages ?? []).sort().join(',')
-      !== 'keystone-codec,keystone-lifecycle,keystone-observe,keystone-replay'
-  ) {
-    fail('semantic MCP extraction must retain the exact Keystone source closure');
-  }
-  for (const source of [
-    'connectors/vellum-semantic-mcp/CHANGELOG.md',
-    'connectors/vellum-semantic-mcp/README.md',
-    'connectors/vellum-semantic-mcp/SECURITY.md',
-    'connectors/vellum-semantic-mcp/src/lib.rs',
-    'connectors/vellum-semantic-mcp/src/main.rs',
-    'connectors/vellum-semantic-mcp/src/stdio.rs',
-    'connectors/vellum-semantic-mcp/src/tests.rs',
-    'connectors/vellum-semantic-mcp/tests/stdio_peer.rs',
-  ]) {
-    if (!copied.has(source)) fail(`semantic MCP extraction is missing portable source ${source}`);
-  }
-  const directImplementationDependencies = (semanticMcpExtraction.normalDependencies ?? [])
-    .filter((dependency) => [
-      'vellum-semantic-client',
-      'vellum-semantic-protocol',
-      'vellum-semantic-service',
-      'vellum-semantic-session-client',
-      'vellum-semantic-transport',
-    ].includes(dependency));
-  if (directImplementationDependencies.length !== 0) {
-    fail('semantic MCP extraction bypasses the semantic SDK facade');
-  }
-}
-const semanticMcpEmitter = read('scripts/emit-semantic-mcp-peer-source.mjs');
-for (const marker of [
-  'release/payload.json',
-  'tests/payload_contract.rs',
-  'payload_manifest_closes_the_repository_tree',
-  "crypto.createHash('sha256')",
-  '## Source and payload integrity',
-  'never source\\ncontent, credentials or host paths',
-  'does not publish artifacts, crates, releases or attestations',
-]) {
-  if (!semanticMcpEmitter.includes(marker)) {
-    fail(`semantic MCP emitter is missing payload-integrity marker ${marker}`);
-  }
-}
-
 let dependencyPolicy;
 try {
   dependencyPolicy = JSON.parse(read('release/dependency-policy.json'));

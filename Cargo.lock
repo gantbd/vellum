@@ -46,9 +46,15 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
+
+[[package]]
+name = "core_detect"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
 name = "cpufeatures"
@@ -93,18 +99,24 @@ dependencies = [
 
 [[package]]
 name = "encoding_rs"
-version = "0.8.35"
+version = "0.8.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+checksum = "7b5ef0006ac9ab233c38522f5ae99cae3625151de8f706cacee1cba4b8e2832a"
 dependencies = [
  "cfg-if",
+ "core_detect",
+ "multiversion",
+ "multiversion_no_op",
+ "rustversion",
+ "scopeguard",
+ "simdutf8",
 ]
 
 [[package]]
 name = "errno"
-version = "0.3.14"
+version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
  "windows-sys",
@@ -269,9 +281,9 @@ checksum = "913a7d294ad056474749152107309fdee3ec17d2482d1ab70fdc61a81c64b9a3"
 
 [[package]]
 name = "itoa"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "keystone-codec"
@@ -295,9 +307,9 @@ source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "linux-raw-sys"
@@ -327,6 +339,33 @@ dependencies = [
  "wasi",
  "windows-sys",
 ]
+
+[[package]]
+name = "multiversion"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18f07d0ab403c0c662001890da44da2500990d86e15788489cf9a94895f19e4e"
+dependencies = [
+ "multiversion-macros",
+]
+
+[[package]]
+name = "multiversion-macros"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e521b4032cf166c0d10a5d8598abd9858696612b9e2a4576ef97c7af4626bd6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+]
+
+[[package]]
+name = "multiversion_no_op"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "mutants"
@@ -452,6 +491,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "scopeguard"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +581,12 @@ dependencies = [
  "errno",
  "libc",
 ]
+
+[[package]]
+name = "simdutf8"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "smallvec"
@@ -708,7 +765,6 @@ name = "vellum"
 version = "0.1.0"
 dependencies = [
  "vellum-daemon",
- "vellum-mcp",
 ]
 
 [[package]]
@@ -729,11 +785,6 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
- "vellum-adapter-annotation-json",
- "vellum-adapter-local-fs",
- "vellum-editor",
- "vellum-engine",
- "vellum-session",
 ]
 
 [[package]]
@@ -786,6 +837,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vellum-clipboard-macos"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "vellum-adapter-annotation-json",
+ "vellum-adapter-clipboard-macos",
+ "vellum-adapter-local-fs",
+ "vellum-editor",
+ "vellum-engine",
+ "vellum-session",
+]
+
+[[package]]
 name = "vellum-daemon"
 version = "0.1.0"
 dependencies = [
@@ -802,6 +866,7 @@ dependencies = [
  "vellum-service",
  "vellum-transport",
  "vellum-wire",
+ "vellum-workspace",
 ]
 
 [[package]]
@@ -818,6 +883,7 @@ dependencies = [
  "vellum-engine",
  "vellum-host",
  "vellum-session",
+ "vellum-workspace",
 ]
 
 [[package]]
@@ -855,20 +921,6 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "vellum-mcp"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "vellum-adapter-local-authentication",
- "vellum-adapter-local-fs",
- "vellum-daemon",
- "vellum-editor",
- "vellum-host",
- "vellum-sdk-client",
- "vellum-service",
 ]
 
 [[package]]
@@ -916,6 +968,7 @@ dependencies = [
  "vellum-engine",
  "vellum-host",
  "vellum-semantic-service",
+ "vellum-workspace",
 ]
 
 [[package]]
@@ -965,19 +1018,6 @@ dependencies = [
  "vellum-semantic-session-client",
  "vellum-semantic-transport",
  "vellum-semantic-wire",
-]
-
-[[package]]
-name = "vellum-semantic-mcp"
-version = "0.1.0"
-dependencies = [
- "getrandom",
- "serde",
- "serde_json",
- "tokio",
- "vellum-adapter-local-authentication",
- "vellum-sdk-client",
- "vellum-sdk-semantic-client",
 ]
 
 [[package]]
@@ -1053,6 +1093,7 @@ dependencies = [
  "vellum-host",
  "vellum-protocol",
  "vellum-wire",
+ "vellum-workspace",
 ]
 
 [[package]]
@@ -1080,6 +1121,15 @@ version = "0.1.0"
 dependencies = [
  "keystone-codec",
  "vellum-protocol",
+]
+
+[[package]]
+name = "vellum-workspace"
+version = "0.1.0"
+dependencies = [
+ "vellum-engine",
+ "vellum-host",
+ "vellum-session",
 ]
 
 [[package]]

@@ -12,8 +12,8 @@ use std::{
 use vellum_engine::{
     coordinator::{DocumentEdits, DocumentVersion, HistoryGroupId},
     resource::{
-        Acknowledgment, Application, Protection, SaveId, SaveOutcome, SaveRequirements,
-        Synchronization,
+        Acknowledgment, Application, CapturedSourceSerializationV1, Protection, SaveId,
+        SaveOutcome, SaveRequirements, Synchronization,
     },
     source::Replacement,
 };
@@ -48,11 +48,110 @@ impl WorkspaceConfig {
         Self(session)
     }
 
-    pub(crate) fn into_session(
+    /// Consume this workspace profile for a higher presentation composition.
+    pub fn into_session(
         self,
     ) -> SessionConfig<vellum_host::resource::ErasedPathResourceAdapterFactory> {
         self.0
     }
+}
+
+/// Reference workspace budgets, not engine defaults, release SLOs or platform
+/// promises. This selects no annotation codec or presentation policy.
+pub fn reference_workspace_profile(
+    resource_adapter: vellum_host::resource::ErasedPathResourceAdapterFactory,
+) -> WorkspaceConfig {
+    use vellum_engine::{
+        coordinator::{CoordinatorConfig, CoordinatorLimits, HistoryLimits},
+        instrumentation::NativeTimingProfileV1,
+        resource::ResourceLimits,
+        source::Limits,
+    };
+    let session = SessionConfig {
+        line_edits: Some(vellum_engine::coordinator::LineEditBudget {
+            max_lines: 128,
+            max_prefix_bytes: 65536,
+            max_indent_columns: 65536 * 4 + 4,
+            max_unit_bytes: 4,
+            max_derived_bytes: 262144,
+            max_source_scan_bytes: 65536,
+        }),
+        logical_views: Some(vellum_engine::coordinator::LogicalViewLimits {
+            max_live_views: 16,
+            max_issued_views: 16,
+            max_total_selections: 128,
+            normalization: vellum_engine::selection::SelectionBudget {
+                max_input_selections: 16,
+                max_output_selections: 16,
+                max_work: 65536,
+            },
+            max_mapping_steps: 65536,
+        }),
+        engine: CoordinatorConfig {
+            limits: CoordinatorLimits {
+                max_document_incarnations: 16,
+                max_participants: 16,
+                max_staged_bytes: 262144,
+                source: Limits {
+                    max_source_bytes: 65536,
+                    max_edits: 128,
+                    max_edit_payload_bytes: 262144,
+                },
+            },
+            invocation: None,
+            history: Some(HistoryLimits {
+                max_retained_groups: 4096,
+                max_journal_bytes: 16777216,
+                max_pins: 16,
+            }),
+            resources: Some(ResourceLimits {
+                max_providers: 1,
+                max_live_tasks: 128,
+                max_issued_tasks: 4096,
+                max_queued_per_destination: 4,
+                max_outstanding: 16,
+                max_blob_bytes: 65536,
+                max_key_bytes: 64,
+                max_validator_bytes: 64,
+                max_encoders: 1,
+                max_live_artifacts: 128,
+                max_issued_artifacts: 4096,
+                max_held_artifact_bytes: 8388608,
+                max_future_baseline_bytes: 8388608,
+                max_live_reads: 16,
+                max_issued_reads: 4096,
+                max_read_chunks: 16,
+                max_held_read_bytes: 1048576,
+                max_restorers: 1,
+                max_restoration_bytes: 65536,
+            }),
+            search: Some(vellum_engine::coordinator::SearchLimits {
+                max_sessions_issued: 64,
+                max_live_sessions: 16,
+                max_live_results: 32,
+                max_root_bytes: 262144,
+                max_scope_ranges: 16,
+                max_query_bytes: 1024,
+                max_comparisons: 1048576,
+                max_matches: 4096,
+                max_match_bytes: 65536,
+                max_replacement_bytes: 262144,
+            }),
+            annotations: Some(vellum_engine::coordinator::AnnotationLimits {
+                max_issued: 4096,
+                max_records: 128,
+                max_body_bytes: 4096,
+                max_retained_body_bytes: 524288,
+                max_mapping_steps: 65536,
+                max_live_snapshots: 8,
+                max_snapshot_bytes: 1048576,
+            }),
+        },
+        resource_adapter,
+        capture_capacity: 256,
+        timing: NativeTimingProfileV1::ProcessMonotonicV1,
+    };
+    WorkspaceConfig::new(session)
 }
 
 impl std::ops::Deref for WorkspaceConfig {
@@ -895,6 +994,24 @@ impl Workspace {
     ) -> Result<DocumentVersion, WorkspaceError> {
         let retained = self.entry(document)?.document.clone();
         Ok(self.host.read(&retained)?.version)
+    }
+
+    /// Exact serialization for a trusted handoff host. Resolve membership
+    /// before consulting current read policy. A mismatched native document
+    /// cannot be captured using a different workspace member's authority.
+    pub fn capture_document_for_handoff(
+        &mut self,
+        document: &WorkspaceDocumentId,
+        expected: &DocumentVersion,
+        authorize: impl FnOnce(&WorkspaceDocumentId, &DocumentVersion) -> bool,
+    ) -> Result<Option<CapturedSourceSerializationV1>, WorkspaceError> {
+        let retained = &self.entry(document)?.document;
+        if retained.document_id() != &expected.document {
+            return Err(WorkspaceError::InvalidView);
+        }
+        Ok(self
+            .host
+            .capture_source_for_integration(expected, |version| authorize(document, version))?)
     }
 
     /// Resolve one workspace-owned document to its exact native version, then
