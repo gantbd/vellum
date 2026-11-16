@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Advanced all six Vellum Keystone dependency edges and the coordinated source
+  policy to the workspace's exact `8a7970c` mechanism revision. Shipping and
+  semantic-provider qualification lockfiles now share that identity; the
+  source-SBOM closures remain unchanged apart from their reviewed lock
+  digests. This removes the local split Keystone graph without claiming remote
+  availability or publication.
 - Completed MCP peer ownership: `vellum-mcp` and `vellum-semantic-mcp`
   production source now lives only in their sibling repositories while Vellum
   retains coordinated live, official-client, semantic-local, and provider

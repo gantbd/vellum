@@ -2,7 +2,7 @@
   "schema": 1,
   "scope": "semantic-lsp-provider-qualification",
   "format": "CycloneDX 1.5",
-  "lockSha256": "dfcd1def707c11ec5289018309c34c87df4f455b05ed21bb0ae3960edef2d3e4",
+  "lockSha256": "0ffd2818d247bee89f006266545c516ea3f62715cd61ae3ab242519b41fe330a",
   "sbomSha256": "d39925affd987e6d8ba3d74cd2324f13a661983599f47d6493bdf4f0a7446308",
   "componentCount": 82,
   "blockers": []

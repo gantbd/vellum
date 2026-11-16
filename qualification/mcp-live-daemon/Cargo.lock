@@ -102,22 +102,22 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 [[package]]
 name = "keystone-codec"
 version = "0.0.1"
-source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+source = "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
 
 [[package]]
 name = "keystone-lifecycle"
 version = "0.0.1"
-source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+source = "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
 
 [[package]]
 name = "keystone-observe"
 version = "0.0.1"
-source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+source = "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
 
 [[package]]
 name = "keystone-replay"
 version = "0.0.1"
-source = "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+source = "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
 
 [[package]]
 name = "libc"

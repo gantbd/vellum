@@ -5,7 +5,7 @@
   "vellumRepository": "https://github.com/gantbd/vellum",
   "keystone": {
     "repository": "https://github.com/gantbd/keystone",
-    "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+    "revision": "8a7970cb77e668f3488ecd97dae7c9e765f170cc",
     "relativePath": "../keystone",
     "crates": [
       "keystone-codec",

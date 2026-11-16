@@ -2808,3 +2808,19 @@ qualifier explicitly did not verify remote reachability. Remote push/tag/release
 crates.io, platform-specific service/UI realization and semantic-provider
 confinement remain separately authorized follow-on work and are not claims of
 this completed local scope.
+
+### 2026-11-16 — workspace Keystone identity normalization
+
+- **One selected substrate identity:** all six production dependency edges,
+  the shipping lock, three qualification locks, the fail-closed dependency
+  policy and coordinated source receipt now select Keystone
+  `8a7970cb77e668f3488ecd97dae7c9e765f170cc`, matching the workspace and
+  Workbench source graph. The older receipts above remain historical evidence.
+- **No category expansion:** Vellum still consumes only `keystone-codec`,
+  `keystone-lifecycle`, `keystone-observe`, and `keystone-replay`; no
+  presentation, application-shell, peer, authority-policy, or Workbench code
+  moved into Keystone.
+- **Qualification boundary:** local qualification uses the documented exact
+  sibling Git-object rewrite while retaining the declared GitHub source
+  identity. Remote reachability, publication, signing and activation remain
+  unclaimed until separately authorized and proven.

@@ -5,7 +5,7 @@
     "registry+https://github.com/rust-lang/crates.io-index"
   ],
   "allowedGitSources": [
-    "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8"
+    "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
   ],
   "allowedLicenseExpressions": [
     "(Apache-2.0 OR MIT) AND BSD-3-Clause",
@@ -35,8 +35,8 @@
       {
         "name": "keystone",
         "repository": "https://github.com/gantbd/keystone",
-        "revision": "3486252cdbaeb2d784756076f43ef6157ed0b7f8",
-        "source": "git+https://github.com/gantbd/keystone?rev=3486252cdbaeb2d784756076f43ef6157ed0b7f8#3486252cdbaeb2d784756076f43ef6157ed0b7f8",
+        "revision": "8a7970cb77e668f3488ecd97dae7c9e765f170cc",
+        "source": "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc",
         "releaseStatus": "qualified-immutable-source",
         "packages": [
           { "name": "keystone-codec", "version": "0.0.1", "manifest": "crates/keystone-codec/Cargo.toml", "revisionStatus": "present-at-pinned-revision" },
