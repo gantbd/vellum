@@ -453,6 +453,7 @@ if (/\bcargo\s+(publish|install)\b/.test(releaseContractWorkflow)) {
 }
 
 const ciWorkflow = read('.github/workflows/ci.yml');
+const coordinatedMcpPeer = mcpPeers?.peers?.find((peer) => peer.package === 'vellum-mcp');
 for (const required of [
   'permissions:\n  contents: read',
   'timeout-minutes: 45',
@@ -460,6 +461,8 @@ for (const required of [
   'ref: ${{ github.sha }}',
   'repository: gantbd/keystone',
   `ref: ${sourcePolicy?.keystone?.revision ?? ''}`,
+  'repository: gantbd/vellum-mcp',
+  `ref: ${coordinatedMcpPeer?.revision ?? ''}`,
   'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
   'cargo fetch --locked',
   'make check-cargo-install-qualification qualify-github-source',
@@ -569,9 +572,10 @@ if (
   !== [
     'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
     'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
+    'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
   ].join(',')
 ) {
-  fail('coordinated CI action closure must be exactly two pinned checkouts');
+  fail('coordinated CI action closure must be exactly three pinned checkouts');
 }
 const sourceSlug = (repository) => {
   try {
@@ -589,9 +593,17 @@ const ciRevisions = [...ciWorkflow.matchAll(/^\s*ref:\s*(.+?)\s*$/gm)].map(
 );
 if (
   ciRepositories.join(',')
-    !== [sourceSlug(sourcePolicy?.vellumRepository), sourceSlug(sourcePolicy?.keystone?.repository)].join(',')
+    !== [
+      sourceSlug(sourcePolicy?.vellumRepository),
+      sourceSlug(sourcePolicy?.keystone?.repository),
+      sourceSlug(coordinatedMcpPeer?.repository),
+    ].join(',')
   || ciRevisions.join(',')
-    !== ['${{ github.sha }}', sourcePolicy?.keystone?.revision].join(',')
+    !== [
+      '${{ github.sha }}',
+      sourcePolicy?.keystone?.revision,
+      coordinatedMcpPeer?.revision,
+    ].join(',')
 ) {
   fail('coordinated CI checkout repositories or revisions drifted from source policy');
 }

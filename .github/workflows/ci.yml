@@ -31,6 +31,13 @@ jobs:
           ref: 8a7970cb77e668f3488ecd97dae7c9e765f170cc
           path: keystone
           persist-credentials: false
+      - name: Check out exact MCP peer revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: gantbd/vellum-mcp
+          ref: 17e3fae87edf2bf302d29ad0a982b6efc3ecdb36
+          path: vellum-mcp
+          persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
       - name: Fetch locked registry sources
