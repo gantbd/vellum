@@ -45,6 +45,7 @@ jobs:
         run: |
           cargo fetch --locked
           cargo fetch --locked --manifest-path qualification/semantic-lsp-provider/Cargo.toml
+          cargo fetch --locked --manifest-path qualification/unicode-reference/Cargo.toml
       - name: Qualify clean archive and immutable-Git installation
         working-directory: vellum
         run: make check-cargo-install-qualification qualify-github-source

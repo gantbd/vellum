@@ -295,6 +295,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "keystone-observe"
 version = "0.0.1"
+source = "git+https://github.com/gantbd/keystone?rev=8a7970cb77e668f3488ecd97dae7c9e765f170cc#8a7970cb77e668f3488ecd97dae7c9e765f170cc"
 
 [[package]]
 name = "lazy_static"
@@ -728,6 +729,7 @@ name = "vellum-engine"
 version = "0.1.0"
 dependencies = [
  "keystone-observe",
+ "sha2",
 ]
 
 [[package]]
