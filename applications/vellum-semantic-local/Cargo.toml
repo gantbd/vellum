@@ -27,7 +27,7 @@ vellum-semantic-session-actor = { version = "=0.1.0", path = "../../service/vell
 vellum-semantic-session-broker = { version = "=0.1.0", path = "../../service/vellum-semantic-session-broker" }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "=1.1.4", features = ["process"] }
+rustix = { version = "=1.1.6", features = ["process"] }
 
 [dev-dependencies]
 vellum-semantic-transport = { version = "=0.1.0", path = "../../transport/vellum-semantic-transport" }

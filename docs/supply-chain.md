@@ -55,7 +55,7 @@ provenance.
 
 `keystone-codec`, `keystone-lifecycle`, `keystone-observe`, and
 `keystone-replay` are consumed through six manifest edges from
-`8a7970cb77e668f3488ecd97dae7c9e765f170cc`. Cargo.lock records that full source
+`2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4`. Cargo.lock records that full source
 identity and the policy admits exactly those four packages. Dirty sibling bytes
 cannot enter compilation.
 

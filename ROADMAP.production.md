@@ -2814,7 +2814,7 @@ this completed local scope.
 - **One selected substrate identity:** all six production dependency edges,
   the shipping lock, three qualification locks, the fail-closed dependency
   policy and coordinated source receipt now select Keystone
-  `8a7970cb77e668f3488ecd97dae7c9e765f170cc`, matching the workspace and
+  `2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4`, matching the workspace and
   Workbench source graph. The older receipts above remain historical evidence.
 - **No category expansion:** Vellum still consumes only `keystone-codec`,
   `keystone-lifecycle`, `keystone-observe`, and `keystone-replay`; no

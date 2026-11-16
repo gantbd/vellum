@@ -16,9 +16,9 @@ name = "vellum-daemon"
 path = "src/main.rs"
 
 [dependencies]
-keystone-observe = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "8a7970cb77e668f3488ecd97dae7c9e765f170cc" }
-keystone-lifecycle = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "8a7970cb77e668f3488ecd97dae7c9e765f170cc" }
-rustix = { version = "=1.1.4", features = ["fs", "process"] }
+keystone-observe = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4" }
+keystone-lifecycle = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4" }
+rustix = { version = "=1.1.6", features = ["fs", "process"] }
 signal-hook = { version = "=0.3.18", default-features = false, features = ["iterator"] }
 vellum-adapter-local-fs = { version = "=0.1.0", path = "../../adapters/local-fs" }
 vellum-adapter-local-authentication = { version = "=0.1.0", path = "../../adapters/local-authentication" }

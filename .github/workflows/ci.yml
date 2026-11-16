@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: gantbd/keystone
-          ref: 8a7970cb77e668f3488ecd97dae7c9e765f170cc
+          ref: 2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4
           path: keystone
           persist-credentials: false
       - name: Check out exact MCP peer revision

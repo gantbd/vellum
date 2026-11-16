@@ -9,7 +9,7 @@ publish = false
 description = "Canonical bounded wire encoding for Vellum semantic isolation helpers"
 
 [dependencies]
-keystone-codec = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "8a7970cb77e668f3488ecd97dae7c9e765f170cc" }
+keystone-codec = { version = "=0.0.1", git = "https://github.com/gantbd/keystone", rev = "2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4" }
 vellum-semantic-helper-protocol = { version = "=0.1.0", path = "../vellum-semantic-helper-protocol" }
 
 [lints]
