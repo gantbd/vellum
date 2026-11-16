@@ -1,7 +1,9 @@
 /target/
 **/target/
-# Generated candidate worktrees and downloaded verification tooling. Retained
-# evidence archives referenced by historical records remain visible to Git.
+# Generated candidate worktrees, downloaded verification tooling, and private
+# byte-exact legacy evidence archives. The retained archive inventory and
+# recovery identities are recorded in docs/legacy-evidence.md.
+/.verification-evidence.*/
 /.verification-candidate.*/
 /.verification-tools-*/
 /.peer-staging/

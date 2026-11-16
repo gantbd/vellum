@@ -8,6 +8,14 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Removed 21 pre-public byte-exact verification snapshots from the public Git
+  history and source tree after preserving private, checksum-identified
+  recovery artifacts. Active formal sources remain in place, while a compact
+  catalog retains the archive inventory and explicit evidentiary nonclaims.
+- Made real-process semantic-provider replacement qualifications use an
+  independent wall-clock deadline for each startup, recovery, reconciliation,
+  and cleanup phase. Parallel test load can no longer consume a later phase's
+  timeout budget without weakening any bounded phase assertion.
 - Advanced all six Vellum Keystone dependency edges and the coordinated source
   policy to the workspace's exact `8a7970c` mechanism revision. Shipping and
   semantic-provider qualification lockfiles now share that identity; the

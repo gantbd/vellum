@@ -126,10 +126,11 @@ qualification with `--verify-remote-only`. That bounded mode performs the same
 local commit and Keystone API-closure checks plus both exact remote fetches,
 then stops before rebuilding; it is not a substitute for the full local gate.
 
-Current remote-distribution blocker: the local Vellum and Keystone checkouts
-have no configured remotes, so availability of both release objects at their
-declared GitHub URLs has not been established. Silently following a moving
-branch is not an acceptable workaround.
+Remote-distribution readiness is established only when the qualifier retrieves
+the exact Vellum and Keystone release objects from their declared GitHub URLs.
+A configured remote or an existing but empty repository does not establish
+that evidence, and silently following a moving branch is not an acceptable
+workaround.
 
 ## Semantic-provider qualification
 

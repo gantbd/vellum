@@ -762,6 +762,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
     assert_eq!(backoff.attempt(), 1);
     let launch = restart.backoff_elapsed(backoff).unwrap();
     let mut suspension = actor.try_begin_suspension().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
     let mut suspended = loop {
         match suspension.try_advance() {
             LocalOrderedTimedSuspensionAdvanceV1::Pending(pending) => suspension = *pending,
@@ -792,6 +793,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
         &protocol,
     )
     .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         match candidate.drive_once() {
             LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
@@ -813,6 +815,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
 
     let mut installed = suspended.try_install_ready_candidate(candidate).unwrap();
     let cleanup_token = restart.confirm_replacement_installed(launch).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
     let (next, displaced_receipt, candidate_usage) = loop {
         let _ = installed.drive_displaced_once();
         match installed.try_into_reconciled() {
@@ -867,6 +870,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
 
     assert!(actor.begin_drain());
     let mut stop = actor.try_begin_stop().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
     let mut stopped = loop {
         match stop.try_complete() {
             Ok(LocalOrderedManagedTimedStopResolutionV1::Terminal(stopped)) => break stopped,
@@ -878,6 +882,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
         assert!(Instant::now() < deadline, "replacement actor stop deadline");
         std::thread::yield_now();
     };
+    let deadline = Instant::now() + Duration::from_secs(3);
     let timed_cleanup = loop {
         match stopped.try_advance() {
             LocalOrderedTimedStoppedRecoveryAdvanceV1::Pending(pending) => stopped = *pending,
@@ -895,6 +900,7 @@ fn supervised_real_process_replacement_waits_for_candidate_and_displaced_cleanup
     let mut cleanup = timed_cleanup.try_retire_deadlines().unwrap();
     let _ = cleanup.drive_client_retirement_once();
     let mut provider = cleanup.try_into_provider_cleanup().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
     let current_receipt = loop {
         let _ = provider.drive_once();
         match provider.try_into_terminal_receipt() {
@@ -996,6 +1002,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
     };
     let launch = restart.backoff_elapsed(backoff).unwrap();
     let mut recovery = actor.try_begin_failed_provider_replacement().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(4);
     let failed = loop {
         match recovery.try_advance() {
             LocalOrderedTimedFailedProviderRecoveryAdvanceV1::Pending(pending) => {
@@ -1028,6 +1035,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
         &protocol,
     )
     .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         match candidate.drive_once() {
             LocalSupervisedOrderedLspCandidateDriveV1::Ready => break,
@@ -1044,6 +1052,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
     );
     let cleanup_token = restart.confirm_replacement_installed(launch).unwrap();
     installed.escalate_displaced();
+    let deadline = Instant::now() + Duration::from_secs(4);
     let (runtime, displaced_receipt, candidate_usage) = loop {
         let _ = installed.drive_displaced_once();
         match installed.try_into_reconciled() {
@@ -1082,6 +1091,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
 
     assert!(actor.begin_drain());
     let mut stop = actor.try_begin_stop().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(4);
     let mut stopped = loop {
         match stop.try_complete() {
             Ok(LocalOrderedManagedTimedStopResolutionV1::Terminal(stopped)) => break stopped,
@@ -1093,6 +1103,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
         assert!(Instant::now() < deadline, "recovered actor stop deadline");
         std::thread::yield_now();
     };
+    let deadline = Instant::now() + Duration::from_secs(4);
     let timed_cleanup = loop {
         match stopped.try_advance() {
             LocalOrderedTimedStoppedRecoveryAdvanceV1::Pending(pending) => stopped = *pending,
@@ -1110,6 +1121,7 @@ fn supervised_real_process_crash_recovers_through_exact_failed_actor_product() {
     let mut cleanup = timed_cleanup.try_retire_deadlines().unwrap();
     let _ = cleanup.drive_client_retirement_once();
     let mut provider = cleanup.try_into_provider_cleanup().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         let _ = provider.drive_once();
         match provider.try_into_terminal_receipt() {

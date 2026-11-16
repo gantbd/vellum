@@ -5,6 +5,11 @@ review. It separates unfinished contracts from implementation and release eviden
 It does not replace requirements, select new behavior, waive acceptance gates or
 certify existing contracts. The previous approximate 50 percent estimate is withdrawn.
 
+Mentions of `.verification-evidence.*` below identify private pre-public
+archives that are no longer shipped in this repository. Their inventory,
+recovery identities, and evidentiary limits are recorded in the
+[legacy evidence catalog](legacy-evidence.md).
+
 ## Baseline and reporting
 
 ### Provisional baseline and implementation-first direction
@@ -3852,7 +3857,7 @@ pass, including existing resource argument/result/fault/substrate regressions,
 retain native obligations; the earlier issuer-reset variant is explicitly
 guard-blocked, not counted as detected. The full repaired batch passed 760 checks
 over 946 unchanged inputs, with source/worker/root endpoint audits and an
-[integrity-checked archive](../.verification-evidence.XyK7Im/manifest.json).
+[integrity-checked private archive](legacy-evidence.md#archive-inventory).
 The existing fixed F07 descriptor still describes configuration-query/1, not
 resource-catalog-query/1. The latter's logical discovery binding is accepted
 through the already supported generic registry contract; another builtin profile
@@ -3921,7 +3926,7 @@ native checks and conditional arguments, not on clause counts or green links.
 The normalization bridge adds no command, profile, module or solver law. Full
 frozen qualification terminated successfully; source and adopted-root endpoint
 audits passed. The byte-exact qualified report and original worker provenance are
-retained in [the evidence archive](../.verification-evidence.RchZuq/manifest.json),
+retained in the [private evidence inventory](legacy-evidence.md#archive-inventory),
 whose integrity audit passed. Republication and archiving are not new executions.
 
 Host identity/policy truth, physical resource costs and serialized production

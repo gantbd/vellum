@@ -37,6 +37,9 @@ make check
 Development and CI use the toolchain pinned by `rust-toolchain.toml`. See the
 [release policy](docs/release-policy.md), [security policy](SECURITY.md), and
 [changelog](CHANGELOG.md) for the source-distribution contract.
+Pre-public byte-exact verification snapshots are intentionally excluded from
+the source tree; their scope, nonclaims, and private recovery identities are
+recorded in the [legacy evidence catalog](docs/legacy-evidence.md).
 
 Shared Keystone mechanisms, including the canonical wire codec, resolve from
 one exact Git revision. A sibling checkout is used only by local qualification
