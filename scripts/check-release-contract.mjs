@@ -362,7 +362,7 @@ if (mcpPeers !== undefined) {
     || mcpPeers.protocolVersion !== '2026-07-28'
     || mcpPeers.publication !== 'none'
     || mcpPeers.coordinatedWorkingTreeQualified !== false
-    || mcpPeers.remoteReachabilityQualified !== false
+    || mcpPeers.remoteReachabilityQualified !== true
     || peers.size !== 2
   ) {
     fail('MCP peer policy has an unsupported identity or overclaims release qualification');

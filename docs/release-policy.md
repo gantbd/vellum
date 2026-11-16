@@ -175,8 +175,9 @@ service or claim authenticated health.
 contract without remotes or network. `make qualify-github-source` applies the
 same verifier to the actual committed `HEAD` and never substitutes dirty
 working-tree bytes for either revision. Coordinated CI requires both commands
-after checking out the exact Vellum and Keystone revisions. Remote reachability
-remains a separate, explicitly deferred `--verify-remote` gate.
+after checking out the exact Vellum and Keystone revisions. The published source
+state has also passed the separate `--verify-remote-only` gate; future release
+candidates must still verify their selected exact revisions independently.
 
 The source archive is not a final release artifact. The current immutable
 bundle carries checksum-closed local commit/tree provenance and exact

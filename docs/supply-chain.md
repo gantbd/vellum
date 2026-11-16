@@ -59,9 +59,10 @@ provenance.
 identity and the policy admits exactly those four packages. Dirty sibling bytes
 cannot enter compilation.
 
-The current local Keystone checkout has no configured remote. A repository URL
-in policy is an intended source identity, not proof that the pinned object is
-retrievable there; remote reachability remains explicitly unverified.
+The pinned Keystone commit is publicly retrievable from the repository URL in
+policy, and Vellum's remote-only source qualifier verifies that exact object.
+This establishes source reachability only; it is not a signature, attestation,
+release artifact, or crates.io publication claim.
 
 The checked-in source-SBOM manifest closes over the exact locked workspace
 components and records zero blockers. The source-policy gate separately verifies that every

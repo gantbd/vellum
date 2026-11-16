@@ -18,5 +18,6 @@ qualification. These gates may build an explicit sibling checkout, but
 Vellum's shipping workspace, source-install package, candidate artifact
 closure, and activation state do not contain or install an MCP executable.
 
-No crates.io publication, remote reachability, coordinated clean-tree release,
+The exact peer commits recorded above are publicly reachable from their declared
+GitHub repositories. No crates.io publication, coordinated clean-tree release,
 signing, or activation is claimed by this record.

@@ -6,7 +6,7 @@
     {
       "package": "vellum-mcp",
       "repository": "https://github.com/gantbd/vellum-mcp",
-      "revision": "f193c69956947a659da87fe0961870e0814aa227",
+      "revision": "17e3fae87edf2bf302d29ad0a982b6efc3ecdb36",
       "sourceOwner": "vellum-mcp",
       "vellumFacades": ["vellum-adapter-local-authentication", "vellum-sdk-client"],
       "ordinaryTools": [
@@ -36,7 +36,7 @@
     {
       "package": "vellum-semantic-mcp",
       "repository": "https://github.com/gantbd/vellum-semantic-mcp",
-      "revision": "a6e1291f55b87c2511748ef06acd9934c74ea1a8",
+      "revision": "21a6776a05dead7faf6d80860dfee0d8b09e5677",
       "sourceOwner": "vellum-semantic-mcp",
       "vellumFacades": [
         "vellum-adapter-local-authentication",
@@ -62,5 +62,5 @@
     }
   ],
   "coordinatedWorkingTreeQualified": false,
-  "remoteReachabilityQualified": false
+  "remoteReachabilityQualified": true
 }
