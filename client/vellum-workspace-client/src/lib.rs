@@ -9,8 +9,8 @@
 use vellum_client::Client;
 use vellum_protocol::{
     OutcomeV1, RefusalV1, ReplyV1, ServiceAccessErrorV1, ServiceControlErrorV1, ServicePort,
-    SnapshotV1, VersionWitness, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentIdV1,
-    WorkspaceIdV1, WorkspaceInventoryV1,
+    SnapshotV1, VersionWitness, WorkspaceChangeKindV1, WorkspaceChangesV1, WorkspaceDocumentEditV1,
+    WorkspaceDocumentIdV1, WorkspaceEditReceiptV1, WorkspaceIdV1, WorkspaceInventoryV1,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -340,6 +340,52 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
             )),
             Err(error) => {
                 if error == ServiceAccessErrorV1::OutcomeUnknown {
+                    self.mark_snapshot_indeterminate();
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    /// Publishes one exact, bounded multi-document edit through Vellum's
+    /// owner-atomic in-memory transaction. This makes no persistence claim.
+    /// The selected document projection is advanced from the owner receipt;
+    /// embedding controllers remain responsible for any additional
+    /// per-document presentation state.
+    pub fn workspace_edit(
+        &mut self,
+        documents: Vec<WorkspaceDocumentEditV1>,
+    ) -> Result<WorkspaceEditReceiptV1, WorkspaceClientErrorV1> {
+        let selected_participates = self
+            .projection
+            .selected
+            .is_some_and(|selected| documents.iter().any(|edit| edit.document == selected));
+        match self.client.workspace_edit(documents) {
+            Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt))) => {
+                self.require_workspace(receipt.workspace)?;
+                if let Some(selected) = self.projection.selected
+                    && let Some(edited) = receipt
+                        .documents
+                        .iter()
+                        .find(|edited| edited.document == selected)
+                {
+                    self.projection.snapshot = Some(edited.snapshot.clone());
+                    self.projection.snapshot_freshness = ProjectionFreshnessV1::Current;
+                    self.projection.persistence = PersistenceProjectionV1::Dirty;
+                }
+                Ok(receipt)
+            }
+            Ok(ReplyV1::Refused(reason)) => {
+                if selected_participates && reason == RefusalV1::Stale {
+                    self.mark_snapshot_stale();
+                }
+                Err(WorkspaceClientErrorV1::Refused(reason))
+            }
+            Ok(ReplyV1::Accepted(_)) => Err(WorkspaceClientErrorV1::Projection(
+                WorkspaceProjectionRefusalV1::UnexpectedReply,
+            )),
+            Err(error) => {
+                if selected_participates && error == ServiceAccessErrorV1::OutcomeUnknown {
                     self.mark_snapshot_indeterminate();
                 }
                 Err(error.into())
@@ -693,6 +739,54 @@ mod tests {
         assert_eq!(
             controller.projection().persistence(),
             PersistenceProjectionV1::Clean
+        );
+    }
+
+    #[test]
+    fn atomic_workspace_edit_installs_selected_owner_snapshot_without_persistence_claim() {
+        let initial = SnapshotV1 {
+            witness: VersionWitness::new(3).unwrap(),
+            revision: 4,
+            text: Arc::from("source"),
+        };
+        let successor = SnapshotV1 {
+            witness: VersionWitness::new(5).unwrap(),
+            revision: 5,
+            text: Arc::from("target"),
+        };
+        let edit = vellum_protocol::WorkspaceDocumentEditV1 {
+            document: document(),
+            expected_revision: 4,
+            replacements: vec![vellum_protocol::WorkspaceReplacementV1 {
+                start: 0,
+                end: 6,
+                inserted: "target".into(),
+            }],
+        };
+        let receipt = vellum_protocol::WorkspaceEditReceiptV1 {
+            workspace: workspace(),
+            generation: 8,
+            documents: vec![vellum_protocol::WorkspaceEditedDocumentV1 {
+                document: document(),
+                snapshot: successor.clone(),
+            }],
+        };
+        let mut controller = controller([
+            Ok(inventory(vec![document()])),
+            Ok(ReplyV1::Accepted(OutcomeV1::DocumentSelected(document()))),
+            Ok(ReplyV1::Accepted(OutcomeV1::Snapshot(initial))),
+            Ok(ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(
+                receipt.clone(),
+            ))),
+        ]);
+        controller.refresh_inventory().unwrap();
+        controller.select_document(document()).unwrap();
+        controller.refresh_snapshot().unwrap();
+        assert_eq!(controller.workspace_edit(vec![edit]).unwrap(), receipt);
+        assert_eq!(controller.projection().snapshot(), Some(&successor));
+        assert_eq!(
+            controller.projection().persistence(),
+            PersistenceProjectionV1::Dirty
         );
     }
 

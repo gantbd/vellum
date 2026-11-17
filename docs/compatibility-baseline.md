@@ -97,6 +97,16 @@ intermediate unreleased blanket build refusal; because no released contract
 exposed it, the unreachable variant was removed rather than retained as
 misleading public taxonomy.
 
+The November 17 workbench composition slice adds
+`WorkspaceClientV1::workspace_edit` to the unpublished
+`vellum-workspace-client` crate. This is additive Rust source API over the
+already-qualified native `WorkspaceEdit` command/tag 17: it advances the
+selected projection from the owner receipt, marks that projection dirty without
+claiming persistence, and preserves stale/outcome-unknown fencing. It changes no
+protocol command, wire tag, golden frame, daemon behavior, package inventory,
+feature table, or published artifact. The compatibility baseline therefore
+updates only this client crate's conservative source-tree digest.
+
 The subsequent semantic-peer slice is additive Rust source API in
 `vellum-host`: a new `semantic` module and its V1 outbound consumer types. It
 now also exposes public deployment-ceiling validation predicates used by the

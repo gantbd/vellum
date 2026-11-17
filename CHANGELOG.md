@@ -8,6 +8,12 @@ will follow Semantic Versioning once a public release contract is selected.
 
 ### Changed
 
+- Exposed the existing owner-atomic `WorkspaceEdit` command through the
+  presentation-neutral `WorkspaceClientV1`. Accepted receipts advance only the
+  selected local projection and mark it dirty without claiming persistence;
+  stale and outcome-unknown requests preserve the existing projection fences.
+  This is additive API in an unpublished client crate and changes no native
+  wire frame or daemon behavior.
 - Removed 21 pre-public byte-exact verification snapshots from the public Git
   history and source tree after preserving private, checksum-identified
   recovery artifacts. Active formal sources remain in place, while a compact
