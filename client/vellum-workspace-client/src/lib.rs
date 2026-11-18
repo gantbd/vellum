@@ -195,6 +195,46 @@ impl<T: ServicePort> WorkspaceClientV1<T> {
         &self.projection
     }
 
+    pub const fn issued_requests(&self) -> u64 {
+        self.client.issued_requests()
+    }
+
+    /// Renews the bounded service-client identity and rebuilds its client-local
+    /// view/witness state from the owner. The prior persistence projection is
+    /// preserved only when the refreshed selected snapshot is exactly equal.
+    pub fn renew_identity(&mut self) -> Result<(), WorkspaceClientErrorV1> {
+        let selected = self.projection.selected;
+        let snapshot = self.projection.snapshot.clone();
+        let persistence = self.projection.persistence;
+        self.client.renew_identity().map_err(|error| match error {
+            ServiceControlErrorV1::Refused(refusal) => WorkspaceClientErrorV1::Refused(refusal),
+            ServiceControlErrorV1::Access(access) => WorkspaceClientErrorV1::Access(access),
+        })?;
+        self.refresh_inventory()?;
+        self.open_view()?;
+        if let Some(selected) = selected
+            && self.projection.selected != Some(selected)
+        {
+            self.select_document(selected)?;
+        }
+        if self.projection.selected.is_some() {
+            self.refresh_snapshot()?;
+        }
+        if self.projection.selected == selected && self.projection.snapshot == snapshot {
+            self.projection.persistence = persistence;
+        }
+        Ok(())
+    }
+
+    /// Admits a separately verified durable receipt into the local
+    /// presentation projection. This grants no persistence authority and only
+    /// affects the matching currently selected owner document.
+    pub fn admit_durable_document(&mut self, document: WorkspaceDocumentIdV1) {
+        if self.projection.selected == Some(document) {
+            self.projection.persistence = PersistenceProjectionV1::Clean;
+        }
+    }
+
     pub fn open_view(&mut self) -> Result<(), WorkspaceClientErrorV1> {
         match self.client.open_view()? {
             ReplyV1::Accepted(OutcomeV1::ViewOpened(receipt)) => {

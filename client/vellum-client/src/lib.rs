@@ -53,6 +53,29 @@ impl<T: ServicePort> Client<T> {
         })
     }
 
+    /// Number of ordinary request identities issued by the current service
+    /// client. Embedders can use this content-free counter to renew a bounded
+    /// client identity before the owner's replay register is exhausted.
+    pub const fn issued_requests(&self) -> u64 {
+        self.next_request.saturating_sub(1)
+    }
+
+    /// Retires the current exact client identity and obtains a fresh one over
+    /// the same transport. Renewal is refused across any unresolved ordinary
+    /// or durable effect so it cannot discard replay or receipt authority.
+    pub fn renew_identity(&mut self) -> Result<(), ServiceControlErrorV1> {
+        if self.pending.is_some() || self.pending_durable.is_some() {
+            return Err(ServiceControlErrorV1::Access(
+                ServiceAccessErrorV1::OutcomeUnknown,
+            ));
+        }
+        self.transport.disconnect(self.client)?;
+        let client = self.transport.connect()?;
+        self.client = client;
+        self.next_request = 1;
+        Ok(())
+    }
+
     pub fn snapshot(&mut self) -> Result<ReplyV1, ServiceAccessErrorV1> {
         self.send(CommandV1::Snapshot)
     }
@@ -462,6 +485,31 @@ mod tests {
     struct RecordingTransport {
         requests: Vec<RequestV1>,
         disconnected: Vec<ClientId>,
+    }
+
+    #[derive(Debug)]
+    struct RotatingTransport {
+        next_client: u64,
+        requests: Vec<RequestV1>,
+        disconnected: Vec<ClientId>,
+    }
+
+    impl ServicePort for RotatingTransport {
+        fn connect(&mut self) -> Result<ClientId, ServiceControlErrorV1> {
+            let client = ClientId::new(self.next_client).unwrap();
+            self.next_client += 1;
+            Ok(client)
+        }
+
+        fn execute(&mut self, request: RequestV1) -> Result<ReplyV1, ServiceAccessErrorV1> {
+            self.requests.push(request);
+            Ok(ReplyV1::Refused(RefusalV1::EditorUnavailable))
+        }
+
+        fn disconnect(&mut self, client: ClientId) -> Result<(), ServiceControlErrorV1> {
+            self.disconnected.push(client);
+            Ok(())
+        }
     }
 
     impl ServicePort for RecordingTransport {
@@ -1028,5 +1076,46 @@ mod tests {
         assert_eq!(client.pending_request().unwrap().request.get(), 1);
         let transport = client.into_transport();
         assert_eq!(transport.requests.len(), 1);
+    }
+
+    #[test]
+    fn identity_renewal_retires_exact_requests_and_restarts_the_counter() {
+        let mut client = Client::connect(RotatingTransport {
+            next_client: 1,
+            requests: Vec::new(),
+            disconnected: Vec::new(),
+        })
+        .unwrap();
+        client.snapshot().unwrap();
+        client.snapshot().unwrap();
+        assert_eq!(client.issued_requests(), 2);
+
+        client.renew_identity().unwrap();
+        assert_eq!(client.issued_requests(), 0);
+        client.snapshot().unwrap();
+
+        let transport = client.into_transport();
+        assert_eq!(transport.disconnected, vec![ClientId::new(1).unwrap()]);
+        assert_eq!(transport.requests[0].client, ClientId::new(1).unwrap());
+        assert_eq!(transport.requests[1].client, ClientId::new(1).unwrap());
+        assert_eq!(transport.requests[2].client, ClientId::new(2).unwrap());
+        assert_eq!(transport.requests[2].request.get(), 1);
+    }
+
+    #[test]
+    fn identity_renewal_refuses_to_cross_unresolved_effects() {
+        let expected = VersionWitness::new(17).unwrap();
+        let mut client = fault_client([Err(ServiceAccessErrorV1::OutcomeUnknown)]);
+        assert_eq!(
+            client.save(expected),
+            Err(ServiceAccessErrorV1::OutcomeUnknown)
+        );
+        assert_eq!(
+            client.renew_identity(),
+            Err(ServiceControlErrorV1::Access(
+                ServiceAccessErrorV1::OutcomeUnknown
+            ))
+        );
+        assert_eq!(client.pending_request().unwrap().request.get(), 1);
     }
 }

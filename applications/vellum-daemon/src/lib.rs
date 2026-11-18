@@ -178,6 +178,10 @@ impl DaemonLimits {
     pub const fn reference() -> Self {
         Self {
             service: ServiceLimits {
+                // Interactive clients renew their exact replay identity before
+                // the 256-request register fills. Keep lifetime issuance
+                // bounded while supporting long-lived editor sessions.
+                max_issued_clients: 4_096,
                 // 256 ordinary requests * 2 decisions plus every one of 256
                 // active and 4096 retired durable identities * (2 effect + 1
                 // retirement) decisions. Checked at construction below.
