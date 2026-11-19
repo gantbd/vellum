@@ -1,16 +1,16 @@
 use std::sync::Arc;
 use vellum_protocol::{
     ClientId, CommandV1, DirectoryAdmissionReceiptV1, DocumentRemovalReceiptV1,
-    DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
-    DurableExecuteRequestV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
-    DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
-    DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
-    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
-    DurableSaveAsFailureV1, DurableSaveAsFenceReasonV1, DurableSaveAsFenceSetV1,
-    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1,
-    DurableSaveAsLookupV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
-    DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
+    DocumentVersionObservationV1, DurableEffectIntentV1, DurableEffectReceiptV1,
+    DurableExecuteOutcomeV1, DurableExecuteRequestV1, DurableExportCopyFailureV1,
+    DurableExportCopyPersistenceV1, DurableExportCopyReceiptV1, DurableOperationRefV1,
+    DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1,
+    DurableReceiptRetirementV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1,
+    DurableReplaceAndSaveReceiptV1, DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1,
+    DurableSaveAsDestinationEffectV1, DurableSaveAsFailureV1, DurableSaveAsFenceReasonV1,
+    DurableSaveAsFenceSetV1, DurableSaveAsIntentV1, DurableSaveAsLifecycleV1,
+    DurableSaveAsLookupOutcomeV1, DurableSaveAsLookupV1, DurableSaveAsNotActivatedReasonV1,
+    DurableSaveAsNotAttemptedReasonV1, DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveAsRetirementV1,
     DurableSaveAsStateV1, DurableSaveAsSubmitOutcomeV1, DurableSaveAsSubmitRequestV1,
     DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
@@ -1560,6 +1560,10 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
         OutcomeV1::DocumentSelected(
             WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(1).unwrap(), 1).unwrap(),
         ),
+        OutcomeV1::DocumentVersionObserved(DocumentVersionObservationV1 {
+            document: WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(1).unwrap(), 1).unwrap(),
+            revision: 7,
+        }),
         OutcomeV1::Saved(SaveReceiptV1 {
             application: SaveApplicationV1::Unknown,
             synchronization: SaveSynchronizationV1::Unknown,
@@ -1600,6 +1604,17 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
         client: ClientId::new(1).unwrap(),
         request: RequestId::new(1).unwrap(),
         command: CommandV1::Snapshot,
+    });
+    let encoded = encode_request_v1(&request, limits()).unwrap();
+    assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);
+
+    let workspace = WorkspaceIdV1::new(1).unwrap();
+    let request = WireRequestV1::Execute(RequestV1 {
+        client: ClientId::new(1).unwrap(),
+        request: RequestId::new(3).unwrap(),
+        command: CommandV1::ObserveDocumentVersion {
+            document: WorkspaceDocumentIdV1::new(workspace, 2).unwrap(),
+        },
     });
     let encoded = encode_request_v1(&request, limits()).unwrap();
     assert_eq!(decode_request_v1(&encoded, limits()).unwrap(), request);

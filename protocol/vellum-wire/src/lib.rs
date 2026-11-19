@@ -5,15 +5,15 @@ use keystone_codec::{DecodeError, DecodeLimits, Decoder, encode_bytes};
 use std::{fmt, sync::Arc};
 use vellum_protocol::{
     ClientId, CommandV1, DirectoryAdmissionReceiptV1, DocumentRemovalReceiptV1,
-    DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
-    DurableExecuteRequestV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
-    DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReceiptLookupOutcomeV1,
-    DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1, DurableReceiptRetirementV1,
-    DurableReceiptStatusRequestV1, DurableReceiptStatusV1, DurableReplaceAndSaveReceiptV1,
-    DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1, DurableSaveAsDestinationEffectV1,
-    DurableSaveAsFailureV1, DurableSaveAsFenceSetV1, DurableSaveAsIntentV1,
-    DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1, DurableSaveAsLookupV1,
-    DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
+    DocumentVersionObservationV1, DurableEffectIntentV1, DurableEffectReceiptV1,
+    DurableExecuteOutcomeV1, DurableExecuteRequestV1, DurableExportCopyFailureV1,
+    DurableExportCopyPersistenceV1, DurableExportCopyReceiptV1, DurableOperationRefV1,
+    DurableReceiptLookupOutcomeV1, DurableReceiptLookupV1, DurableReceiptRetirementOutcomeV1,
+    DurableReceiptRetirementV1, DurableReceiptStatusRequestV1, DurableReceiptStatusV1,
+    DurableReplaceAndSaveReceiptV1, DurableSaveAsBindingUnknownReasonV1, DurableSaveAsBindingV1,
+    DurableSaveAsDestinationEffectV1, DurableSaveAsFailureV1, DurableSaveAsFenceSetV1,
+    DurableSaveAsIntentV1, DurableSaveAsLifecycleV1, DurableSaveAsLookupOutcomeV1,
+    DurableSaveAsLookupV1, DurableSaveAsNotActivatedReasonV1, DurableSaveAsNotAttemptedReasonV1,
     DurableSaveAsNotDurableReasonV1, DurableSaveAsPersistenceV1,
     DurableSaveAsPhysicalUnknownReasonV1, DurableSaveAsReceiptV1, DurableSaveAsRetirementV1,
     DurableSaveAsStateV1, DurableSaveAsSubmitOutcomeV1, DurableSaveAsSubmitRequestV1,
@@ -1695,6 +1695,11 @@ fn encode_command(encoder: &mut Encoder, command: &CommandV1) -> Result<(), Wire
             encoder.u64(document.workspace().get())?;
             encoder.u64(document.get())
         }
+        CommandV1::ObserveDocumentVersion { document } => {
+            encoder.u8(19)?;
+            encoder.u64(document.workspace().get())?;
+            encoder.u64(document.get())
+        }
         CommandV1::Save { expected } => {
             encoder.u8(7)?;
             encoder.u64(expected.get())
@@ -1797,6 +1802,12 @@ fn decode_command(decoder: &mut Decoder<'_>) -> Result<CommandV1, WireDecodeErro
         6 => {
             let workspace = workspace_id(read_u64(decoder)?)?;
             Ok(CommandV1::SelectDocument {
+                document: workspace_document_id(workspace, read_u64(decoder)?)?,
+            })
+        }
+        19 => {
+            let workspace = workspace_id(read_u64(decoder)?)?;
+            Ok(CommandV1::ObserveDocumentVersion {
                 document: workspace_document_id(workspace, read_u64(decoder)?)?,
             })
         }
@@ -1906,6 +1917,12 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
                     encoder.u64(document.workspace().get())?;
                     encoder.u64(document.get())
                 }
+                OutcomeV1::DocumentVersionObserved(observation) => {
+                    encoder.u8(19)?;
+                    encoder.u64(observation.document.workspace().get())?;
+                    encoder.u64(observation.document.get())?;
+                    encoder.u64(observation.revision)
+                }
                 OutcomeV1::Saved(receipt) => {
                     encoder.u8(7)?;
                     encode_save_receipt(encoder, receipt)
@@ -2012,6 +2029,13 @@ fn decode_protocol_reply(
                         workspace,
                         read_u64(decoder)?,
                     )?)
+                }
+                19 => {
+                    let workspace = workspace_id(read_u64(decoder)?)?;
+                    OutcomeV1::DocumentVersionObserved(DocumentVersionObservationV1 {
+                        document: workspace_document_id(workspace, read_u64(decoder)?)?,
+                        revision: read_u64(decoder)?,
+                    })
                 }
                 7 => OutcomeV1::Saved(decode_save_receipt(decoder)?),
                 14 => OutcomeV1::ReplacedAndSaved(ReplaceAndSaveReceiptV1 {
@@ -2600,7 +2624,7 @@ fn request_length(request: &WireRequestV1) -> Result<usize, WireEncodeError> {
                 checked_add(23, locator.len())
             }
             CommandV1::RemoveDocument { .. } | CommandV1::RemoveRoot { .. } => Ok(35),
-            CommandV1::SelectDocument { .. } => Ok(35),
+            CommandV1::SelectDocument { .. } | CommandV1::ObserveDocumentVersion { .. } => Ok(35),
             CommandV1::Save { .. } => Ok(27),
             CommandV1::Snapshot => Ok(19),
             CommandV1::Replace { inserted, .. } | CommandV1::ReplaceAndSave { inserted, .. } => {
@@ -2667,6 +2691,7 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             OutcomeV1::DocumentRemoved(_) => Ok(21),
             OutcomeV1::RootRemoved(_) => Ok(21),
             OutcomeV1::DocumentSelected(_) => Ok(20),
+            OutcomeV1::DocumentVersionObserved(_) => Ok(28),
             OutcomeV1::Saved(_) => Ok(12),
             OutcomeV1::ReplacedAndSaved(receipt) => {
                 check_wire_text_length(receipt.snapshot.text.len())?;
@@ -2756,7 +2781,7 @@ fn validate_request(request: &WireRequestV1, limits: WireLimits) -> Result<(), W
             6
         }
         WireRequestV1::Execute(RequestV1 {
-            command: CommandV1::SelectDocument { .. },
+            command: CommandV1::SelectDocument { .. } | CommandV1::ObserveDocumentVersion { .. },
             ..
         })
         | WireRequestV1::Execute(RequestV1 {
@@ -2975,6 +3000,7 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
             OutcomeV1::DocumentRemoved(_) => 8,
             OutcomeV1::RootRemoved(_) => 8,
             OutcomeV1::DocumentSelected(_) => 6,
+            OutcomeV1::DocumentVersionObserved(_) => 7,
             OutcomeV1::Saved(_) => 12,
             OutcomeV1::ReplacedAndSaved(receipt) => {
                 check_text_limit(receipt.snapshot.text.len(), limits)?;

@@ -83,6 +83,104 @@ fn handoff_reads_exact_unsaved_source_from_the_served_workspace() {
 }
 
 #[test]
+fn exact_document_version_observation_is_read_only_and_view_independent() {
+    let fixture = Fixture::new("alpha");
+    let other = Fixture::new("other");
+    let workspace = workspace_for(&[fixture.0.clone(), other.0.clone()]);
+    let mut service = Service::new_with_action_ceiling(
+        workspace,
+        ServiceLimits::reference(),
+        AuthorityActionSetV1::top(),
+    )
+    .unwrap();
+    let client = service.connect().unwrap();
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceInventory(inventory)) =
+        service.execute(request(client, 1, CommandV1::WorkspaceInventory))
+    else {
+        panic!("expected document inventory")
+    };
+    let ReplyV1::Accepted(OutcomeV1::LocatorResolved(document)) = service.execute(request(
+        client,
+        2,
+        CommandV1::ResolveLocator {
+            locator: fixture.0.to_string_lossy().into_owned(),
+        },
+    )) else {
+        panic!("expected exact first document resolution")
+    };
+    let ReplyV1::Accepted(OutcomeV1::LocatorResolved(other_document)) = service.execute(request(
+        client,
+        3,
+        CommandV1::ResolveLocator {
+            locator: other.0.to_string_lossy().into_owned(),
+        },
+    )) else {
+        panic!("expected exact other document resolution")
+    };
+    let document = document.document.unwrap();
+    let other_document = other_document.document.unwrap();
+    assert!(inventory.documents.contains(&document));
+    assert!(inventory.documents.contains(&other_document));
+    assert_eq!(
+        service.execute(request(
+            client,
+            4,
+            CommandV1::SelectDocument {
+                document: other_document,
+            },
+        )),
+        ReplyV1::Accepted(OutcomeV1::DocumentSelected(other_document))
+    );
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(active_before)) =
+        service.execute(request(client, 5, CommandV1::Snapshot))
+    else {
+        panic!("expected active document snapshot")
+    };
+    let ReplyV1::Accepted(OutcomeV1::DocumentVersionObserved(before)) = service.execute(request(
+        client,
+        6,
+        CommandV1::ObserveDocumentVersion { document },
+    )) else {
+        panic!("expected exact document version")
+    };
+    assert_eq!(before.document, document);
+    let ReplyV1::Accepted(OutcomeV1::Snapshot(active_after)) =
+        service.execute(request(client, 7, CommandV1::Snapshot))
+    else {
+        panic!("expected unchanged active document snapshot")
+    };
+    assert_eq!(active_after.revision, active_before.revision);
+    assert_eq!(active_after.text, active_before.text);
+    let ReplyV1::Accepted(OutcomeV1::WorkspaceEdited(receipt)) = service.execute(request(
+        client,
+        8,
+        CommandV1::WorkspaceEdit {
+            documents: vec![WorkspaceDocumentEditV1 {
+                document,
+                expected_revision: before.revision,
+                replacements: vec![WorkspaceReplacementV1 {
+                    start: 0,
+                    end: 5,
+                    inserted: "beta".into(),
+                }],
+            }],
+        },
+    )) else {
+        panic!("expected unsaved exact-document edit")
+    };
+    let ReplyV1::Accepted(OutcomeV1::DocumentVersionObserved(after)) = service.execute(request(
+        client,
+        9,
+        CommandV1::ObserveDocumentVersion { document },
+    )) else {
+        panic!("expected changed exact document version")
+    };
+    assert_eq!(after.revision, receipt.documents[0].snapshot.revision);
+    assert_ne!(after.revision, before.revision);
+    assert_eq!(fs::read_to_string(&fixture.0).unwrap(), "alpha");
+}
+
+#[test]
 fn workspace_edit_publishes_two_documents_atomically_without_persistence_claim() {
     let first = Fixture::new("abcd");
     let second = Fixture::new("wxyz");

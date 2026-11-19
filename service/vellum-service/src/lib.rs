@@ -45,20 +45,21 @@ use vellum_host::workspace::{
 };
 use vellum_protocol::{
     ClientId, CommandV1, DirectoryAdmissionReceiptV1, DocumentRemovalReceiptV1,
-    DurableEffectIntentV1, DurableEffectReceiptV1, DurableExecuteOutcomeV1,
-    DurableExportCopyFailureV1, DurableExportCopyPersistenceV1, DurableExportCopyReceiptV1,
-    DurableOperationRefV1, DurableReplaceAndSaveReceiptV1, DurableSaveReceiptV1, EditPersistenceV1,
-    FileAdmissionReceiptV1, FileAdmissionStatusV1, MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1,
-    MAX_WORKSPACE_EDIT_DOCUMENTS_V1, MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1,
-    MAX_WORKSPACE_EDIT_REPLACEMENTS_V1, MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1,
-    MembershipRemovalStatusV1, OutcomeV1, RefusalV1, ReplaceAndSaveReceiptV1, ReplyV1, RequestId,
-    RequestV1, RootRemovalReceiptV1, SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1,
-    SnapshotV1, VersionWitness, ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1,
-    WorkspaceChangeCursorV1, WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1,
-    WorkspaceChangeV1, WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1,
-    WorkspaceEditReceiptV1, WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1,
-    WorkspaceInventoryPageV1, WorkspaceInventoryV1, WorkspaceLocatorResolutionV1,
-    WorkspaceRootIdV1, WorkspaceRootKindV1, WorkspaceRootV1,
+    DocumentVersionObservationV1, DurableEffectIntentV1, DurableEffectReceiptV1,
+    DurableExecuteOutcomeV1, DurableExportCopyFailureV1, DurableExportCopyPersistenceV1,
+    DurableExportCopyReceiptV1, DurableOperationRefV1, DurableReplaceAndSaveReceiptV1,
+    DurableSaveReceiptV1, EditPersistenceV1, FileAdmissionReceiptV1, FileAdmissionStatusV1,
+    MAX_WORKSPACE_CHANGE_PAGE_SIZE_V1, MAX_WORKSPACE_EDIT_DOCUMENTS_V1,
+    MAX_WORKSPACE_EDIT_PAYLOAD_BYTES_V1, MAX_WORKSPACE_EDIT_REPLACEMENTS_V1,
+    MAX_WORKSPACE_INVENTORY_PAGE_SIZE_V1, MembershipRemovalStatusV1, OutcomeV1, RefusalV1,
+    ReplaceAndSaveReceiptV1, ReplyV1, RequestId, RequestV1, RootRemovalReceiptV1,
+    SaveApplicationV1, SaveReceiptV1, SaveSynchronizationV1, SnapshotV1, VersionWitness,
+    ViewCloseStatusV1, ViewOpenReceiptV1, ViewOpenStatusV1, WorkspaceChangeCursorV1,
+    WorkspaceChangeGapV1, WorkspaceChangeKindV1, WorkspaceChangePageV1, WorkspaceChangeV1,
+    WorkspaceChangesV1, WorkspaceDocumentEditV1, WorkspaceDocumentIdV1, WorkspaceEditReceiptV1,
+    WorkspaceEditedDocumentV1, WorkspaceIdV1, WorkspaceInventoryCursorV1, WorkspaceInventoryPageV1,
+    WorkspaceInventoryV1, WorkspaceLocatorResolutionV1, WorkspaceRootIdV1, WorkspaceRootKindV1,
+    WorkspaceRootV1,
 };
 use vellum_workspace::{
     DirectoryDiscoveryLimits, DirectoryDiscoveryPort, EditorView, MembershipRemovalStatus,
@@ -2205,6 +2206,9 @@ impl Service {
             CommandV1::SelectDocument { document } => self
                 .select_document(client, *document)
                 .map(OutcomeV1::DocumentSelected),
+            CommandV1::ObserveDocumentVersion { document } => self
+                .observe_document_version(*document)
+                .map(OutcomeV1::DocumentVersionObserved),
             CommandV1::Save { expected } => self.save(client, *expected).map(OutcomeV1::Saved),
             CommandV1::ReplaceAndSave {
                 expected,
@@ -2278,6 +2282,21 @@ impl Service {
         }
         let text: Arc<str> = Arc::from(captured.text);
         Ok(self.install_witness(client, captured.version, text))
+    }
+
+    fn observe_document_version(
+        &mut self,
+        document: WorkspaceDocumentIdV1,
+    ) -> Result<DocumentVersionObservationV1, RefusalV1> {
+        let native = self.projected_native_document(document)?;
+        let version = self
+            .workspace
+            .document_version(&native)
+            .map_err(classify_workspace)?;
+        Ok(DocumentVersionObservationV1 {
+            document,
+            revision: version.revision,
+        })
     }
 
     fn open_view(&mut self, client: ClientId) -> Result<ViewOpenReceiptV1, RefusalV1> {
@@ -3638,7 +3657,9 @@ const fn action_plan(command: &CommandV1) -> AuthorityActionPlan {
                 ],
             };
         }
-        CommandV1::Snapshot => AuthorityActionV1::ReadSource,
+        CommandV1::Snapshot | CommandV1::ObserveDocumentVersion { .. } => {
+            AuthorityActionV1::ReadSource
+        }
         CommandV1::Replace { .. } | CommandV1::WorkspaceEdit { .. } => {
             AuthorityActionV1::EditSource
         }

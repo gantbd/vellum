@@ -405,6 +405,14 @@ pub struct WorkspaceInventoryPageV1 {
     pub next: Option<WorkspaceInventoryCursorV1>,
 }
 
+/// Content-free current revision for one exact live workspace document.
+/// This does not select a view, retain a witness, or disclose source bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DocumentVersionObservationV1 {
+    pub document: WorkspaceDocumentIdV1,
+    pub revision: u64,
+}
+
 /// One bounded byte-range replacement within a revision-witnessed document.
 /// The expected source fragment is recovered from the retained witness by the
 /// service; callers cannot weaken conflict detection by supplying it.
@@ -493,6 +501,9 @@ pub enum CommandV1 {
     SelectDocument {
         document: WorkspaceDocumentIdV1,
     },
+    ObserveDocumentVersion {
+        document: WorkspaceDocumentIdV1,
+    },
     Save {
         expected: VersionWitness,
     },
@@ -556,6 +567,10 @@ impl fmt::Debug for CommandV1 {
             Self::RemoveRoot { root } => f.debug_struct("RemoveRoot").field("root", root).finish(),
             Self::SelectDocument { document } => f
                 .debug_struct("SelectDocument")
+                .field("document", document)
+                .finish(),
+            Self::ObserveDocumentVersion { document } => f
+                .debug_struct("ObserveDocumentVersion")
                 .field("document", document)
                 .finish(),
             Self::Save { expected } => f.debug_struct("Save").field("expected", expected).finish(),
@@ -1370,6 +1385,7 @@ pub enum OutcomeV1 {
     DocumentRemoved(DocumentRemovalReceiptV1),
     RootRemoved(RootRemovalReceiptV1),
     DocumentSelected(WorkspaceDocumentIdV1),
+    DocumentVersionObserved(DocumentVersionObservationV1),
     Saved(SaveReceiptV1),
     ReplacedAndSaved(ReplaceAndSaveReceiptV1),
     Snapshot(SnapshotV1),
