@@ -143,6 +143,15 @@ impl<T: ServicePort> Client<T> {
         self.send(CommandV1::SelectDocument { document })
     }
 
+    /// Reads one exact document revision without selecting a view, retaining a
+    /// snapshot witness, or disclosing source bytes.
+    pub fn observe_document_version(
+        &mut self,
+        document: WorkspaceDocumentIdV1,
+    ) -> Result<ReplyV1, ServiceAccessErrorV1> {
+        self.send(CommandV1::ObserveDocumentVersion { document })
+    }
+
     pub fn save(&mut self, expected: VersionWitness) -> Result<ReplyV1, ServiceAccessErrorV1> {
         self.send(CommandV1::Save { expected })
     }
@@ -930,6 +939,26 @@ mod tests {
         assert_eq!(transport.requests.len(), 2);
         assert_eq!(transport.requests[0].command, CommandV1::OpenView);
         assert_eq!(transport.requests[1].command, CommandV1::CloseView);
+    }
+
+    #[test]
+    fn client_projects_exact_document_version_observation_without_view_commands() {
+        let transport = RecordingTransport {
+            requests: Vec::new(),
+            disconnected: Vec::new(),
+        };
+        let mut client = Client::connect(transport).unwrap();
+        let workspace = vellum_protocol::WorkspaceIdV1::new(11).unwrap();
+        let document = WorkspaceDocumentIdV1::new(workspace, 13).unwrap();
+
+        client.observe_document_version(document).unwrap();
+
+        let transport = client.into_transport();
+        assert_eq!(transport.requests.len(), 1);
+        assert_eq!(
+            transport.requests[0].command,
+            CommandV1::ObserveDocumentVersion { document }
+        );
     }
 
     #[test]
