@@ -1921,7 +1921,8 @@ fn encode_protocol_reply(encoder: &mut Encoder, reply: &ReplyV1) -> Result<(), W
                     encoder.u8(19)?;
                     encoder.u64(observation.document.workspace().get())?;
                     encoder.u64(observation.document.get())?;
-                    encoder.u64(observation.revision)
+                    encoder.u64(observation.revision)?;
+                    encoder.u64(observation.byte_length)
                 }
                 OutcomeV1::Saved(receipt) => {
                     encoder.u8(7)?;
@@ -2035,6 +2036,7 @@ fn decode_protocol_reply(
                     OutcomeV1::DocumentVersionObserved(DocumentVersionObservationV1 {
                         document: workspace_document_id(workspace, read_u64(decoder)?)?,
                         revision: read_u64(decoder)?,
+                        byte_length: read_u64(decoder)?,
                     })
                 }
                 7 => OutcomeV1::Saved(decode_save_receipt(decoder)?),
@@ -2691,7 +2693,7 @@ fn reply_length(reply: &WireReplyV1) -> Result<usize, WireEncodeError> {
             OutcomeV1::DocumentRemoved(_) => Ok(21),
             OutcomeV1::RootRemoved(_) => Ok(21),
             OutcomeV1::DocumentSelected(_) => Ok(20),
-            OutcomeV1::DocumentVersionObserved(_) => Ok(28),
+            OutcomeV1::DocumentVersionObserved(_) => Ok(36),
             OutcomeV1::Saved(_) => Ok(12),
             OutcomeV1::ReplacedAndSaved(receipt) => {
                 check_wire_text_length(receipt.snapshot.text.len())?;
@@ -3000,7 +3002,7 @@ fn validate_reply(reply: &WireReplyV1, limits: WireLimits) -> Result<(), WireEnc
             OutcomeV1::DocumentRemoved(_) => 8,
             OutcomeV1::RootRemoved(_) => 8,
             OutcomeV1::DocumentSelected(_) => 6,
-            OutcomeV1::DocumentVersionObserved(_) => 7,
+            OutcomeV1::DocumentVersionObserved(_) => 8,
             OutcomeV1::Saved(_) => 12,
             OutcomeV1::ReplacedAndSaved(receipt) => {
                 check_text_limit(receipt.snapshot.text.len(), limits)?;

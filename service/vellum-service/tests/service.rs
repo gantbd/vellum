@@ -144,6 +144,7 @@ fn exact_document_version_observation_is_read_only_and_view_independent() {
         panic!("expected exact document version")
     };
     assert_eq!(before.document, document);
+    assert_eq!(before.byte_length, 5);
     let ReplyV1::Accepted(OutcomeV1::Snapshot(active_after)) =
         service.execute(request(client, 7, CommandV1::Snapshot))
     else {
@@ -177,6 +178,7 @@ fn exact_document_version_observation_is_read_only_and_view_independent() {
     };
     assert_eq!(after.revision, receipt.documents[0].snapshot.revision);
     assert_ne!(after.revision, before.revision);
+    assert_eq!(after.byte_length, 4);
     assert_eq!(fs::read_to_string(&fixture.0).unwrap(), "alpha");
 }
 

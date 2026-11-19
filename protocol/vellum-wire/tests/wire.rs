@@ -1563,6 +1563,7 @@ fn every_closed_reply_variant_round_trips_and_debug_redacts_content() {
         OutcomeV1::DocumentVersionObserved(DocumentVersionObservationV1 {
             document: WorkspaceDocumentIdV1::new(WorkspaceIdV1::new(1).unwrap(), 1).unwrap(),
             revision: 7,
+            byte_length: 128,
         }),
         OutcomeV1::Saved(SaveReceiptV1 {
             application: SaveApplicationV1::Unknown,

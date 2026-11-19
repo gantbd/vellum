@@ -2293,9 +2293,17 @@ impl Service {
             .workspace
             .document_version(&native)
             .map_err(classify_workspace)?;
+        let capture = self
+            .workspace
+            .capture_document_for_handoff(&native, &version, |_, _| true)
+            .map_err(classify_workspace)?
+            .ok_or(RefusalV1::EditorUnavailable)?;
+        let byte_length =
+            u64::try_from(capture.bytes().len()).map_err(|_| RefusalV1::SnapshotLimit)?;
         Ok(DocumentVersionObservationV1 {
             document,
             revision: version.revision,
+            byte_length,
         })
     }
 

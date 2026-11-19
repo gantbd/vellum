@@ -411,6 +411,7 @@ pub struct WorkspaceInventoryPageV1 {
 pub struct DocumentVersionObservationV1 {
     pub document: WorkspaceDocumentIdV1,
     pub revision: u64,
+    pub byte_length: u64,
 }
 
 /// One bounded byte-range replacement within a revision-witnessed document.
